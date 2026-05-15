@@ -1,0 +1,25 @@
+# 核心依赖（必需）
+pandas>=1.5.0
+numpy>=1.21.0
+
+# UI 现代化（可选，推荐安装）
+ttkbootstrap>=1.10.0
+
+# 数据源（可选，按需安装）
+tushare>=1.2.85
+yfinance>=0.2.0
+akshare>=1.10.0
+
+# 报告导出（可选）
+reportlab>=4.0
+python-docx>=0.8.11
+openpyxl>=3.0.0
+
+# 图表可视化（可选，推荐安装）
+matplotlib>=3.7.0
+
+# DeepSeek AI 分析（可选）
+requests>=2.28.0
+
+# 安全存储（推荐，用于 Token 加密存储）
+keyring>=24.0.0
