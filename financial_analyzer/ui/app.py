@@ -1659,13 +1659,8 @@ class FinancialAnalyzerApp:
     def _embed_chart(self, fig):
         """将 matplotlib fig 嵌入图表容器（必须在主线程调用）"""
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-        from matplotlib.transforms import Bbox
 
-        # 清除旧图表和旧的 resize 绑定
-        if hasattr(self, '_chart_resize_id') and self._chart_resize_id:
-            self.chart_container.unbind("<Configure>", self._chart_resize_id)
-            self._chart_resize_id = None
-
+        # 清除旧图表（destroy 自动清理绑定，无需手动 unbind）
         for w in self.chart_container.winfo_children():
             w.destroy()
 
@@ -1700,8 +1695,8 @@ class FinancialAnalyzerApp:
             except Exception:
                 pass
 
-        # 绑定 canvas widget 的 Configure 事件
-        self._chart_resize_id = canvas_widget.bind("<Configure>", _on_canvas_resize)
+        # 绑定 canvas widget 的 Configure 事件，全屏/窗口切换时自动重绘
+        canvas_widget.bind("<Configure>", _on_canvas_resize)
 
         # 强制刷新布局后再首次绘制
         self.root.update_idletasks()
