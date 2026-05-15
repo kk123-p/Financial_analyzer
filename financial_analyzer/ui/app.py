@@ -1659,6 +1659,7 @@ class FinancialAnalyzerApp:
     def _embed_chart(self, fig):
         """将 matplotlib fig 嵌入图表容器（必须在主线程调用）"""
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+        from matplotlib.transforms import Bbox
 
         # 清除旧图表和旧的 resize 绑定
         if hasattr(self, '_chart_resize_id') and self._chart_resize_id:
@@ -1673,31 +1674,34 @@ class FinancialAnalyzerApp:
         toolbar = NavigationToolbar2Tk(canvas, self.chart_container)
         toolbar.update()
         toolbar.pack(side="top", fill="x")
-        canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas_widget = canvas.get_tk_widget()
+        canvas_widget.pack(fill="both", expand=True)
         self._chart_canvas = canvas
         self._chart_fig = fig
 
-        # 记录上次绘制的容器尺寸，避免重复绘制
+        # 记录上次绘制的 canvas widget 尺寸，避免重复绘制
         self._chart_last_size = (0, 0)
 
-        def _on_container_resize(event=None):
-            """容器大小变化时重新绘制图表，修复全屏模式下图表只显示局部的问题"""
-            if event is None or not hasattr(self, '_chart_canvas') or self._chart_canvas is None:
+        def _on_canvas_resize(event):
+            """canvas widget 大小变化时，同步 figure 尺寸并重绘"""
+            if event.widget != canvas_widget:
                 return
-            new_size = (event.width, event.height)
-            if new_size == self._chart_last_size:
+            w, h = event.width, event.height
+            if w < 50 or h < 50:
                 return
-            if new_size[0] < 50 or new_size[1] < 50:
+            if (w, h) == self._chart_last_size:
                 return
-            self._chart_last_size = new_size
+            self._chart_last_size = (w, h)
             try:
-                fig.set_size_inches(event.width / fig.dpi, event.height / fig.dpi, forward=False)
-                self._chart_canvas.draw_idle()
+                # 关键：让 figure 尺寸跟随 canvas widget 尺寸
+                fig.set_size_inches(w / fig.dpi, h / fig.dpi, forward=False)
+                canvas_widget.config(width=w, height=h)
+                canvas.draw_idle()
             except Exception:
                 pass
 
-        # 绑定容器 resize 事件，全屏/窗口切换时自动重绘
-        self._chart_resize_id = self.chart_container.bind("<Configure>", _on_container_resize)
+        # 绑定 canvas widget 的 Configure 事件
+        self._chart_resize_id = canvas_widget.bind("<Configure>", _on_canvas_resize)
 
         # 强制刷新布局后再首次绘制
         self.root.update_idletasks()
