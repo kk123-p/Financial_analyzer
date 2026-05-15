@@ -647,6 +647,14 @@ def create_bar_chart(labels: list, values: list, title: str = "",
 # ============================================================================
 # 组合图：行情概览
 # ============================================================================
+def _normalize_col(df: pd.DataFrame, candidates: list) -> str | None:
+    """在 DataFrame 中查找列名（不区分大小写），返回实际列名"""
+    for c in candidates:
+        if c in df.columns:
+            return c
+    return None
+
+
 def create_market_overview_chart(df: pd.DataFrame, stock_code: str = "",
                                   days: int = 120) -> object:
     """创建行情概览组合图（K线 + 成交量 + RSI）（支持交互）"""
@@ -657,10 +665,11 @@ def create_market_overview_chart(df: pd.DataFrame, stock_code: str = "",
         return None
 
     data = df.head(days).copy()
-    if "close" in data.columns:
-        close = pd.to_numeric(data["close"], errors="coerce")
-    else:
+    close_col = _normalize_col(data, ["close", "Close"])
+    if close_col is None:
+        logger.warning("market_overview: 缺少 close 列")
         return None
+    close = pd.to_numeric(data[close_col], errors="coerce")
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 10),
                                           gridspec_kw={"height_ratios": [4, 1.5, 1.5]},
@@ -684,11 +693,15 @@ def create_market_overview_chart(df: pd.DataFrame, stock_code: str = "",
                labelcolor=COLORS["text"])
 
     # 成交量
-    if "vol" in data.columns:
-        volumes = pd.to_numeric(data["vol"], errors="coerce")
-        opens = pd.to_numeric(data.get("open", data.get("Open", pd.Series())), errors="coerce")
+    vol_col = _normalize_col(data, ["vol", "Volume", "volume"])
+    open_col = _normalize_col(data, ["open", "Open"])
+    if vol_col:
+        volumes = pd.to_numeric(data[vol_col], errors="coerce")
+        opens = pd.to_numeric(data[open_col], errors="coerce") if open_col else close
         closes_vals = close.values
-        opens_vals = opens.values if len(opens) > 0 else closes_vals
+        opens_vals = opens.values if hasattr(opens, 'values') else np.full(len(closes_vals), closes_vals[0])
+        if len(opens_vals) != len(closes_vals):
+            opens_vals = closes_vals
         vol_colors = [COLORS["up"] if closes_vals[i] >= opens_vals[i] else COLORS["down"]
                       for i in range(len(closes_vals))]
         ax2.bar(x, volumes.values, color=vol_colors, width=0.6, alpha=0.7)
@@ -891,8 +904,8 @@ def create_area_chart(df: pd.DataFrame, title: str = "价格走势",
         return None
 
     data = df.head(days).copy()
-    col = value_col if value_col in data.columns else "close"
-    if col not in data.columns:
+    col = _normalize_col(data, [value_col, "close", "Close"])
+    if col is None:
         return None
 
     values = pd.to_numeric(data[col], errors="coerce").dropna()
@@ -1100,7 +1113,8 @@ def create_multi_metric_dashboard(df: pd.DataFrame, stock_code: str = "",
 def create_dupont_waterfall(nm_old, nm_new, at_old, at_new, em_old, em_new,
                             roe_old, roe_new, stock_code=""):
     """杜邦分析瀑布图 - 展示各因子对 ROE 变动的贡献"""
-    plt, _, _, _, _ = _ensure_mpl()
+    mpl, _ = _ensure_mpl()
+    plt = mpl["plt"]
     if plt is None:
         return None
 
@@ -1148,7 +1162,8 @@ def create_dupont_waterfall(nm_old, nm_new, at_old, at_new, em_old, em_new,
 
 def create_fscore_radar(scores: dict, stock_code=""):
     """F-score 雷达图"""
-    plt, _, _, _, _ = _ensure_mpl()
+    mpl, _ = _ensure_mpl()
+    plt = mpl["plt"]
     if plt is None:
         return None
 
@@ -1182,7 +1197,8 @@ def create_fscore_radar(scores: dict, stock_code=""):
 def create_peer_comparison_bar(company_name: str, metrics: dict,
                                peer_avgs: dict, stock_code=""):
     """行业对比柱状图"""
-    plt, _, _, _, _ = _ensure_mpl()
+    mpl, _ = _ensure_mpl()
+    plt = mpl["plt"]
     if plt is None:
         return None
 
@@ -1220,7 +1236,8 @@ def create_peer_comparison_bar(company_name: str, metrics: dict,
 
 def create_valuation_gauge(pe_pct: float, pb_pct: float = None, stock_code=""):
     """估值分位仪表盘"""
-    plt, _, _, _, _ = _ensure_mpl()
+    mpl, _ = _ensure_mpl()
+    plt = mpl["plt"]
     if plt is None:
         return None
 

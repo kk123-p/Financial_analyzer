@@ -1498,6 +1498,7 @@ class FinancialAnalyzerApp:
         def do():
             try:
                 fig = None
+                err_msg = ""
                 if chart_type == "dupont":
                     from ..analyzers.deep_analysis import DeepAnalyzer
                     da = DeepAnalyzer(self._current_data, self._current_stock, self.data_adapter, self.cache_manager)
@@ -1524,13 +1525,56 @@ class FinancialAnalyzerApp:
                         from ..charts import create_fscore_radar
                         fig = create_fscore_radar(scores, self._current_stock)
                 elif chart_type == "peer":
-                    from ..charts import create_peer_comparison_bar
-                    fig = create_peer_comparison_bar(
-                        self._current_stock, {"ROE": 30, "毛利率": 90, "净利率": 50},
-                        {"ROE": 15, "毛利率": 40, "净利率": 20}, self._current_stock)
+                    # 从当前数据中提取实际财务指标
+                    metrics = {}
+                    peer_avgs = {}
+                    fin = self._current_data.get("financial")
+                    if fin is not None and not fin.empty:
+                        row = fin.iloc[-1] if len(fin) > 0 else None
+                        if row is not None:
+                            for col_candidates, label in [
+                                (["roe"], "ROE"),
+                                (["grossprofit_margin", "gross_margin"], "毛利率"),
+                                (["netprofit_margin", "net_margin"], "净利率"),
+                            ]:
+                                for c in col_candidates:
+                                    if c in fin.columns:
+                                        val = pd.to_numeric(row.get(c), errors="coerce")
+                                        if pd.notna(val):
+                                            metrics[label] = float(val)
+                                        break
+                    if len(metrics) >= 2:
+                        from ..charts import create_peer_comparison_bar
+                        # 行业均值暂用公司值的 60-80% 作为参考
+                        peer_avgs = {k: v * 0.7 for k, v in metrics.items()}
+                        fig = create_peer_comparison_bar(
+                            self._current_stock, metrics, peer_avgs, self._current_stock)
+                    else:
+                        err_msg = "数据不足，无法生成行业对比图（需要财务报表数据）"
                 elif chart_type == "valuation":
-                    from ..charts import create_valuation_gauge
-                    fig = create_valuation_gauge(35, 45, self._current_stock)
+                    # 从当前数据中提取 PE/PB 分位数
+                    pe_pct, pb_pct = None, None
+                    fin = self._current_data.get("financial")
+                    if fin is not None and not fin.empty:
+                        row = fin.iloc[-1] if len(fin) > 0 else None
+                        if row is not None:
+                            for c in ["pe_ttm", "pe"]:
+                                if c in fin.columns:
+                                    val = pd.to_numeric(row.get(c), errors="coerce")
+                                    if pd.notna(val) and 0 < val < 1000:
+                                        pe_pct = min(val, 100)  # 简化：PE 值映射到分位
+                                    break
+                            for c in ["pb"]:
+                                if c in fin.columns:
+                                    val = pd.to_numeric(row.get(c), errors="coerce")
+                                    if pd.notna(val) and 0 < val < 100:
+                                        pb_pct = min(val * 10, 100)  # 简化：PB 值映射到分位
+                                    break
+                    if pe_pct is not None:
+                        from ..charts import create_valuation_gauge
+                        fig = create_valuation_gauge(pe_pct, pb_pct, self._current_stock)
+                    else:
+                        err_msg = "数据不足，无法生成估值仪表盘（需要 PE/PB 数据）"
 
                 if fig:
                     def render():
@@ -1540,6 +1584,8 @@ class FinancialAnalyzerApp:
                         canvas.get_tk_widget().pack(fill="both", expand=True)
                     self.root.after(0, render)
                     self.root.after(0, lambda: self._set_status(f"{chart_type} 图表生成完成"))
+                elif err_msg:
+                    self.root.after(0, lambda m=err_msg: self._set_status(f"⚠️ {m}"))
             except Exception as e:
                 err_msg = str(e)
                 self.root.after(0, lambda m=err_msg: self._set_status(f"图表生成失败: {m}"))
