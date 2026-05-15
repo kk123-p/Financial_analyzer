@@ -1577,12 +1577,7 @@ class FinancialAnalyzerApp:
                         err_msg = "数据不足，无法生成估值仪表盘（需要 PE/PB 数据）"
 
                 if fig:
-                    def render():
-                        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-                        canvas = FigureCanvasTkAgg(fig, self.chart_container)
-                        canvas.draw()
-                        canvas.get_tk_widget().pack(fill="both", expand=True)
-                    self.root.after(0, render)
+                    self.root.after(0, lambda f=fig: self._embed_chart(f))
                     self.root.after(0, lambda: self._set_status(f"{chart_type} 图表生成完成"))
                 elif err_msg:
                     self.root.after(0, lambda m=err_msg: self._set_status(f"⚠️ {m}"))
@@ -1665,6 +1660,11 @@ class FinancialAnalyzerApp:
         """将 matplotlib fig 嵌入图表容器（必须在主线程调用）"""
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+        # 清除旧图表和旧的 resize 绑定
+        if hasattr(self, '_chart_resize_id') and self._chart_resize_id:
+            self.chart_container.unbind("<Configure>", self._chart_resize_id)
+            self._chart_resize_id = None
+
         for w in self.chart_container.winfo_children():
             w.destroy()
 
@@ -1676,8 +1676,32 @@ class FinancialAnalyzerApp:
         canvas.get_tk_widget().pack(fill="both", expand=True)
         self._chart_canvas = canvas
         self._chart_fig = fig
-        # 延迟draw确保布局完成后再渲染，修复全屏显示问题
-        self.root.after(100, lambda: self._safe_draw_chart(canvas))
+
+        # 记录上次绘制的容器尺寸，避免重复绘制
+        self._chart_last_size = (0, 0)
+
+        def _on_container_resize(event=None):
+            """容器大小变化时重新绘制图表，修复全屏模式下图表只显示局部的问题"""
+            if event is None or not hasattr(self, '_chart_canvas') or self._chart_canvas is None:
+                return
+            new_size = (event.width, event.height)
+            if new_size == self._chart_last_size:
+                return
+            if new_size[0] < 50 or new_size[1] < 50:
+                return
+            self._chart_last_size = new_size
+            try:
+                fig.set_size_inches(event.width / fig.dpi, event.height / fig.dpi, forward=False)
+                self._chart_canvas.draw_idle()
+            except Exception:
+                pass
+
+        # 绑定容器 resize 事件，全屏/窗口切换时自动重绘
+        self._chart_resize_id = self.chart_container.bind("<Configure>", _on_container_resize)
+
+        # 强制刷新布局后再首次绘制
+        self.root.update_idletasks()
+        self.root.after(50, lambda: self._safe_draw_chart(canvas))
 
     def _safe_draw_chart(self, canvas):
         """安全绘制图表，处理布局完成后的渲染"""
