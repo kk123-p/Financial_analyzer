@@ -1660,50 +1660,39 @@ class FinancialAnalyzerApp:
         """将 matplotlib fig 嵌入图表容器（必须在主线程调用）"""
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-        # 清除旧图表（destroy 自动清理绑定，无需手动 unbind）
+        # 清除旧图表
         for w in self.chart_container.winfo_children():
             w.destroy()
 
-        # 工具栏（含拖拽/缩放功能）
+        # 工具栏
         canvas = FigureCanvasTkAgg(fig, master=self.chart_container)
         toolbar = NavigationToolbar2Tk(canvas, self.chart_container)
         toolbar.update()
         toolbar.pack(side="top", fill="x")
-        canvas_widget = canvas.get_tk_widget()
-        canvas_widget.pack(fill="both", expand=True)
+        canvas.get_tk_widget().pack(fill="both", expand=True)
         self._chart_canvas = canvas
         self._chart_fig = fig
 
-        # 记录上次绘制的 canvas widget 尺寸，避免重复绘制
-        self._chart_last_size = (0, 0)
-
-        def _on_canvas_resize(event):
-            """canvas widget 大小变化时，同步 figure 尺寸并重绘"""
-            if event.widget != canvas_widget:
-                return
-            w, h = event.width, event.height
-            if w < 50 or h < 50:
-                return
-            if (w, h) == self._chart_last_size:
-                return
-            self._chart_last_size = (w, h)
-            try:
-                # 关键：让 figure 尺寸跟随 canvas widget 尺寸
-                fig.set_size_inches(w / fig.dpi, h / fig.dpi, forward=False)
-                canvas_widget.config(width=w, height=h)
-                canvas.draw_idle()
-            except Exception:
-                pass
-
-        # 绑定 canvas widget 的 Configure 事件，全屏/窗口切换时自动重绘
-        canvas_widget.bind("<Configure>", _on_canvas_resize)
-
-        # 强制刷新布局后再首次绘制
+        # 刷新布局后，根据实际容器尺寸调整 figure 再绘制
         self.root.update_idletasks()
-        self.root.after(50, lambda: self._safe_draw_chart(canvas))
+        self.root.after(50, lambda: self._resize_and_draw(fig, canvas))
+
+    def _resize_and_draw(self, fig, canvas):
+        """根据容器实际尺寸调整 figure 大小后绘制"""
+        try:
+            widget = canvas.get_tk_widget()
+            w = widget.winfo_width()
+            h = widget.winfo_height()
+            if w > 50 and h > 50:
+                fig.set_size_inches(w / fig.dpi, h / fig.dpi, forward=False)
+            canvas.draw_idle()
+            self._set_status(f"✅ {self.chart_type_var.get()} 生成完成")
+        except Exception as e:
+            logger.error(f"图表渲染失败: {e}")
+            self._set_status(f"❌ 图表渲染失败: {e}")
 
     def _safe_draw_chart(self, canvas):
-        """安全绘制图表，处理布局完成后的渲染"""
+        """安全绘制图表（兼容旧调用）"""
         try:
             canvas.draw_idle()
             self._set_status(f"✅ {self.chart_type_var.get()} 生成完成")
