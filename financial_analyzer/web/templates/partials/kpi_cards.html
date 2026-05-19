@@ -10,7 +10,7 @@
     </div>
     <div class="kpi-card">
         <div class="kpi-label">涨跌幅</div>
-        <div class="kpi-value {% if kpis.price_change_up %}up{% else %}down{% endif %}" style="color:{% if kpis.price_change_up %}var(--success){% else %}var(--danger){% endif %}">
+        <div class="kpi-value" style="color:{% if kpis.price_change_up %}var(--success){% else %}var(--danger){% endif %}">
             {{ kpis.price_change }}
         </div>
     </div>
@@ -32,14 +32,42 @@
 <div hx-swap-oob="true" id="status-text">数据获取完成 — {{ stock_code }}</div>
 <div hx-swap-oob="true" id="source-label">{{ kpis.source }}</div>
 <div hx-swap-oob="true" id="result-content">
-    <div class="result-empty">数据已就绪，请从左侧导航选择分析项目</div>
+    <div class="result-empty">
+        数据已就绪，请从左侧导航选择分析项目<br>
+        <span style="font-size:11px;color:var(--fg-muted);">
+            已加载 {{ data_types|length }} 种数据:
+            {{ data_types[:4]|join(', ') }}{% if data_types|length > 4 %} 等{% endif %}
+        </span>
+    </div>
 </div>
+
+<!-- 财务数据加载状态 -->
+{% if fin_pending %}
+<div id="fin-status" class="fin-status-loading"
+     hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML"
+     style="padding:4px 16px;font-size:11px;color:var(--warning);">
+    ◌ 正在后台加载财务报表数据...
+    (已加载: {{ fin_loaded|join(', ') or '无' }})
+</div>
+{% endif %}
+
 <div hx-swap-oob="true" id="data-table-content">
     <table class="data-table">
-        <thead><tr><th>数据类型</th><th>行数</th><th>状态</th></tr></thead>
+        <thead><tr><th>数据类型</th><th>说明</th><th>状态</th></tr></thead>
         <tbody>
             {% for dtype in data_types %}
-            <tr><td>{{ dtype }}</td><td>--</td><td style="color:var(--success)">✓ 已加载</td></tr>
+            <tr>
+                <td>{{ dtype }}</td>
+                <td style="color:var(--fg-muted);font-size:11px;">{{ dtype }}</td>
+                <td style="color:var(--success);">✓</td>
+            </tr>
+            {% endfor %}
+            {% for dtype in fin_pending %}
+            <tr>
+                <td>{{ dtype }}</td>
+                <td style="color:var(--fg-muted);font-size:11px;">{{ dtype }}</td>
+                <td style="color:var(--warning);">◌ 加载中</td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>

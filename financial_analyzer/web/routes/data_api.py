@@ -53,58 +53,104 @@ async def fetch_data(
     start_date: str = Form("20240101"),
 ):
     adapter = get_adapter()
-
-    # 确保 token 已加载
     _load_and_apply_token(adapter)
-
     end_date = datetime.now().strftime("%Y%m%d")
-
-    # 在线程池中执行同步数据获取（避免阻塞事件循环）
     ds = DataService(adapter)
 
-    def do_fetch():
-        return ds.fetch_stock_data(stock_code, start_date, end_date, source)
+    # 第一阶段：获取基本行情数据（快速）
+    def do_fetch_basic():
+        return ds.fetch_stock_data(stock_code, start_date, end_date, source,
+                                   include_financials=False)
 
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, do_fetch)
+    data = await loop.run_in_executor(None, do_fetch_basic)
 
     if not data:
-        # 详细的诊断信息
-        available = adapter.get_available_sources()
-        tried_source = adapter.active_source
-        has_token = bool(adapter.tushare_pro)
+        return _error_response(_diagnose_error(adapter, stock_code))
 
-        diag_lines = [
-            f"无法获取 {stock_code} 的数据",
-            f"",
-            f"尝试数据源: {tried_source.upper()}",
-            f"可用数据源: {', '.join(available)}",
-            f"Tushare Token: {'已配置' if has_token else '未配置'}",
-            f"",
-            f"建议:",
-        ]
-        if not has_token and "akshare" in available:
-            diag_lines.append("  - 使用数据源 'akshare' (无需Token)")
-        if not has_token:
-            diag_lines.append("  - 在左侧「Token 配置」中设置 Tushare Token")
-        diag_lines.append("  - 检查股票代码格式 (A股: 000001.SZ, 600519.SH)")
-        diag_lines.append("  - 检查起始日期是否有效")
-
-        return _error_response("<br>".join(diag_lines))
-
-    # 保存到 session
+    # 保存基本数据
     session = _get_session(request)
     session["data"] = {k: df.to_dict("records") for k, df in data.items()}
     session["stock_code"] = stock_code
 
     kpis = ds.extract_kpis(data)
 
-    return templates.TemplateResponse(request, "partials/kpi_cards.html", {
+    # 统计哪些财务数据已/未加载
+    fin_loaded = [k for k in data if k in DataService.FINANCIAL_DATA_TYPES]
+    fin_pending = [k for k in DataService.FINANCIAL_DATA_TYPES if k not in data]
+
+    # 第二阶段：后台加载财务报表数据
+    if fin_pending:
+        def do_fetch_financials():
+            return ds.fetch_financials_async(stock_code, start_date, end_date)
+
+        # 在线程池中启动，但不等待
+        async def background_financials():
+            fin_data = await loop.run_in_executor(None, do_fetch_financials)
+            if fin_data:
+                session = _get_session(request)
+                for k, df in fin_data.items():
+                    session["data"][k] = df.to_dict("records")
+                logger.info(f"后台财务报表加载完成: {list(fin_data.keys())}")
+
+        asyncio.create_task(background_financials())
+
+    # 返回 KPI + 触发后台加载
+    from fastapi.responses import HTMLResponse
+    response = templates.TemplateResponse(request, "partials/kpi_cards.html", {
         "kpis": kpis,
         "stock_code": stock_code,
         "has_data": True,
-        "data_types": list(data.keys()),
+        "data_types": sorted(data.keys()),
+        "fin_loaded": fin_loaded,
+        "fin_pending": fin_pending,
     })
+    # htmx 触发后台轮询
+    if fin_pending:
+        response.headers["HX-Trigger"] = "financials-loading"
+    return response
+
+
+@router.get("/financials-status")
+async def financials_status(request: Request):
+    """查询财务报表是否已加载完成"""
+    session = _get_session(request)
+    data = session.get("data", {})
+
+    fin_types = DataService.FINANCIAL_DATA_TYPES
+    loaded = [k for k in fin_types if k in data and data[k]]
+    pending = [k for k in fin_types if k not in data or not data[k]]
+
+    if not pending:
+        return HTMLResponse(f"""
+        <div id="fin-status" class="fin-status-done">
+            <span style="color:var(--success);">●</span> 财务数据加载完成
+            ({', '.join(loaded)})
+        </div>
+        """)
+    else:
+        return HTMLResponse(f"""
+        <div id="fin-status" class="fin-status-loading" hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML">
+            <span class="htmx-indicator" style="color:var(--warning);">◌</span> 正在加载财务数据...
+            (已加载: {', '.join(loaded) if loaded else '无'} | 等待: {', '.join(pending)})
+        </div>
+        """)
+
+
+def _diagnose_error(adapter, stock_code: str) -> str:
+    available = adapter.get_available_sources()
+    tried = adapter.active_source
+    has_token = bool(adapter.tushare_pro)
+    lines = [
+        f"无法获取 {stock_code} 的数据",
+        f"尝试数据源: {tried.upper()} | 可用: {', '.join(available)}",
+        f"Tushare Token: {'已配置' if has_token else '未配置'}",
+    ]
+    if not has_token and "akshare" in available:
+        lines.append("建议: 使用 'akshare' 数据源 (无需Token)")
+    if not has_token:
+        lines.append("建议: 在左侧「Token 配置」设置 Tushare Token")
+    return "<br>".join(lines)
 
 
 @router.get("/status")

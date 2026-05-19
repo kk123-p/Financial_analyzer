@@ -18,14 +18,20 @@ class DataService:
     def __init__(self, adapter: DataSourceAdapter):
         self.adapter = adapter
 
+    # 所有可获取的数据类型
+    BASIC_DATA_TYPES = ["daily", "daily_basic", "basic", "stock_basic"]
+    FINANCIAL_DATA_TYPES = ["income", "balance", "cashflow", "financial",
+                            "fina_audit", "mainbz"]
+
     def fetch_stock_data(
         self,
         stock_code: str,
         start_date: str = DEFAULT_START_DATE,
         end_date: str | None = None,
         source: str | None = None,
+        include_financials: bool = True,
     ) -> dict[str, pd.DataFrame]:
-        """获取股票数据（多类型）"""
+        """获取股票数据（多类型，含财务报表）"""
         if end_date is None:
             end_date = datetime.now().strftime("%Y%m%d")
 
@@ -35,22 +41,28 @@ class DataService:
         effective_source = self.adapter.active_source
         data: dict[str, pd.DataFrame] = {}
 
-        for dtype in ["daily", "daily_basic", "basic", "stock_basic"]:
+        # 第一阶段：获取基本行情数据
+        all_types = self.BASIC_DATA_TYPES.copy()
+        if include_financials:
+            all_types += self.FINANCIAL_DATA_TYPES
+
+        for dtype in all_types:
             try:
                 df = self.adapter.get_stock_data(stock_code, start_date, end_date, dtype)
                 if df is not None and not df.empty:
                     data[dtype] = df
+                    logger.info(f"获取 {dtype} 成功: {len(df)} 行")
             except Exception as e:
                 logger.warning(f"获取 {dtype} 失败: {e}")
 
-        # 如果主数据源失败，尝试回退
+        # 如果没获取到任何数据，尝试回退数据源
         if not data:
             fallbacks = [s for s in self.adapter.get_available_sources()
                         if s != effective_source]
             for fb in fallbacks:
                 self.adapter.set_active_source(fb)
                 effective_source = fb
-                for dtype in ["daily", "daily_basic", "basic", "stock_basic"]:
+                for dtype in self.BASIC_DATA_TYPES:
                     try:
                         df = self.adapter.get_stock_data(stock_code, start_date, end_date, dtype)
                         if df is not None and not df.empty:
@@ -60,6 +72,27 @@ class DataService:
                 if data:
                     break
 
+        return data
+
+    def fetch_financials_async(
+        self,
+        stock_code: str,
+        start_date: str = DEFAULT_START_DATE,
+        end_date: str | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        """获取财务报表数据（独立调用，用于后台补充）"""
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y%m%d")
+
+        data: dict[str, pd.DataFrame] = {}
+        for dtype in self.FINANCIAL_DATA_TYPES:
+            try:
+                df = self.adapter.get_stock_data(stock_code, start_date, end_date, dtype)
+                if df is not None and not df.empty:
+                    data[dtype] = df
+                    logger.info(f"财务报表 {dtype} 获取成功: {len(df)} 行")
+            except Exception as e:
+                logger.debug(f"财务报表 {dtype} 获取失败: {e}")
         return data
 
     def extract_kpis(self, data: dict) -> dict[str, Any]:

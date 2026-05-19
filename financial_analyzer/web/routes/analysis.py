@@ -34,12 +34,16 @@ async def run_analysis(request: Request, analysis_type: str):
 
     # 同步分析器在后台线程运行
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
+    result_text = await loop.run_in_executor(
         None, service.run, analysis_type, data, stock_code
     )
 
+    # 将纯文本格式化为 HTML
+    from ..services.result_formatter import ResultFormatter
+    result_html = ResultFormatter.format(result_text)
+
     return templates.TemplateResponse(request, "partials/result_text.html", {
-        "result": result,
+        "result": result_html,
         "analysis_type": analysis_type,
     })
 
