@@ -184,7 +184,7 @@ class Phase2Analyzer:
             # --- 综合股东回报率 ---
             lines.append("\n  【综合股东回报率】")
             if basic is not None and len(basic) >= 2:
-                close_now = self._val(basic.iloc[-1], ["close"])
+                close_now = self._val(basic.iloc[0], ["close"])
                 close_prev = self._val(basic.iloc[0], ["close"])
                 if close_now and close_prev and close_prev > 0:
                     price_return = (close_now - close_prev) / close_prev * 100
@@ -193,7 +193,7 @@ class Phase2Analyzer:
 
             # --- 留存收益效率 ---
             if len(balance) >= 2 and len(income) >= 2:
-                eq_cur = self._val(balance.iloc[-1], ["total_equity"])
+                eq_cur = self._val(balance.iloc[0], ["total_equity"])
                 eq_prev = self._val(balance.iloc[0], ["total_equity"])
                 np_sum = sum(self._val(income.iloc[i], ["net_profit"]) or 0 for i in range(len(income)))
                 if eq_cur and eq_prev and np_sum > 0:
@@ -233,18 +233,18 @@ class Phase2Analyzer:
         lines = ["=" * 55, "  估值分析", "=" * 55]
 
         try:
-            latest_inc = income.iloc[-1]
+            latest_inc = income.iloc[0]
             np_ = self._val(latest_inc, ["net_profit"])
             revenue = self._val(latest_inc, ["revenue"])
 
-            latest_bal = balance.iloc[-1] if not balance.empty else None
+            latest_bal = balance.iloc[0] if not balance.empty else None
             total_equity = self._val(latest_bal, ["total_equity"]) if latest_bal is not None else None
 
             close = None
             total_share = None
             if basic is not None and len(basic) > 0:
-                close = self._val(basic.iloc[-1], ["close"])
-                total_share = self._val(basic.iloc[-1], ["total_share"])
+                close = self._val(basic.iloc[0], ["close"])
+                total_share = self._val(basic.iloc[0], ["total_share"])
 
             if not (close and total_share and total_share > 0):
                 lines.append("\n  ⚠️ 缺少股价/股本数据")
@@ -353,11 +353,11 @@ class Phase2Analyzer:
         lines = ["=" * 55, "  财报质量分析", "=" * 55]
 
         try:
-            latest_inc = income.iloc[-1]
+            latest_inc = income.iloc[0]
             np_ = self._val(latest_inc, ["net_profit"])
             revenue = self._val(latest_inc, ["revenue"])
 
-            latest_bal = balance.iloc[-1] if not balance.empty else None
+            latest_bal = balance.iloc[0] if not balance.empty else None
             total_assets = self._val(latest_bal, ["total_assets"]) if latest_bal is not None else None
 
             # === 盈余质量 ===
@@ -365,7 +365,7 @@ class Phase2Analyzer:
 
             # 经营现金流/净利润
             if not cashflow.empty:
-                ocf = self._val(cashflow.iloc[-1], ["n_cashflow_act"])
+                ocf = self._val(cashflow.iloc[0], ["n_cashflow_act"])
                 if np_ and np_ > 0 and ocf is not None:
                     cf_np_ratio = ocf / np_
                     lines.append(f"  经营现金流/净利润 = {cf_np_ratio:.2f}")
@@ -380,7 +380,7 @@ class Phase2Analyzer:
 
             # 应计利润比率 = (净利润 - 经营现金流) / 总资产
             if not cashflow.empty and total_assets and total_assets > 0:
-                ocf = self._val(cashflow.iloc[-1], ["n_cashflow_act"])
+                ocf = self._val(cashflow.iloc[0], ["n_cashflow_act"])
                 if np_ is not None and ocf is not None:
                     accrual = (np_ - ocf) / total_assets
                     lines.append(f"  应计利润比率 = {accrual:.4f}")
@@ -395,9 +395,9 @@ class Phase2Analyzer:
             lines.append(f"\n  【收入质量】")
 
             if len(income) >= 2 and not balance.empty and len(balance) >= 2:
-                rev_cur = self._val(income.iloc[-1], ["revenue"])
+                rev_cur = self._val(income.iloc[0], ["revenue"])
                 rev_prev = self._val(income.iloc[-2], ["revenue"])
-                ar_cur = self._val(balance.iloc[-1], ["accounts_receivable"])
+                ar_cur = self._val(balance.iloc[0], ["accounts_receivable"])
                 ar_prev = self._val(balance.iloc[-2], ["accounts_receivable"])
 
                 if rev_cur and rev_prev and rev_prev > 0:
@@ -417,7 +417,7 @@ class Phase2Analyzer:
 
             # 收入现金比
             if not cashflow.empty and revenue and revenue > 0:
-                cash_receipts = self._val(cashflow.iloc[-1], ["c_fr_sale_sg"])
+                cash_receipts = self._val(cashflow.iloc[0], ["c_fr_sale_sg"])
                 if cash_receipts and cash_receipts > 0:
                     receipt_ratio = cash_receipts / revenue
                     # 单位修正
@@ -436,19 +436,19 @@ class Phase2Analyzer:
                 lines.append(f"\n  【资产质量】")
 
                 # 存货异常
-                inv_cur = self._val(balance.iloc[-1], ["inventories"])
+                inv_cur = self._val(balance.iloc[0], ["inventories"])
                 inv_prev = self._val(balance.iloc[-2], ["inventories"])
                 if inv_cur and inv_prev and inv_prev > 0:
                     inv_growth = (inv_cur - inv_prev) / inv_prev * 100
-                    cost_cur = self._val(income.iloc[-1], ["operate_profit"])
+                    cost_cur = self._val(income.iloc[0], ["operate_profit"])
                     cost_prev = self._val(income.iloc[-2], ["operate_profit"]) if len(income) >= 2 else None
                     lines.append(f"  存货增速: {inv_growth:.1f}%")
                     if inv_growth > 30:
                         lines.append(f"  → ⚠️ 存货大幅增长，需关注是否有滞销或虚增")
 
                 # 商誉风险
-                gw = self._val(balance.iloc[-1], ["goodwill"])
-                eq = self._val(balance.iloc[-1], ["total_equity"])
+                gw = self._val(balance.iloc[0], ["goodwill"])
+                eq = self._val(balance.iloc[0], ["total_equity"])
                 if gw and eq and eq > 0:
                     gw_ratio = gw / eq * 100
                     lines.append(f"  商誉/净资产 = {gw_ratio:.1f}%")
@@ -484,9 +484,9 @@ class Phase2Analyzer:
         if len(income) < 2 or len(balance) < 2:
             return None
 
-        cur_inc = income.iloc[-1]
+        cur_inc = income.iloc[0]
         prev_inc = income.iloc[-2]
-        cur_bal = balance.iloc[-1]
+        cur_bal = balance.iloc[0]
         prev_bal = balance.iloc[-2]
 
         rev_cur = self._val(cur_inc, ["revenue"])
@@ -496,7 +496,7 @@ class Phase2Analyzer:
         ta_cur = self._val(cur_bal, ["total_assets"])
         ta_prev = self._val(prev_bal, ["total_assets"])
         np_cur = self._val(cur_inc, ["net_profit"])
-        ocf_cur = self._val(cashflow.iloc[-1], ["n_cashflow_act"]) if not cashflow.empty else None
+        ocf_cur = self._val(cashflow.iloc[0], ["n_cashflow_act"]) if not cashflow.empty else None
 
         if not all([rev_cur, rev_prev, ar_cur, ar_prev, ta_cur, ta_prev]):
             return None
@@ -541,10 +541,10 @@ class Phase2Analyzer:
         lines = ["=" * 55, "  行业对比分析", "=" * 55]
 
         try:
-            np_ = self._val(income.iloc[-1], ["net_profit"])
-            revenue = self._val(income.iloc[-1], ["revenue"])
-            eq = self._val(balance.iloc[-1], ["total_equity"])
-            ta = self._val(balance.iloc[-1], ["total_assets"])
+            np_ = self._val(income.iloc[0], ["net_profit"])
+            revenue = self._val(income.iloc[0], ["revenue"])
+            eq = self._val(balance.iloc[0], ["total_equity"])
+            ta = self._val(balance.iloc[0], ["total_assets"])
 
             metrics = {}
             if revenue and revenue > 0 and np_:
@@ -554,7 +554,7 @@ class Phase2Analyzer:
             if eq and eq > 0 and np_:
                 metrics["ROE"] = np_ / eq * 100
             if ta and ta > 0:
-                liab = self._val(balance.iloc[-1], ["total_liab"])
+                liab = self._val(balance.iloc[0], ["total_liab"])
                 if liab:
                     metrics["资产负债率"] = liab / ta * 100
 
@@ -598,7 +598,7 @@ class Phase2Analyzer:
             return "⚠️ 数据不足（需要足够的历史数据）"
         try:
             pe_list = []
-            np_ = self._val(income.iloc[-1], ["net_profit"])
+            np_ = self._val(income.iloc[0], ["net_profit"])
             if not (np_ and np_ > 0):
                 return "⚠️ 净利润数据不足"
             for i in range(len(basic)):
@@ -638,8 +638,8 @@ class Phase2Analyzer:
         if income.empty or balance.empty:
             return "⚠️ 数据不足"
         try:
-            np_ = self._val(income.iloc[-1], ["net_profit"])
-            eq = self._val(balance.iloc[-1], ["total_equity"])
+            np_ = self._val(income.iloc[0], ["net_profit"])
+            eq = self._val(balance.iloc[0], ["total_equity"])
             if not (np_ and eq and eq > 0):
                 return "⚠️ 数据不足"
             roe = np_ / eq * 100
@@ -651,8 +651,8 @@ class Phase2Analyzer:
                 fair_pb = (roe / 100 - g) / (r - g)
                 lines.append(f"  理论PB = {fair_pb:.2f}倍（要求回报率{required_return}%）")
                 if basic is not None and len(basic) > 0:
-                    c = self._val(basic.iloc[-1], ["close"])
-                    s = self._val(basic.iloc[-1], ["total_share"])
+                    c = self._val(basic.iloc[0], ["close"])
+                    s = self._val(basic.iloc[0], ["total_share"])
                     if c and s and s > 0:
                         actual_pb = c * s / eq
                         dev = (actual_pb - fair_pb) / fair_pb * 100 if fair_pb > 0 else 0
@@ -678,17 +678,17 @@ class Phase2Analyzer:
         if income.empty or balance.empty:
             return "⚠️ 数据不足"
         try:
-            op = self._val(income.iloc[-1], ["operate_profit"])
-            fin = self._val(income.iloc[-1], ["interest_expense"])
-            liab = self._val(balance.iloc[-1], ["total_liab"])
-            cash = self._val(balance.iloc[-1], ["money_cap"])
+            op = self._val(income.iloc[0], ["operate_profit"])
+            fin = self._val(income.iloc[0], ["interest_expense"])
+            liab = self._val(balance.iloc[0], ["total_liab"])
+            cash = self._val(balance.iloc[0], ["money_cap"])
             if op is None:
                 return "⚠️ 营业利润数据缺失"
             ebitda = op + (abs(fin) if fin and fin > 0 else 0)
             if basic is None or len(basic) == 0:
                 return "⚠️ 缺少股价数据"
-            c = self._val(basic.iloc[-1], ["close"])
-            s = self._val(basic.iloc[-1], ["total_share"])
+            c = self._val(basic.iloc[0], ["close"])
+            s = self._val(basic.iloc[0], ["total_share"])
             if not (c and s and s > 0):
                 return "⚠️ 缺少股价数据"
             mcap = c * s

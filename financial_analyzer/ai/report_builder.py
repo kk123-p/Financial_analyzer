@@ -78,7 +78,7 @@ class ReportBuilder:
         income = data.get("income")
 
         if basic is not None and len(basic) > 0:
-            latest = basic.iloc[-1]
+            latest = basic.iloc[0]
             snap["price"] = ReportBuilder._val(latest, ["close", "收盘价"])
             snap["total_share"] = ReportBuilder._val(latest, ["total_share", "总股本"])
             if snap["price"] and snap["total_share"]:
@@ -86,14 +86,14 @@ class ReportBuilder:
                 snap["market_cap_yi"] = round(snap["market_cap"] / 10000, 2)  # 万元→亿元
 
         if income is not None and len(income) > 0:
-            latest_inc = income.iloc[-1]
+            latest_inc = income.iloc[0]
             snap["revenue"] = ReportBuilder._val(latest_inc, ["revenue", "营业收入"])
             snap["net_profit"] = ReportBuilder._val(latest_inc, ["net_profit", "净利润"])
 
         # PE, PB
         balance = data.get("balance")
         if balance is not None and len(balance) > 0:
-            latest_bal = balance.iloc[-1]
+            latest_bal = balance.iloc[0]
             equity = ReportBuilder._val(latest_bal, ["total_equity", "股东权益合计"])
             if snap.get("price") and snap.get("total_share") and equity:
                 pb = snap["price"] * snap["total_share"] / (equity * 10000) if equity != 0 else None
@@ -120,8 +120,8 @@ class ReportBuilder:
             return health
 
         try:
-            latest_inc = income.iloc[-1]
-            latest_bal = balance.iloc[-1]
+            latest_inc = income.iloc[0]
+            latest_bal = balance.iloc[0]
 
             # 原始数据（给 SignalDetector 用）
             raw = {}
@@ -137,7 +137,7 @@ class ReportBuilder:
             raw["goodwill"] = ReportBuilder._val(latest_bal, ["goodwill", "商誉"])
 
             if cashflow is not None and len(cashflow) > 0:
-                latest_cf = cashflow.iloc[-1]
+                latest_cf = cashflow.iloc[0]
                 raw["op_cashflow"] = ReportBuilder._val(latest_cf, [
                     "n_cashflow_act", "经营活动产生的现金流量净额"
                 ])
@@ -303,8 +303,8 @@ class ReportBuilder:
             return risk
 
         try:
-            latest_bal = balance.iloc[-1]
-            latest_inc = income.iloc[-1]
+            latest_bal = balance.iloc[0]
+            latest_inc = income.iloc[0]
 
             ta = ReportBuilder._val(latest_bal, ["total_assets", "资产总计"])
             tl = ReportBuilder._val(latest_bal, ["total_liab", "负债合计"])
@@ -319,8 +319,8 @@ class ReportBuilder:
             basic = data.get("basic")
             mve = None
             if basic is not None and len(basic) > 0:
-                close = ReportBuilder._val(basic.iloc[-1], ["close", "收盘价"])
-                share = ReportBuilder._val(basic.iloc[-1], ["total_share", "总股本"])
+                close = ReportBuilder._val(basic.iloc[0], ["close", "收盘价"])
+                share = ReportBuilder._val(basic.iloc[0], ["total_share", "总股本"])
                 if close and share:
                     mve = close * share
 
@@ -356,7 +356,7 @@ class ReportBuilder:
             if np_val and np_val > 0:
                 fscore += 1; fscore_details.append("净利润为正 ✓")
             if cashflow is not None and len(cashflow) > 0:
-                ocf = ReportBuilder._val(cashflow.iloc[-1], ["n_cashflow_act", "经营活动产生的现金流量净额"])
+                ocf = ReportBuilder._val(cashflow.iloc[0], ["n_cashflow_act", "经营活动产生的现金流量净额"])
                 if ocf and ocf > 0:
                     fscore += 1; fscore_details.append("经营现金流为正 ✓")
                 if np_val and ocf and ocf > np_val * 10000:
@@ -449,7 +449,7 @@ class ReportBuilder:
         try:
             # PE历史分位
             if income is not None and len(income) > 0:
-                np_val = ReportBuilder._val(income.iloc[-1], ["net_profit", "净利润"])
+                np_val = ReportBuilder._val(income.iloc[0], ["net_profit", "净利润"])
                 if np_val and np_val > 0:
                     pe_list = []
                     for i in range(len(basic)):
@@ -472,7 +472,7 @@ class ReportBuilder:
 
             # PB历史分位
             if balance is not None and len(balance) > 0:
-                eq = ReportBuilder._val(balance.iloc[-1], ["total_equity", "股东权益合计"])
+                eq = ReportBuilder._val(balance.iloc[0], ["total_equity", "股东权益合计"])
                 if eq and eq > 0:
                     pb_list = []
                     for i in range(len(basic)):
@@ -561,7 +561,7 @@ class ReportBuilder:
             return signals
 
         try:
-            latest_bal = balance.iloc[-1]
+            latest_bal = balance.iloc[0]
             ta = ReportBuilder._val(latest_bal, ["total_assets", "资产总计"])
 
             # 商誉占比
@@ -578,7 +578,7 @@ class ReportBuilder:
             if len(balance) >= 2 and len(income) >= 2:
                 ar = ReportBuilder._val(latest_bal, ["accounts_receivable", "应收账款"])
                 ar_prev = ReportBuilder._val(balance.iloc[-2], ["accounts_receivable", "应收账款"])
-                rev = ReportBuilder._val(income.iloc[-1], ["revenue", "营业收入"])
+                rev = ReportBuilder._val(income.iloc[0], ["revenue", "营业收入"])
                 rev_prev = ReportBuilder._val(income.iloc[-2], ["revenue", "营业收入"])
                 if ar and ar_prev and ar_prev > 0 and rev and rev_prev and rev_prev > 0:
                     ar_g = (ar - ar_prev) / ar_prev

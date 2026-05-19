@@ -2,6 +2,7 @@
 新浪财经数据源 - 作为 Akshare (东方财富) 的备选方案
 当东方财富 API 不可用时自动回退到新浪财经
 """
+import time
 import pandas as pd
 import requests
 import json
@@ -10,11 +11,29 @@ from datetime import datetime
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+_MAX_RETRIES = 3
+_RETRY_BASE_WAIT = 2  # 秒
+
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept": "*/*",
     "Referer": "https://finance.sina.com.cn/",
 }
+
+
+def _retry_get(url, params=None, headers=None, timeout=15):
+    """带重试的 GET 请求"""
+    last_error = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = requests.get(url, params=params, headers=headers or _HEADERS, timeout=timeout)
+            return resp
+        except (requests.ConnectionError, requests.Timeout, requests.RequestException) as e:
+            last_error = e
+            if attempt < _MAX_RETRIES - 1:
+                wait = (attempt + 1) * _RETRY_BASE_WAIT
+                time.sleep(wait)
+    raise last_error
 
 
 def _to_sina_code(symbol: str) -> str:
@@ -46,9 +65,9 @@ def get_daily(symbol: str, start_date: str, end_date: str) -> pd.DataFrame | Non
         days = (ed - sd).days
         datalen = min(max(int(days * 0.72), 30), 1000)
 
-        resp = requests.get(url, params={
+        resp = _retry_get(url, params={
             "symbol": sina_code, "scale": "240", "ma": "no", "datalen": datalen
-        }, headers=_HEADERS, timeout=15)
+        }, timeout=15)
 
         if resp.status_code != 200 or not resp.text or resp.text == "null":
             return None
@@ -78,7 +97,7 @@ def get_basic(symbol: str) -> pd.DataFrame | None:
     try:
         sina_code = _to_sina_code(symbol)
         url = f"https://hq.sinajs.cn/list={sina_code}"
-        resp = requests.get(url, headers={
+        resp = _retry_get(url, headers={
             **_HEADERS, "Referer": "https://finance.sina.com.cn/"
         }, timeout=10)
 
@@ -111,7 +130,7 @@ def get_market_overview() -> dict | None:
     """获取大盘指数概览（上证/深证/创业板）"""
     try:
         url = "https://hq.sinajs.cn/list=sh000001,sz399001,sz399006"
-        resp = requests.get(url, headers={
+        resp = _retry_get(url, headers={
             **_HEADERS, "Referer": "https://finance.sina.com.cn/"
         }, timeout=10)
 

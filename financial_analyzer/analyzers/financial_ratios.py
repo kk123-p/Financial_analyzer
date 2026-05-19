@@ -44,8 +44,8 @@ class FinancialRatioAnalyzer:
             return result
 
         try:
-            latest = balance.iloc[-1] if len(balance) > 0 else {}
-            latest_income = income.iloc[-1] if len(income) > 0 else {}
+            latest = balance.iloc[0] if len(balance) > 0 else {}
+            latest_income = income.iloc[0] if len(income) > 0 else {}
 
             # 短期偿债能力
             current_assets = self._get_value(latest, ["total_current_assets", "total_cur_assets", "流动资产合计"])
@@ -108,8 +108,8 @@ class FinancialRatioAnalyzer:
             return result
 
         try:
-            latest = balance.iloc[-1]
-            latest_income = income.iloc[-1]
+            latest = balance.iloc[0]
+            latest_income = income.iloc[0]
 
             revenue = self._get_value(latest_income, ["revenue", "营业收入"])
             cost = self._get_value(latest_income, ["operating_cost", "oper_cost", "营业成本"])
@@ -155,8 +155,8 @@ class FinancialRatioAnalyzer:
             return result
 
         try:
-            latest = income.iloc[-1]
-            latest_bal = balance.iloc[-1]
+            latest = income.iloc[0]
+            latest_bal = balance.iloc[0]
 
             revenue = self._get_value(latest, ["revenue", "营业收入"])
             cost = self._get_value(latest, ["operating_cost", "oper_cost", "营业成本"])
@@ -215,7 +215,7 @@ class FinancialRatioAnalyzer:
             return result
 
         try:
-            curr = income.iloc[-1]
+            curr = income.iloc[0]
             prev = income.iloc[-2]
 
             revenue_c = self._get_value(curr, ["revenue", "营业收入"])
@@ -235,7 +235,7 @@ class FinancialRatioAnalyzer:
 
             # 总资产增长率
             if balance is not None and len(balance) >= 2:
-                ta_c = self._get_value(balance.iloc[-1], ["total_assets", "资产总计"])
+                ta_c = self._get_value(balance.iloc[0], ["total_assets", "资产总计"])
                 ta_p = self._get_value(balance.iloc[-2], ["total_assets", "资产总计"])
                 if ta_p and ta_p > 0 and ta_c is not None:
                     result["指标"]["总资产增长率"] = round(
@@ -270,8 +270,8 @@ class FinancialRatioAnalyzer:
             return result
 
         try:
-            latest = income.iloc[-1]
-            latest_bal = balance.iloc[-1]
+            latest = income.iloc[0]
+            latest_bal = balance.iloc[0]
 
             net_profit = self._get_value(latest, ["net_profit", "净利润"])
             total_equity = self._get_value(latest_bal, ["total_equity", "股东权益合计"])
@@ -279,20 +279,24 @@ class FinancialRatioAnalyzer:
             # 获取股价和股本信息
             basic = self.data.get("basic")
             if basic is not None and len(basic) > 0:
-                latest_basic = basic.iloc[-1]
+                latest_basic = basic.iloc[0]
                 close = self._get_value(latest_basic, ["close", "收盘价"])
                 total_share = self._get_value(latest_basic, [
                     "total_share", "总股本", "total_mv"
                 ])
 
                 if net_profit and total_share and total_share > 0:
-                    eps = net_profit * 10000 / total_share  # 万元转元
+                    # 注意：不同数据源的单位不同
+                    # tushare: net_profit(元), total_share(万股) → EPS = net_profit / (total_share * 10000)
+                    # 此处假设 net_profit 已归一化为元，total_share 已归一化为万股
+                    eps = net_profit / (total_share * 10000)
                     result["指标"]["EPS"] = round(eps, 4)
                     if close and eps > 0:
                         result["指标"]["PE"] = round(close / eps, 2)
 
                 if total_equity and total_share and total_share > 0:
-                    bvps = total_equity * 10000 / total_share
+                    # 注意：不同数据源的单位不同，此处假设同 EPS 的单位约定
+                    bvps = total_equity / (total_share * 10000)
                     result["指标"]["每股净资产"] = round(bvps, 4)
                     if close and bvps > 0:
                         result["指标"]["PB"] = round(close / bvps, 2)

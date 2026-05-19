@@ -160,7 +160,7 @@ class ProfitabilityAnalyzer(BaseAnalyzer):
                 inv_turnover = row.get("inv_turnover")
                 inv_days = row.get("inv_turnover_days")
                 # 降级：从 balance + income 计算存货周转
-                if inv_turnover is None and df_balance is not None and df_income is not None:
+                if inv_turnover is None and df_balance is not None and not df_balance.empty and df_income is not None and not df_income.empty:
                     bal_row = df_balance[df_balance["end_date"] == end_date]
                     inc_row = df_income[df_income["end_date"] == end_date]
                     if not bal_row.empty and not inc_row.empty:

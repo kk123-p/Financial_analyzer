@@ -6,7 +6,7 @@ from .base import BaseAnalyzer
 from .report_formatter import ReportFormatter as RF
 from ..calculator.financial import FinancialCalculator as FC
 from ..calculator.deep_analysis import DeepAnalysisCalculator as DAC
-from ..config import SEPARATOR_LIGHT, SEPARATOR_HEAVY
+from ..config import SEPARATOR_LIGHT, SEPARATOR_HEAVY, DCF_SCENARIOS, DCF_GROWTH_YEARS
 from ..logging_config import get_logger
 
 import pandas as pd
@@ -54,12 +54,16 @@ class DeepAnalyzer(BaseAnalyzer):
         return annual
 
     @staticmethod
-    def _get_field(row, *candidates, default=None):
+    def _get_field(row, *candidates, default=None, _context=""):
         """从 row 中按优先级取字段值（兼容不同数据源的列名差异）"""
         for key in candidates:
             val = row.get(key)
             if val is not None and not (isinstance(val, float) and pd.isna(val)):
                 return val
+        # 所有候选字段都未匹配时记录诊断信息
+        if candidates:
+            available = [k for k in row.index if row.get(k) is not None]
+            logger.debug(f"字段映射未命中 {_context}: 尝试了 {list(candidates)}, 可用字段: {available[:10]}")
         return default
 
     def _build_periods_data(self, years: int = 5) -> list:
@@ -598,29 +602,27 @@ class DeepAnalyzer(BaseAnalyzer):
         shares = basic_info.get("shares")
 
         if fcf_latest and fcf_latest > 0 and shares and shares > 0:
-            # 三情景估值
-            scenarios = [
-                ("乐观", 15, 3, 10),
-                ("中性", 8, 2.5, 10),
-                ("悲观", 3, 2, 10),
-            ]
+            # 多情景估值
+            scenarios = DCF_SCENARIOS
             result += f"  最新自由现金流: {fcf_latest / 1e8:.2f} 亿元\n"
             result += f"  总股本: {shares / 1e8:.2f} 亿股\n\n"
-            result += f"  {'情景':<10}{'5年增长率':>12}{'永续增长率':>12}{'折现率':>10}{'每股价值':>14}\n"
+            result += f"  {'情景':<10}{f'{DCF_GROWTH_YEARS}年增长率':>14}{'永续增长率':>12}{'折现率':>10}{'每股价值':>14}\n"
             result += f"  {SEPARATOR_LIGHT}\n"
 
             for name, g1, g2, r in scenarios:
                 dcf = DAC.simple_dcf(fcf_latest, g1, g2, r, shares)
                 val = dcf.get("intrinsic_value_per_share")
                 val_str = f"{val:.2f}" if val else "N/A"
-                result += f"  {name:<10}{g1:>11}%{g2:>11}%{r:>9}%{val_str:>14}\n"
+                result += f"  {name:<10}{g1:>13}%{g2:>11}%{r:>9}%{val_str:>14}\n"
 
             # 与当前价格对比
             daily = self.data.get("daily")
             if daily is not None and not daily.empty:
                 current_price = daily["close"].iloc[0]
                 result += f"\n  当前股价: {current_price:.2f}\n"
-                dcf_mid = DAC.simple_dcf(fcf_latest, 8, 2.5, 10, shares)
+                # 使用中性情景作参考
+                mid_name, mid_g1, mid_g2, mid_r = DCF_SCENARIOS[1]
+                dcf_mid = DAC.simple_dcf(fcf_latest, mid_g1, mid_g2, mid_r, shares)
                 mid_val = dcf_mid.get("intrinsic_value_per_share")
                 if mid_val:
                     margin = (mid_val - current_price) / current_price * 100

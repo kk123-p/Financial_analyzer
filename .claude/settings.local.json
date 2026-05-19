@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; ast.parse\\(open\\('financial_analyzer/ui/app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('app.py syntax OK'\\)\")",
+      "Bash(python -c \"import os; print\\('sys.executable:', __import__\\('sys'\\).executable\\); print\\('TCL_LIBRARY=', os.environ.get\\('TCL_LIBRARY', 'NOT SET'\\)\\)\")",
+      "Bash(mkdir -p \"$HOME/.claude/skills\")",
+      "Bash(explorer __TRACKED_VAR__/.claude/skills)",
+      "Bash(ls -1 \"C:\\\\Users\\\\LK\\\\.claude\\\\skills\\\\\" 2>/dev/null || echo \"Directory not found\")",
+      "Read(//c/Users/LK/.claude/skills\" 2>/dev/**)",
+      "Read(//c/Users/LK/.claude/skills//**)",
+      "Read(//c/Users/LK/.claude/skills/**)"
+    ]
+  }
+}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Analyzer Pro — 财务分析终端</title>
+    <link rel="stylesheet" href="/static/css/terminal.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-text">FA</div>
+                <div class="logo-sub">Financial Analyzer Pro v{{ version }}</div>
+            </div>
+
+            <nav class="sidebar-nav" id="sidebar-nav">
+                {% for section_name, items in sections %}
+                <div class="nav-section">
+                    <div class="nav-section-header" onclick="toggleSection(this)">
+                        <span class="arrow open">▶</span>
+                        <span>{{ section_name }}</span>
+                    </div>
+                    <div class="nav-section-items">
+                        {% for key, label in items %}
+                        <div class="nav-item-row" data-key="{{ key }}"
+                             hx-get="/analyze/{{ key }}"
+                             hx-target="#result-content"
+                             hx-indicator="#page-progress"
+                             onclick="activateNav(this)">
+                            <div class="nav-indicator"></div>
+                            <div class="nav-item">{{ label }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-footer-btn"
+                     hx-get="/settings/tokens"
+                     hx-target="#modal-body"
+                     hx-indicator="#page-progress"
+                     onclick="openModal('token-modal')">
+                    <span class="dot"></span> Token 配置
+                </div>
+                <div class="sidebar-footer-btn"
+                     hx-get="/settings/tokens"
+                     hx-target="#modal-body"
+                     hx-indicator="#page-progress"
+                     onclick="openModal('token-modal')">
+                    <span class="dot"></span> 数据源管理
+                </div>
+                <div class="sidebar-footer-btn" onclick="alert('缓存管理: ' + '缓存目录 ~/.financialanalyzer/cache/')">
+                    <span class="dot"></span> 缓存设置
+                </div>
+                <div class="sidebar-footer-btn" onclick="alert('Financial Analyzer Pro v{{ version }}\nFastAPI + Jinja2 + htmx\n基于 DeepSeek AI 的财务分析平台')">
+                    <span class="dot"></span> 关于
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主区域 -->
+        <main class="main-area">
+            <!-- 顶部输入栏 -->
+            <form class="top-bar" hx-post="/fetch" hx-target="#kpi-container" hx-indicator="#page-progress">
+                <div class="input-group">
+                    <label>股票代码</label>
+                    <input type="text" name="stock_code" value="{{ stock_code }}" placeholder="000001.SZ">
+                </div>
+                <div class="input-group">
+                    <label>数据源</label>
+                    <select name="source">
+                        {% for src in sources %}
+                        <option value="{{ src }}" {% if src == active_source %}selected{% endif %}>{{ src.upper() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>起始日期</label>
+                    <input type="text" name="start_date" value="20240101" style="width:100px">
+                </div>
+                <div class="spacer"></div>
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-accent">获取数据</button>
+                    <button type="button" class="btn" onclick="location.reload()">清空</button>
+                </div>
+            </form>
+
+            <!-- 进度条 -->
+            <div id="page-progress" class="progress-bar htmx-indicator"></div>
+
+            <!-- KPI 卡片 -->
+            <div id="kpi-container">
+                {% include "partials/kpi_cards.html" %}
+            </div>
+
+            <!-- 主内容区 -->
+            <div class="content-area">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('analysis', this)">分析结果</button>
+                    <button class="tab-btn" onclick="switchTab('charts', this)">图表</button>
+                    <button class="tab-btn" onclick="switchTab('ai', this)">AI 投研</button>
+                    <button class="tab-btn" onclick="switchTab('data', this)">数据</button>
+                </div>
+
+                <!-- Tab: 分析结果 -->
+                <div id="tab-analysis" class="tab-panel active">
+                    <div id="result-content" class="result-empty">
+                        输入股票代码并点击「获取数据」开始分析
+                    </div>
+                </div>
+
+                <!-- Tab: 图表 -->
+                <div id="tab-charts" class="tab-panel">
+                    <div class="chart-controls">
+                        <button class="chart-type-btn active" onclick="loadChart('candlestick', this)">K线图</button>
+                        <button class="chart-type-btn" onclick="loadChart('ma', this)">均线图</button>
+                        <button class="chart-type-btn" onclick="loadChart('bar', this)">涨跌柱</button>
+                        <button class="chart-type-btn" onclick="loadChartImg('dupont', this)">杜邦瀑布</button>
+                        <button class="chart-type-btn" onclick="loadChartImg('fscore', this)">F-score雷达</button>
+                    </div>
+                    <div id="chart-container" class="chart-container"></div>
+                </div>
+
+                <!-- Tab: AI 投研 -->
+                <div id="tab-ai" class="tab-panel">
+                    <div class="ai-layout">
+                        <!-- AI 对话 -->
+                        <div class="ai-subtabs" style="display:flex;gap:0;margin-bottom:8px;">
+                            <button class="tab-btn active" onclick="switchAiTab('chat', this)">AI 智能分析</button>
+                            <button class="tab-btn" onclick="switchAiTab('debate', this)">三方辩论</button>
+                        </div>
+
+                        <div id="ai-chat-panel" class="ai-layout" style="display:flex;">
+                            <form class="ai-input-row" hx-post="/ai/chat" hx-target="#ai-chat-result" hx-indicator="#page-progress">
+                                <input type="text" name="question" placeholder="输入分析问题，例如：这家公司的盈利能力如何？">
+                                <button type="submit" class="btn btn-accent">提问</button>
+                            </form>
+                            <div id="ai-chat-result" class="ai-response" style="flex:1;">
+                                <div class="result-empty">输入问题开始 AI 分析</div>
+                            </div>
+                        </div>
+
+                        <div id="ai-debate-panel" class="ai-layout" style="display:none;flex:1;">
+                            <button class="btn btn-accent" onclick="startDebate()" style="width:120px;">开始辩论</button>
+                            <div id="debate-stream" class="debate-stream">
+                                <div class="result-empty">点击「开始辩论」启动三方投研辩论</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: 数据 -->
+                <div id="tab-data" class="tab-panel">
+                    <div class="data-table-wrapper">
+                        <div class="result-empty" id="data-table-content">请先获取数据</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 状态栏 -->
+            <div class="status-bar">
+                <span class="status-dot"></span>
+                <span id="status-text">就绪</span>
+                <span class="divider">│</span>
+                <span id="source-label">{{ kpis.source }}</span>
+                <span style="flex:1;"></span>
+                <span id="clock"></span>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal -->
+    <div id="token-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-container">
+            <div class="modal-header">
+                <span style="font-weight:600;color:var(--fg-primary);">设置</span>
+                <button class="modal-close" onclick="closeModal('token-modal')">&times;</button>
+            </div>
+            <div id="modal-body" class="modal-body">
+                <div class="result-empty">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

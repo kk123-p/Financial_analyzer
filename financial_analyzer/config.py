@@ -28,9 +28,22 @@ LOG_DIR.mkdir(exist_ok=True)
 
 CONFIG_FILE = USER_DATA_DIR / "config.json"
 
-# 自动保存目录（D盘）
-AUTO_SAVE_DIR = Path("D:/FinancialAnalyzerData")
-AUTO_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+# 自动保存目录（优先D盘，回退用户目录）
+def _init_auto_save_dir() -> Path:
+    candidates = [
+        Path("D:/FinancialAnalyzerData"),
+        USER_DATA_DIR / "auto_save",
+    ]
+    for p in candidates:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except OSError:
+            continue
+    return USER_DATA_DIR / "auto_save"
+
+AUTO_SAVE_DIR = _init_auto_save_dir()
+del _init_auto_save_dir
 
 # ============================================================================
 # 字体配置
@@ -105,16 +118,43 @@ VOLUME_MA_WINDOW = 5    # 成交量均线窗口
 VOLUME_MA_LONG = 10     # 成交量长均线窗口
 VOLATILITY_WINDOW = 20  # 波动率滚动窗口
 
+# DCF 估值参数
+DCF_SCENARIOS = [
+    ("乐观", 12, 2.0, 10),    # (名称, 5年增长率%, 永续增长率%, 折现率%)
+    ("中性", 8, 2.0, 10),
+    ("悲观", 3, 1.5, 12),
+]
+DCF_GROWTH_YEARS = 5          # 显式增长期年数
+
 # Yahoo Finance 重试
 YFINANCE_MAX_RETRIES = 3
 YFINANCE_RETRY_BASE_WAIT = 5  # 秒
 
 # ============================================================================
-# PDF 字体配置
+# PDF 字体配置（按平台检测）
 # ============================================================================
-PDF_FONT_PATHS = [
-    r"C:\Windows\Fonts\simhei.ttf",
-    r"C:\Windows\Fonts\msyh.ttc",
-    r"C:\Windows\Fonts\simsun.ttc",
-]
-PDF_FONT_NAME = "SimHei"
+import platform as _platform
+_sys = _platform.system()
+if _sys == "Windows":
+    PDF_FONT_PATHS = [
+        r"C:\Windows\Fonts\simhei.ttf",
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simsun.ttc",
+    ]
+    PDF_FONT_NAME = "SimHei"
+elif _sys == "Darwin":
+    PDF_FONT_PATHS = [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]
+    PDF_FONT_NAME = "PingFang"
+else:  # Linux
+    PDF_FONT_PATHS = [
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    ]
+    PDF_FONT_NAME = "WenQuanYi"
+del _platform, _sys

@@ -34,10 +34,9 @@ class RiskAssessmentModel:
         self.market = market
         self.thresholds = self.INDUSTRY_THRESHOLDS.get(
             industry, self.INDUSTRY_THRESHOLDS["default"]
-        )
-        if market == "US":
-            self.thresholds = self.thresholds.copy()
-            self.thresholds["debt_ratio_max"] = min(self.thresholds["debt_ratio_max"] + 10, 95)
+        ).copy()
+        # 美股通常杠杆率更低（更多依赖股权融资），不做额外放宽
+        # 各行业阈值在 CN/US 市场保持一致
 
     def assess_solvency_risk(self, current_ratio, quick_ratio, cash_ratio,
                              debt_ratio, interest_coverage) -> dict:

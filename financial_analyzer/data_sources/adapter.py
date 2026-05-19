@@ -66,24 +66,27 @@ class DataSourceAdapter:
 
     def set_tushare_token(self, token: str) -> bool:
         if HAS_TUSHARE:
-            self.tushare_pro = ts.pro_api(token)
+            with self._lock:
+                self.tushare_pro = ts.pro_api(token)
             return True
         return False
 
     def get_available_sources(self) -> list[str]:
-        return [s for s, available in self.data_sources.items() if available]
+        with self._lock:
+            return [s for s, available in self.data_sources.items() if available]
 
     def set_active_source(self, source: str) -> bool:
-        if source in self.data_sources and self.data_sources[source]:
-            with self._lock:
+        with self._lock:
+            if source in self.data_sources and self.data_sources[source]:
                 self._active_source = source
-            return True
+                return True
         return False
 
     def refresh_sources(self):
-        self.data_sources["tushare"] = HAS_TUSHARE
-        self.data_sources["yfinance"] = HAS_YFINANCE
-        self.data_sources["akshare"] = HAS_AKSHARE
+        with self._lock:
+            self.data_sources["tushare"] = HAS_TUSHARE
+            self.data_sources["yfinance"] = HAS_YFINANCE
+            self.data_sources["akshare"] = HAS_AKSHARE
 
     def get_stock_data(self, symbol: str, start_date: str, end_date: str,
                        data_type: str = "daily") -> pd.DataFrame | None:
@@ -132,22 +135,28 @@ class DataSourceAdapter:
         df = None
         source = None
 
-        if self.active_source == "tushare" and HAS_TUSHARE and self.tushare_pro:
+        # 线程安全地读取活跃数据源和 tushare 实例
+        with self._lock:
+            active = self._active_source
+            tushare = self.tushare_pro
+            sources = dict(self.data_sources)
+
+        if active == "tushare" and sources.get("tushare") and tushare:
             df = self._get_tushare(symbol, start_date, end_date, data_type)
             source = "tushare"
             if df is None and HAS_AKSHARE and data_type in ("income", "balance", "cashflow"):
                 logger.info(f"Tushare 获取 {data_type} 失败，尝试 Akshare 回退")
                 df = self._get_akshare(symbol, start_date, end_date, data_type)
                 source = "akshare"
-        elif self.active_source == "yfinance" and HAS_YFINANCE:
+        elif active == "yfinance" and sources.get("yfinance"):
             df = self._get_yfinance(symbol, start_date, end_date, data_type)
             source = "yfinance"
             _cn_suffixes = (".SH", ".SZ", ".SS", ".BJ", ".HK")
-            if df is None and HAS_AKSHARE and not symbol.endswith(_cn_suffixes):
+            if df is None and sources.get("akshare") and not symbol.endswith(_cn_suffixes):
                 logger.info(f"Yahoo Finance 失败，尝试 Akshare 回退获取 {symbol}")
                 df = self._get_akshare_us(symbol, start_date, end_date, data_type)
                 source = "akshare"
-        elif self.active_source == "akshare" and HAS_AKSHARE:
+        elif active == "akshare" and sources.get("akshare"):
             df = self._get_akshare(symbol, start_date, end_date, data_type)
             source = "akshare"
             if df is None:
@@ -160,7 +169,7 @@ class DataSourceAdapter:
                     df = self._get_em_datacenter(symbol, data_type)
                 if df is not None:
                     source = "sina" if data_type in ("daily", "basic") else "em_datacenter"
-        elif self.active_source == "sina":
+        elif active == "sina":
             if data_type == "daily":
                 df = sina_source.get_daily(symbol, start_date, end_date)
             elif data_type == "basic":
@@ -172,24 +181,32 @@ class DataSourceAdapter:
         return df, source
 
     def _normalize(self, df: pd.DataFrame, data_type: str, source: str = None) -> pd.DataFrame:
-        """根据数据类型调用对应的标准化方法"""
+        """根据数据类型调用对应的标准化方法，并统一按日期降序排列"""
         if source is None:
             source = self.active_source
 
         if data_type == "daily":
-            return DataNormalizer.normalize_daily(df, source)
+            df = DataNormalizer.normalize_daily(df, source)
         elif data_type == "basic":
-            return DataNormalizer.normalize_basic(df, source)
+            df = DataNormalizer.normalize_basic(df, source)
         elif data_type == "financial":
-            return DataNormalizer.normalize_financial(df, source)
+            df = DataNormalizer.normalize_financial(df, source)
         elif data_type == "income":
-            return DataNormalizer.normalize_income(df, source)
+            df = DataNormalizer.normalize_income(df, source)
         elif data_type == "balance":
-            return DataNormalizer.normalize_balance(df, source)
+            df = DataNormalizer.normalize_balance(df, source)
         elif data_type == "cashflow":
-            return DataNormalizer.normalize_cashflow(df, source)
-        else:
-            return df
+            df = DataNormalizer.normalize_cashflow(df, source)
+
+        # 统一排序：财务报表类按 end_date 降序，行情类已在 normalizer 中排序
+        if df is not None and not df.empty:
+            if data_type in ("income", "balance", "cashflow", "financial", "fina_audit", "mainbz"):
+                date_col = "end_date" if "end_date" in df.columns else (
+                    "f_ann_date" if "f_ann_date" in df.columns else None)
+                if date_col:
+                    df = df.sort_values(date_col, ascending=False).reset_index(drop=True)
+
+        return df
 
     # ======================== Tushare ========================
     def _get_tushare(self, symbol, start_date, end_date, data_type):

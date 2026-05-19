@@ -79,48 +79,48 @@ def _setup_chinese_font(plt):
 # 配色方案
 # ============================================================================
 COLORS = {
-    # 背景层级 - 深蓝黑
-    "bg": "#0B0F1A",
-    "card_bg": "#151D2E",
-    "surface": "#111827",
+    # 背景层级 - Terminal Pro 深渊黑
+    "bg": "#060912",
+    "card_bg": "#111820",
+    "surface": "#0C1017",
     # 文字
-    "text": "#F1F5F9",
-    "text_muted": "#94A3B8",
-    "text_dim": "#475569",
+    "text": "#F0F6FC",
+    "text_muted": "#8B949E",
+    "text_dim": "#6B7D95",
     # 网格与边框
-    "grid": "#1E293B",
-    "border": "#334155",
+    "grid": "#21262D",
+    "border": "#30363D",
     # 涨跌色
-    "up": "#22C55E",
-    "down": "#EF4444",
+    "up": "#3FB950",
+    "down": "#F85149",
     # 强调色
-    "accent": "#3B82F6",
-    "accent_hover": "#2563EB",
-    "gold": "#F59E0B",
-    "info": "#38BDF8",
-    "purple": "#A78BFA",
-    "teal": "#06B6D4",
-    "pink": "#EC4899",
+    "accent": "#58A6FF",
+    "accent_hover": "#79B8FF",
+    "gold": "#D29922",
+    "info": "#58A6FF",
+    "purple": "#BC8CFF",
+    "teal": "#39D2C0",
+    "pink": "#F778BA",
     # 均线色
-    "ma5": "#EF4444",
-    "ma10": "#06B6D4",
-    "ma20": "#F59E0B",
-    "ma60": "#A78BFA",
+    "ma5": "#F85149",
+    "ma10": "#39D2C0",
+    "ma20": "#D29922",
+    "ma60": "#BC8CFF",
     # 图表色系（6色）
-    "series_1": "#3B82F6",
-    "series_2": "#22C55E",
-    "series_3": "#F59E0B",
-    "series_4": "#EF4444",
-    "series_5": "#A78BFA",
-    "series_6": "#06B6D4",
+    "series_1": "#58A6FF",
+    "series_2": "#3FB950",
+    "series_3": "#D29922",
+    "series_4": "#F85149",
+    "series_5": "#BC8CFF",
+    "series_6": "#39D2C0",
     # 柱状图
-    "bar": "#3B82F6",
-    "bar_alt": "#F59E0B",
+    "bar": "#58A6FF",
+    "bar_alt": "#D29922",
 }
 
 
 def _apply_dark_style(fig, axes):
-    """应用深色主题到图表 - Financial Dashboard 风格"""
+    """应用深色主题到图表 - Terminal Pro 风格"""
     import matplotlib.axes as maxes
 
     fig.patch.set_facecolor(COLORS["bg"])

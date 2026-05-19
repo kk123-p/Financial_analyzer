@@ -1,9 +1,9 @@
 """
-商务深色主题配置 - Financial Dashboard 风格
-基于 UI/UX Pro Max 设计规范：
-  - 配色: Financial Dashboard (#0F172A deep navy + #22C55E green)
-  - 风格: Dark Mode OLED + Data-Dense Dashboard
-  - 交互: 微交互 150-200ms + 状态反馈
+Premium 深色科技主题 - Terminal Pro 风格
+参考: Bloomberg Terminal × TradingView × GitHub Dark Mode
+  - 配色: Deep Abyss + Accent Glow (#58A6FF)
+  - 风格: Data-Dense Dashboard + Premium Tech
+  - 交互: 微交互 150-200ms + 辉光反馈
   - 无障碍: WCAG AA 对比度 4.5:1+
 """
 
@@ -11,76 +11,77 @@
 # 颜色体系 - Financial Dashboard 色板
 # ============================================================================
 class Colors:
-    """深色金融仪表盘色板"""
-    # 背景色 - 深蓝黑层级
-    BG_PRIMARY = "#0B0F1A"       # 最深背景（页面底色）
-    BG_SECONDARY = "#111827"     # 侧边栏/次级面板
-    BG_TERTIARY = "#1E293B"      # 卡片/选中态
-    BG_INPUT = "#0F172A"         # 输入框
-    BG_CARD = "#151D2E"          # 卡片背景
-    BG_HOVER = "#1E3A5F"         # 悬停态
-    BG_MODAL = "#0D1321"         # 弹窗背景
+    """Premium 科技深色色板 — Terminal Pro"""
+    # 背景色 - 深渊黑层级
+    BG_PRIMARY = "#060912"       # 最深背景（页面底色）
+    BG_SECONDARY = "#0C1017"     # 侧边栏/次级面板 (GitHub Dark)
+    BG_TERTIARY = "#161B22"      # 卡片/选中态
+    BG_INPUT = "#0A0E16"         # 输入框
+    BG_CARD = "#111820"          # 卡片背景
+    BG_HOVER = "#1A2A45"         # 悬停态（蓝调）
+    BG_MODAL = "#090C14"         # 弹窗背景
 
     # 前景色 - 高对比度
-    FG_PRIMARY = "#F1F5F9"       # 主文字 (对比度 15.4:1 on #0B0F1A)
-    FG_SECONDARY = "#94A3B8"     # 次要文字 (对比度 7.1:1)
-    FG_MUTED = "#475569"         # 弱化文字
-    FG_INVERSE = "#0B0F1A"       # 反色文字
+    FG_PRIMARY = "#F0F6FC"       # 主文字 (对比度 16:1+ on BG_PRIMARY)
+    FG_SECONDARY = "#8B949E"     # 次要文字
+    FG_MUTED = "#6B7D95"         # 弱化文字（提升可读性）
+    FG_INVERSE = "#060912"       # 反色文字
 
-    # 功能色 - 金融语义
-    ACCENT = "#3B82F6"           # 主强调色（信任蓝）
-    ACCENT_HOVER = "#2563EB"     # 强调色悬停
-    ACCENT_SUBTLE = "#1E3A5F"    # 强调色底衬
+    # 功能色 - 金融语义 + 辉光蓝
+    ACCENT = "#58A6FF"           # 主强调色（辉光蓝 · GitHub/Supabase 风格）
+    ACCENT_HOVER = "#79B8FF"     # 强调色悬停
+    ACCENT_SUBTLE = "#13233A"    # 强调色底衬 (rgba 88,166,255,0.12)
 
-    SUCCESS = "#22C55E"          # 上涨/成功/正面
-    SUCCESS_BG = "rgba(34,197,94,0.12)"
-    DANGER = "#EF4444"           # 下跌/危险/负面
-    DANGER_BG = "rgba(239,68,68,0.12)"
-    WARNING = "#F59E0B"          # 警告
-    WARNING_BG = "rgba(245,158,11,0.12)"
-    INFO = "#38BDF8"             # 信息
-    INFO_BG = "rgba(56,189,248,0.12)"
+    SUCCESS = "#3FB950"          # 上涨/成功/正面 (GitHub Green)
+    SUCCESS_BG = "rgba(63,185,80,0.12)"
+    DANGER = "#F85149"           # 下跌/危险/负面 (GitHub Red)
+    DANGER_BG = "rgba(248,81,73,0.12)"
+    WARNING = "#D29922"          # 警告 (GitHub Orange)
+    WARNING_BG = "rgba(210,153,34,0.12)"
+    INFO = "#58A6FF"             # 信息（统一使用 accent）
+    INFO_BG = "rgba(88,166,255,0.12)"
 
     # 图表色 - 6色系（数据可视化最佳实践）
-    CHART_1 = "#3B82F6"          # 蓝
-    CHART_2 = "#22C55E"          # 绿
-    CHART_3 = "#F59E0B"          # 琥珀
-    CHART_4 = "#EF4444"          # 红
-    CHART_5 = "#A78BFA"          # 紫
-    CHART_6 = "#06B6D4"          # 青
-    CHART_GREEN = "#22C55E"      # K线涨
-    CHART_RED = "#EF4444"        # K线跌
-    CHART_GRID = "#1E293B"       # 网格线
+    CHART_1 = "#58A6FF"          # 辉光蓝
+    CHART_2 = "#3FB950"          # 绿
+    CHART_3 = "#D29922"          # 琥珀
+    CHART_4 = "#F85149"          # 红
+    CHART_5 = "#BC8CFF"          # 紫
+    CHART_6 = "#39D2C0"          # 青
+    CHART_GREEN = "#3FB950"      # K线涨
+    CHART_RED = "#F85149"        # K线跌
+    CHART_GRID = "#21262D"       # 网格线
 
     # 边框
-    BORDER = "#1E293B"           # 默认边框
-    BORDER_LIGHT = "#334155"     # 亮边框
-    BORDER_FOCUS = "#3B82F6"     # 聚焦边框
+    BORDER = "#21262D"           # 默认边框 (GitHub)
+    BORDER_LIGHT = "#30363D"     # 亮边框
+    BORDER_FOCUS = "#58A6FF"     # 聚焦边框（辉光蓝）
 
     # 状态
-    STATUS_ONLINE = "#22C55E"
-    STATUS_OFFLINE = "#EF4444"
-    STATUS_WARNING = "#F59E0B"
+    STATUS_ONLINE = "#3FB950"
+    STATUS_OFFLINE = "#F85149"
+    STATUS_WARNING = "#D29922"
 
     # Sparkline
-    SPARKLINE_UP = "#22C55E"
-    SPARKLINE_DOWN = "#EF4444"
-    SPARKLINE_AREA_UP = "rgba(34,197,94,0.15)"
-    SPARKLINE_AREA_DOWN = "rgba(239,68,68,0.15)"
+    SPARKLINE_UP = "#3FB950"
+    SPARKLINE_DOWN = "#F85149"
+    SPARKLINE_AREA_UP = "rgba(63,185,80,0.15)"
+    SPARKLINE_AREA_DOWN = "rgba(248,81,73,0.15)"
 
 
 # ============================================================================
 # 字体配置 - 清晰层级
 # ============================================================================
 class Fonts:
-    """字体定义 - 金融数据可读性优先"""
+    """字体定义 - Premium科技终端风格"""
     FAMILY = "Microsoft YaHei UI"
-    FAMILY_MONO = "Consolas"
+    FAMILY_MONO = "Cascadia Code"  # Windows Terminal 字体，回退 Consolas
+    FAMILY_MONO_FALLBACK = "Consolas"
 
     # 标题层级
-    TITLE = (FAMILY, 22, "bold")       # 页面标题
-    SUBTITLE = (FAMILY, 14, "bold")    # 区块标题
-    HEADING = (FAMILY, 12, "bold")     # 卡片标题
+    TITLE = (FAMILY, 24, "bold")       # 页面标题 (增大)
+    SUBTITLE = (FAMILY, 16, "bold")    # 区块标题 (增大)
+    HEADING = (FAMILY, 13, "bold")     # 卡片标题 (增大)
 
     # 正文
     BODY = (FAMILY, 10)
@@ -91,18 +92,18 @@ class Fonts:
     # 功能字体
     BUTTON = (FAMILY, 10, "bold")
     INPUT = (FAMILY, 10)
-    RESULT = (FAMILY_MONO, 10)         # 分析结果用等宽
+    RESULT = (FAMILY_MONO_FALLBACK, 10)  # 分析结果用等宽
     STATUS = (FAMILY, 9)
-    CLOCK = (FAMILY_MONO, 10, "bold")  # 时钟用等宽
+    CLOCK = (FAMILY_MONO_FALLBACK, 10, "bold")  # 时钟用等宽
     SIDEBAR_ITEM = (FAMILY, 10)
     SIDEBAR_ACTIVE = (FAMILY, 10, "bold")
     TAB = (FAMILY, 10)
     TAB_ACTIVE = (FAMILY, 10, "bold")
 
     # 数据字体（KPI/数字）
-    KPI_VALUE = (FAMILY_MONO, 20, "bold")
+    KPI_VALUE = (FAMILY_MONO_FALLBACK, 22, "bold")   # 增大
     KPI_LABEL = (FAMILY, 9)
-    KPI_CHANGE = (FAMILY_MONO, 10, "bold")
+    KPI_CHANGE = (FAMILY_MONO_FALLBACK, 10, "bold")
 
 
 # ============================================================================
@@ -128,7 +129,7 @@ class Spacing:
     SIDEBAR_WIDTH = 280
     INPUT_HEIGHT = 36
     BUTTON_HEIGHT = 36
-    KPI_CARD_H = 100
+    KPI_CARD_H = 108
 
     # 窗口
     WINDOW_MIN_W = 1200
@@ -148,7 +149,7 @@ BOOTSTRAP_THEME = "darkly"
 
 
 def apply_custom_style(style):
-    """在 ttkbootstrap darkly 主题上叠加金融仪表盘自定义样式"""
+    """在 ttkbootstrap darkly 主题上叠加 Premium Terminal Pro 样式"""
     c = Colors
     f = Fonts
     s = Spacing
@@ -175,7 +176,8 @@ def apply_custom_style(style):
 
     # ---- TButton ----
     style.configure("TButton", font=f.BUTTON, padding=(s.LG, s.SM))
-    style.configure("Accent.TButton", background=c.ACCENT, foreground=c.FG_INVERSE, font=f.BUTTON)
+    style.configure("Accent.TButton", background=c.ACCENT, foreground=c.FG_INVERSE,
+                    font=f.BUTTON, borderwidth=0)
     style.map("Accent.TButton",
               background=[("active", c.ACCENT_HOVER), ("disabled", c.BG_TERTIARY)])
 
@@ -185,48 +187,52 @@ def apply_custom_style(style):
               background=[("active", c.BG_HOVER), ("!active", c.BG_SECONDARY)],
               foreground=[("active", c.ACCENT), ("!active", c.FG_SECONDARY)])
 
-    style.configure("SidebarActive.TButton", font=f.SIDEBAR_ACTIVE, anchor="w", padding=(s.MD, s.SM),
-                    background=c.ACCENT_SUBTLE, foreground=c.ACCENT, borderwidth=0)
+    style.configure("SidebarActive.TButton", font=f.SIDEBAR_ACTIVE, anchor="w",
+                    padding=(s.MD, s.SM), background=c.ACCENT_SUBTLE,
+                    foreground=c.ACCENT, borderwidth=0)
 
     # ---- TEntry ----
-    style.configure("TEntry", font=f.INPUT, fieldbackground=c.BG_INPUT, foreground=c.FG_PRIMARY,
-                    insertcolor=c.ACCENT, borderwidth=1)
+    style.configure("TEntry", font=f.INPUT, fieldbackground=c.BG_INPUT,
+                    foreground=c.FG_PRIMARY, insertcolor=c.ACCENT, borderwidth=1)
     style.map("TEntry",
               fieldbackground=[("focus", c.BG_INPUT), ("!focus", c.BG_INPUT)],
               bordercolor=[("focus", c.BORDER_FOCUS), ("!focus", c.BORDER)])
 
     # ---- TCombobox ----
-    style.configure("TCombobox", font=f.INPUT, fieldbackground=c.BG_INPUT, foreground=c.FG_PRIMARY,
-                    arrowcolor=c.FG_SECONDARY)
+    style.configure("TCombobox", font=f.INPUT, fieldbackground=c.BG_INPUT,
+                    foreground=c.FG_PRIMARY, arrowcolor=c.FG_SECONDARY)
     style.map("TCombobox",
               fieldbackground=[("readonly", c.BG_INPUT)],
               foreground=[("readonly", c.FG_PRIMARY)])
 
     # ---- TNotebook ----
-    style.configure("TNotebook", background=c.BG_PRIMARY, borderwidth=0)
-    style.configure("TNotebook.Tab", font=f.TAB, padding=(s.LG, s.SM),
-                    background=c.BG_SECONDARY, foreground=c.FG_MUTED)
+    style.configure("TNotebook", background=c.BG_PRIMARY, borderwidth=0,
+                    tabmargins=(0, 0, 0, 0))
+    style.configure("TNotebook.Tab", font=f.TAB, padding=(s.XL, s.MD),
+                    background=c.BG_SECONDARY, foreground=c.FG_MUTED,
+                    borderwidth=0)
     style.map("TNotebook.Tab",
               background=[("selected", c.BG_TERTIARY), ("!selected", c.BG_SECONDARY)],
               foreground=[("selected", c.ACCENT), ("!selected", c.FG_MUTED)])
 
     # ---- Treeview ----
-    style.configure("Treeview", font=f.BODY, background=c.BG_SECONDARY, foreground=c.FG_PRIMARY,
-                    fieldbackground=c.BG_SECONDARY, rowheight=28, borderwidth=0)
+    style.configure("Treeview", font=f.BODY, background=c.BG_SECONDARY,
+                    foreground=c.FG_PRIMARY, fieldbackground=c.BG_SECONDARY,
+                    rowheight=30, borderwidth=0)
     style.configure("Treeview.Heading", font=f.BODY_BOLD, background=c.BG_TERTIARY,
                     foreground=c.ACCENT, borderwidth=0)
     style.map("Treeview",
               background=[("selected", c.ACCENT_SUBTLE), ("!selected", c.BG_SECONDARY)],
               foreground=[("selected", c.ACCENT), ("!selected", c.FG_PRIMARY)])
 
-    # ---- Scrollbar (ttkbootstrap 已管理元素，只改颜色映射) ----
+    # ---- Scrollbar ----
     try:
         style.map("TScrollbar",
                   background=[("active", c.BG_HOVER), ("!active", c.BG_SECONDARY)])
     except Exception:
         pass
 
-    # ---- Progressbar (避免与 ttkbootstrap 冲突) ----
+    # ---- Progressbar ----
     try:
         style.configure("TProgressbar", background=c.ACCENT, troughcolor=c.BG_SECONDARY,
                         borderwidth=0, thickness=6)
@@ -244,16 +250,18 @@ def apply_custom_style(style):
     style.configure("TRadiobutton", background=c.BG_PRIMARY, foreground=c.FG_PRIMARY, font=f.BODY)
 
     # ---- Spinbox ----
-    style.configure("TSpinbox", font=f.INPUT, fieldbackground=c.BG_INPUT, foreground=c.FG_PRIMARY,
-                    arrowcolor=c.FG_SECONDARY)
+    style.configure("TSpinbox", font=f.INPUT, fieldbackground=c.BG_INPUT,
+                    foreground=c.FG_PRIMARY, arrowcolor=c.FG_SECONDARY)
 
     # ---- LabelFrame ----
     style.configure("TLabelframe", background=c.BG_PRIMARY, foreground=c.FG_PRIMARY,
                     bordercolor=c.BORDER, font=f.BODY)
-    style.configure("TLabelframe.Label", background=c.BG_PRIMARY, foreground=c.ACCENT, font=f.HEADING)
+    style.configure("TLabelframe.Label", background=c.BG_PRIMARY,
+                    foreground=c.ACCENT, font=f.HEADING)
 
     # ---- 自定义卡片样式 ----
     style.configure("Card.TLabelframe", background=c.BG_CARD, bordercolor=c.BORDER)
-    style.configure("Card.TLabelframe.Label", background=c.BG_CARD, foreground=c.ACCENT, font=f.HEADING)
+    style.configure("Card.TLabelframe.Label", background=c.BG_CARD,
+                    foreground=c.ACCENT, font=f.HEADING)
 
     return style

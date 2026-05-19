@@ -75,6 +75,7 @@ def _load_config():
 
 
 def _save_config_patch(patch: dict):
+    """增量保存非敏感配置（Token 等敏感信息由 TokenManager/keyring 管理）"""
     import json
     config = _load_config()
     config.update(patch)
@@ -173,6 +174,14 @@ class FinancialAnalyzerApp:
             self.data_adapter.set_tushare_token(tushare_token)
             self.token_manager.set_token("tushare", tushare_token)
             logger.info("已从配置加载 Tushare Token")
+            # 迁移：从明文配置中移除 token，后续由 keyring 管理
+            if "tushare" in config:
+                del config["tushare"]
+                import json
+                CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+                logger.info("已将 Tushare Token 从明文配置迁移到安全存储")
 
         # 也检查 token_manager 从 keyring/环境变量加载的 token
         saved_token = self.token_manager.get_token("tushare")
@@ -198,11 +207,14 @@ class FinancialAnalyzerApp:
             logger.info("默认数据源: sina (开源)")
 
         # 状态
+        self._data_lock = threading.Lock()
         self._current_data = {}
         self._current_stock = ""
         self._analysis_running = False
+        self._shutting_down = False
         self._active_sidebar = None
         self._sidebar_buttons = {}
+        self._sidebar_indicators = {}
         self._section_expanded = {}  # 折叠状态
 
         # 构建 UI
@@ -261,9 +273,9 @@ class FinancialAnalyzerApp:
         logo = tk.Frame(sidebar, bg=c.BG_SECONDARY)
         logo.pack(fill="x", pady=(s.XL, s.MD), padx=s.LG)
 
-        tk.Label(logo, text="FA", font=f.TITLE,
+        tk.Label(logo, text="FA", font=(f.FAMILY, 26, "bold"),
                  bg=c.BG_SECONDARY, fg=c.ACCENT).pack(anchor="w")
-        tk.Label(logo, text=f"v{APP_VERSION}", font=f.SMALL,
+        tk.Label(logo, text=f"Financial Analyzer Pro  v{APP_VERSION}", font=f.SMALL,
                  bg=c.BG_SECONDARY, fg=c.FG_MUTED).pack(anchor="w", pady=(2, 0))
 
         # 分隔线
@@ -320,10 +332,10 @@ class FinancialAnalyzerApp:
         bottom.pack(fill="x", side="bottom", pady=(0, s.MD))
 
         for icon, label, cmd in [
-            ("🔑", "Token 配置", self._show_token_dialog),
-            ("📡", "数据源管理", self._show_datasource_dialog),
-            ("⚙️", "缓存设置", self._show_cache_dialog),
-            ("ℹ️", "关于", self._show_about_dialog),
+            ("○", "Token 配置", self._show_token_dialog),
+            ("○", "数据源管理", self._show_datasource_dialog),
+            ("○", "缓存设置", self._show_cache_dialog),
+            ("○", "关于", self._show_about_dialog),
         ]:
             btn = tk.Button(
                 bottom, text=f"  {icon}  {label}", font=f.SMALL,
@@ -357,7 +369,7 @@ class FinancialAnalyzerApp:
         arrow_label.pack(side="left", padx=(s.SM, 0))
 
         title_label = tk.Label(header, text=section_name, font=f.BODY_BOLD,
-                               bg=c.BG_SECONDARY, fg=c.FG_MUTED, anchor="w")
+                               bg=c.BG_SECONDARY, fg=c.ACCENT, anchor="w")
         title_label.pack(side="left", fill="x", expand=True)
 
         # 子项容器
@@ -365,17 +377,43 @@ class FinancialAnalyzerApp:
         items_frame.pack(fill="x", pady=(s.XS, 0))
 
         for icon, label, key in items:
+            # 容器：左指示条 + 按钮
+            row = tk.Frame(items_frame, bg=c.BG_SECONDARY)
+            row.pack(fill="x", pady=1)
+
+            # 左侧 accent 指示条 (3px 宽，默认透明)
+            indicator = tk.Frame(row, bg=c.BG_SECONDARY, width=3)
+            indicator.pack(side="left", fill="y")
+            indicator.pack_propagate(False)
+
             btn = tk.Button(
-                items_frame, text=f"    {icon}  {label}", font=f.SIDEBAR_ITEM,
+                row, text=f"  {icon}  {label}", font=f.SIDEBAR_ITEM,
                 bg=c.BG_SECONDARY, fg=c.FG_SECONDARY, activebackground=c.BG_HOVER,
                 activeforeground=c.ACCENT, relief="flat", anchor="w",
                 padx=s.LG, pady=7, cursor="hand2",
                 command=lambda k=key: self._on_sidebar_click(k),
             )
-            btn.pack(fill="x", pady=1)
-            btn.bind("<Enter>", lambda e, b=btn: b.config(bg=c.BG_HOVER) if b != self._active_sidebar else None)
-            btn.bind("<Leave>", lambda e, b=btn: b.config(bg=c.BG_SECONDARY) if b != self._active_sidebar else None)
+            btn.pack(side="left", fill="x", expand=True)
+
+            # 悬停效果
+            def on_enter(e, b=btn, ind=indicator):
+                if b != self._active_sidebar:
+                    ind.configure(bg=c.ACCENT_SUBTLE)
+                    b.config(bg=c.BG_HOVER)
+
+            def on_leave(e, b=btn, ind=indicator):
+                if b != self._active_sidebar:
+                    ind.configure(bg=c.BG_SECONDARY)
+                    b.config(bg=c.BG_SECONDARY)
+
+            row.bind("<Enter>", on_enter)
+            row.bind("<Leave>", on_leave)
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+
             self._sidebar_buttons[key] = btn
+            self._sidebar_indicators = getattr(self, '_sidebar_indicators', {})
+            self._sidebar_indicators[key] = indicator
 
         # 折叠/展开功能
         def toggle():
@@ -429,13 +467,13 @@ class FinancialAnalyzerApp:
         right = ttk.Frame(bar)
         right.pack(side="right")
 
-        ttk.Button(right, text="📥 获取数据", style="Accent.TButton",
+        ttk.Button(right, text="获取数据", style="Accent.TButton",
                    command=self._fetch_data_only).pack(side="left", padx=(0, s.SM))
-        ttk.Button(right, text="🔍 分析", style="Accent.TButton",
+        ttk.Button(right, text="分析", style="Accent.TButton",
                    command=self._run_analysis).pack(side="left", padx=(0, s.SM))
-        ttk.Button(right, text="📤 导出", command=self._show_export_dialog).pack(side="left", padx=(0, s.SM))
-        ttk.Button(right, text="🔑", command=self._show_token_dialog).pack(side="left", padx=(0, s.SM))
-        ttk.Button(right, text="🗑️", command=self._clear_results).pack(side="left")
+        ttk.Button(right, text="导出", command=self._show_export_dialog).pack(side="left", padx=(0, s.SM))
+        ttk.Button(right, text="Token", command=self._show_token_dialog).pack(side="left", padx=(0, s.SM))
+        ttk.Button(right, text="清空", command=self._clear_results).pack(side="left")
 
     def _build_kpi_bar(self, parent):
         """KPI 指标卡片行 - 数据仪表盘核心 + Sparkline"""
@@ -459,8 +497,12 @@ class FinancialAnalyzerApp:
         ]
 
         for key, label, default in kpi_items:
-            card = tk.Frame(self.kpi_frame, bg=c.BG_CARD, padx=s.MD, pady=s.SM)
-            card.pack(side="left", fill="both", expand=True, padx=(0, s.SM))
+            # 卡片外框 (用 1px 边框模拟)
+            wrapper = tk.Frame(self.kpi_frame, bg=c.BORDER, padx=1, pady=1)
+            wrapper.pack(side="left", fill="both", expand=True, padx=(0, s.SM))
+
+            card = tk.Frame(wrapper, bg=c.BG_CARD, padx=s.MD, pady=s.SM)
+            card.pack(fill="both", expand=True)
             self.kpi_cards[key] = card
 
             # 顶部行：标签 + 趋势箭头
@@ -470,8 +512,8 @@ class FinancialAnalyzerApp:
             lbl = tk.Label(top_row, text=label, font=f.KPI_LABEL, bg=c.BG_CARD, fg=c.FG_MUTED)
             lbl.pack(side="left")
 
-            # 趋势标签（涨跌幅百分比，仅 price_change 卡片显示）
-            trend_lbl = tk.Label(top_row, text="", font=(f.FAMILY_MONO[0], 8),
+            # 趋势标签（涨跌幅百分比）
+            trend_lbl = tk.Label(top_row, text="", font=(f.FAMILY_MONO_FALLBACK, 8),
                                  bg=c.BG_CARD, fg=c.FG_MUTED)
             trend_lbl.pack(side="right")
 
@@ -489,12 +531,21 @@ class FinancialAnalyzerApp:
             self.kpi_sparklines[key] = spark_frame
 
             self.kpi_labels[key] = val
-            # 存储 trend label 用于更新
             setattr(val, '_trend_label', trend_lbl)
 
-            # 悬停效果
-            card.bind("<Enter>", lambda e, cf=card: cf.configure(bg=Colors.BG_HOVER))
-            card.bind("<Leave>", lambda e, cf=card: cf.configure(bg=Colors.BG_CARD))
+            # 悬停效果 — 卡片边框变亮
+            def on_enter(e, w=wrapper, c_inner=card):
+                w.configure(bg=c.BORDER_LIGHT)
+                c_inner.configure(bg=c.BG_HOVER)
+
+            def on_leave(e, w=wrapper, c_inner=card):
+                w.configure(bg=c.BORDER)
+                c_inner.configure(bg=c.BG_CARD)
+
+            wrapper.bind("<Enter>", on_enter)
+            wrapper.bind("<Leave>", on_leave)
+            card.bind("<Enter>", on_enter)
+            card.bind("<Leave>", on_leave)
 
     def _build_content_area(self, parent):
         c = Colors
@@ -509,7 +560,7 @@ class FinancialAnalyzerApp:
 
         # Tab 1: 分析结果
         result_tab = ttk.Frame(self.notebook)
-        self.notebook.add(result_tab, text="  📄 分析结果  ")
+        self.notebook.add(result_tab, text="  分析结果  ")
 
         text_wrap = ttk.Frame(result_tab)
         text_wrap.pack(fill="both", expand=True)
@@ -529,7 +580,7 @@ class FinancialAnalyzerApp:
 
         # Tab 2: 图表
         chart_tab = ttk.Frame(self.notebook)
-        self.notebook.add(chart_tab, text="  📊 图表  ")
+        self.notebook.add(chart_tab, text="  图表  ")
 
         if HAS_CHARTS:
             chart_toolbar = ttk.Frame(chart_tab)
@@ -553,7 +604,7 @@ class FinancialAnalyzerApp:
                 ttk.Button(deep_frame, text=label,
                           command=lambda ct=ctype: self._show_deep_chart(ct)).pack(side="left", padx=s.XS)
 
-            ttk.Button(chart_toolbar, text="💾 保存", command=self._save_chart).pack(side="right")
+            ttk.Button(chart_toolbar, text="保存", command=self._save_chart).pack(side="right")
 
             self.chart_container = ttk.Frame(chart_tab)
             self.chart_container.pack(fill="both", expand=True, padx=s.SM, pady=(0, s.SM))
@@ -562,15 +613,15 @@ class FinancialAnalyzerApp:
             ttk.Label(chart_tab, text="📊 图表功能需要 matplotlib\npip install matplotlib",
                       font=f.SUBTITLE, foreground=c.FG_MUTED, justify="center").pack(expand=True)
 
-        # Tab 3: AI 投研 (合并原AI分析 + AI深度投研)
+        # Tab 3: AI 投研
         ai_tab = ttk.Frame(self.notebook)
-        self.notebook.add(ai_tab, text="  🤖 AI 投研  ")
+        self.notebook.add(ai_tab, text="  AI 投研  ")
         # 内部用 notebook 做子标签
         ai_sub = ttk.Notebook(ai_tab)
         ai_sub.pack(fill="both", expand=True)
         # 子标签1: AI 智能分析
         ai_chat_frame = ttk.Frame(ai_sub)
-        ai_sub.add(ai_chat_frame, text="  💬 AI 智能分析  ")
+        ai_sub.add(ai_chat_frame, text="  AI 智能分析  ")
         self.ai_panel = DeepSeekPanel(
             ai_chat_frame,
             stock_code_getter=lambda: self.stock_var.get(),
@@ -593,7 +644,7 @@ class FinancialAnalyzerApp:
 
         # Tab 4: 数据表格
         table_tab = ttk.Frame(self.notebook)
-        self.notebook.add(table_tab, text="  📋 数据  ")
+        self.notebook.add(table_tab, text="  数据  ")
         self._build_table_view(table_tab)
 
     def _build_table_view(self, parent):
@@ -645,6 +696,11 @@ class FinancialAnalyzerApp:
         bar = ttk.Frame(parent)
         bar.pack(fill="x", padx=s.LG, pady=(0, s.SM))
 
+        # 在线状态指示器
+        online_dot = tk.Label(bar, text="●", font=(f.FAMILY, 7),
+                              bg=c.BG_PRIMARY, fg=c.STATUS_ONLINE)
+        online_dot.pack(side="left", padx=(0, 2))
+
         self.status_label = ttk.Label(bar, text="就绪", font=f.STATUS)
         self.status_label.pack(side="left")
 
@@ -654,9 +710,13 @@ class FinancialAnalyzerApp:
         self.clock_label = ttk.Label(bar, text="", font=f.CLOCK)
         self.clock_label.pack(side="right")
 
-        self.source_label = ttk.Label(bar, text=f"数据源: {self.data_adapter.active_source.upper()}",
+        # 分隔
+        tk.Label(bar, text="│", font=f.SMALL,
+                bg=c.BG_PRIMARY, fg=c.BORDER_LIGHT).pack(side="right", padx=s.XS)
+
+        self.source_label = ttk.Label(bar, text=f" {self.data_adapter.active_source.upper()} ",
                                        font=f.STATUS, foreground=c.FG_MUTED)
-        self.source_label.pack(side="right", padx=(0, s.MD))
+        self.source_label.pack(side="right", padx=(0, s.XS))
 
     # ========================================================================
     # KPI 更新
@@ -775,12 +835,14 @@ class FinancialAnalyzerApp:
         fin_types = ["income", "balance", "cashflow", "financial", "fina_audit", "mainbz"]
         fetched = []
         for dtype in fin_types:
-            if dtype in self._current_data:
-                continue
+            with self._data_lock:
+                if dtype in self._current_data:
+                    continue
             try:
                 df = self.data_adapter.get_stock_data(stock_code, start_date, end_date, dtype)
                 if df is not None and not df.empty:
-                    self._current_data[dtype] = df
+                    with self._data_lock:
+                        self._current_data[dtype] = df
                     fetched.append(dtype)
                     logger.info(f"后台获取 {dtype} 成功: {len(df)} 行")
             except Exception as e:
@@ -854,12 +916,25 @@ class FinancialAnalyzerApp:
     # 侧边栏交互
     # ========================================================================
     def _on_sidebar_click(self, key):
+        c = Colors
+        # 重置旧激活项
         if self._active_sidebar:
-            self._active_sidebar.config(bg=Colors.BG_SECONDARY, fg=Colors.FG_SECONDARY)
+            old_key = None
+            for k, btn in self._sidebar_buttons.items():
+                if btn == self._active_sidebar:
+                    old_key = k
+                    break
+            self._active_sidebar.config(bg=c.BG_SECONDARY, fg=c.FG_SECONDARY)
+            if old_key and old_key in self._sidebar_indicators:
+                self._sidebar_indicators[old_key].configure(bg=c.BG_SECONDARY)
+
         btn = self._sidebar_buttons.get(key)
         if btn:
-            btn.config(bg=Colors.ACCENT_SUBTLE, fg=Colors.ACCENT)
+            btn.config(bg=c.ACCENT_SUBTLE, fg=c.ACCENT)
             self._active_sidebar = btn
+            # 激活左指示条
+            if key in self._sidebar_indicators:
+                self._sidebar_indicators[key].configure(bg=c.ACCENT)
 
         if key == "ai":
             self.notebook.select(2)  # AI投研标签页
@@ -1005,12 +1080,13 @@ class FinancialAnalyzerApp:
                     self.root.after(0, self._on_fetch_error, error_msg)
                     return
 
-                self._current_data = data
+                with self._data_lock:
+                    self._current_data = data
                 # 刷新AI上下文
                 if hasattr(self, 'ai_panel') and self.ai_panel:
                     self.ai_panel.refresh_context()
                 DataExporter.auto_save(data, sc)
-                self.root.after(0, lambda: self.source_label.config(text=f"数据源: {effective_source.upper()}"))
+                self.root.after(0, lambda: self.source_label.config(text=f" {effective_source.upper()} "))
                 self.root.after(0, self._on_fetch_complete, sc)
 
                 # 后台补充财务报表数据
@@ -1097,7 +1173,8 @@ class FinancialAnalyzerApp:
                 self.root.after(0, self._on_fetch_error, error_msg)
                 return
 
-            self._current_data = data
+            with self._data_lock:
+                self._current_data = data
             DataExporter.auto_save(data, stock_code)
 
             # 后台补充财务报表数据
@@ -1105,7 +1182,7 @@ class FinancialAnalyzerApp:
                            args=(stock_code, start_date, end_date, effective_source), daemon=True).start()
 
             # 更新状态栏数据源显示
-            self.root.after(0, lambda: self.source_label.config(text=f"数据源: {effective_source.upper()}"))
+            self.root.after(0, lambda: self.source_label.config(text=f" {effective_source.upper()} "))
             self.root.after(0, self._set_status, "正在生成分析报告...")
 
             # 运行行情概览
@@ -2162,7 +2239,7 @@ class FinancialAnalyzerApp:
     def _switch_source(self):
         src = self.source_var.get()
         if self.data_adapter.set_active_source(src):
-            self.source_label.config(text=f"数据源: {src.upper()}")
+            self.source_label.config(text=f" {src.upper()} ")
             self._set_status(f"数据源已切换为 {src.upper()}")
 
     def _show_token_dialog(self):
@@ -2171,7 +2248,7 @@ class FinancialAnalyzerApp:
             if self.data_adapter.tushare_pro:
                 self.data_adapter.set_active_source("tushare")
                 self.source_var.set("tushare")
-                self.source_label.config(text="数据源: TUSHARE")
+                self.source_label.config(text=" TUSHARE ")
                 self._set_status("已配置 Tushare Token，自动切换为默认数据源")
                 logger.info("Tushare Token 已配置，自动切换为默认数据源")
             # 刷新 AI 面板
@@ -2195,6 +2272,7 @@ class FinancialAnalyzerApp:
         AboutDialog(self.root)
 
     def on_closing(self):
+        self._shutting_down = True
         try:
             self.progress.stop()
             if HAS_CHARTS:
@@ -2202,4 +2280,13 @@ class FinancialAnalyzerApp:
                 plt.close("all")
         except Exception:
             pass
+        try:
+            self.cache_manager.close()
+        except Exception:
+            pass
+        # 等待后台写入线程完成（最多 2 秒），避免缓存/自动保存数据损坏
+        import time
+        deadline = time.time() + 2.0
+        while time.time() < deadline and self._analysis_running:
+            time.sleep(0.1)
         self.root.destroy()

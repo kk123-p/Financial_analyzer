@@ -157,19 +157,20 @@ class TokenConfigDialog:
 
     def _save(self):
         """保存 Token 配置"""
-        patch = {}
+        # 敏感 token（tushare）走 keyring 安全存储，不写入明文 config.json
+        app_patch = {}
         for key, var in self._entries.items():
             val = var.get().strip()
-            if val:
-                patch[key] = val
+            if not val:
+                continue
+            if key == "tushare":
+                self.token_manager.set_token("tushare", val)
+                self.data_adapter.set_tushare_token(val)
+            else:
+                app_patch[key] = val
 
-        if patch:
-            _save_config_patch(patch)
-
-            # 更新 token_manager
-            if "tushare" in patch:
-                self.token_manager.set_token("tushare", patch["tushare"])
-                self.data_adapter.set_tushare_token(patch["tushare"])
+        if app_patch:
+            _save_config_patch(app_patch)
 
         if self.on_save:
             self.on_save()

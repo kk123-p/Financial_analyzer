@@ -12,6 +12,7 @@ from ..ai.report_builder import ReportBuilder
 from ..ai.signal_detector import SignalDetector
 from ..ai.debate_engine import DebateEngine
 from ..ai.report_template import ReportTemplate
+from .theme import Colors
 from ..deepseek.prompts import (
     _load_config, _save_config, reload_config,
     get_analyst_roles, get_debate_system_prompt,
@@ -105,8 +106,11 @@ class ResearchPanel:
             cards_frame.rowconfigure(0, weight=1)
 
             text = tk.Text(lf, wrap="word", font=("Microsoft YaHei UI", 9),
-                           bg="#1a1a2e", fg="#e0e0e0", insertbackground="white",
-                           selectbackground="#3b82f6", relief="flat", bd=0)
+                           bg=Colors.BG_SECONDARY, fg=Colors.FG_PRIMARY,
+                           insertbackground=Colors.ACCENT,
+                           selectbackground=Colors.ACCENT_SUBTLE,
+                           selectforeground=Colors.FG_PRIMARY,
+                           relief="flat", bd=0)
             scrollbar = ttk.Scrollbar(lf, orient="vertical", command=text.yview)
             text.configure(yscrollcommand=scrollbar.set)
             text.pack(side="left", fill="both", expand=True)
@@ -118,8 +122,11 @@ class ResearchPanel:
         main_pane.add(debate_frame, weight=1)
 
         self.debate_text = tk.Text(debate_frame, wrap="word", font=("Microsoft YaHei UI", 9),
-                                   bg="#0f172a", fg="#e2e8f0", insertbackground="white",
-                                   selectbackground="#3b82f6", relief="flat", bd=0)
+                                   bg=Colors.BG_INPUT, fg=Colors.FG_PRIMARY,
+                                   insertbackground=Colors.ACCENT,
+                                   selectbackground=Colors.ACCENT_SUBTLE,
+                                   selectforeground=Colors.FG_PRIMARY,
+                                   relief="flat", bd=0)
         ds = ttk.Scrollbar(debate_frame, orient="vertical", command=self.debate_text.yview)
         self.debate_text.configure(yscrollcommand=ds.set)
         self.debate_text.pack(side="left", fill="both", expand=True)

@@ -1,0 +1,47 @@
+<!-- KPI 卡片行 -->
+<div class="kpi-bar" id="kpi-bar">
+    <div class="kpi-card">
+        <div class="kpi-label">股票名称</div>
+        <div class="kpi-value">{{ kpis.stock_name }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">当前价格</div>
+        <div class="kpi-value">{{ kpis.current_price }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">涨跌幅</div>
+        <div class="kpi-value {% if kpis.price_change_up %}up{% else %}down{% endif %}" style="color:{% if kpis.price_change_up %}var(--success){% else %}var(--danger){% endif %}">
+            {{ kpis.price_change }}
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">成交量</div>
+        <div class="kpi-value">{{ kpis.volume }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">市盈率 (PE)</div>
+        <div class="kpi-value">{{ kpis.pe_ratio }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">总市值</div>
+        <div class="kpi-value">{{ kpis.market_cap }}</div>
+    </div>
+</div>
+
+{% if has_data %}
+<div hx-swap-oob="true" id="status-text">数据获取完成 — {{ stock_code }}</div>
+<div hx-swap-oob="true" id="source-label">{{ kpis.source }}</div>
+<div hx-swap-oob="true" id="result-content">
+    <div class="result-empty">数据已就绪，请从左侧导航选择分析项目</div>
+</div>
+<div hx-swap-oob="true" id="data-table-content">
+    <table class="data-table">
+        <thead><tr><th>数据类型</th><th>行数</th><th>状态</th></tr></thead>
+        <tbody>
+            {% for dtype in data_types %}
+            <tr><td>{{ dtype }}</td><td>--</td><td style="color:var(--success)">✓ 已加载</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

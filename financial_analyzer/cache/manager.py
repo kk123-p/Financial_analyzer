@@ -188,6 +188,12 @@ class DataCacheManager:
         self.default_expiry_hours = expiry_hours
         logger.info(f"缓存过期时间已更新为 {expiry_hours} 小时")
 
+    def close(self):
+        """清理资源（可在应用退出时调用）"""
+        with self._lock:
+            self.memory_cache.clear()
+            self.cache_expiry.clear()
+
     def get_stats(self) -> dict:
         """获取缓存统计信息"""
         with self._lock:
