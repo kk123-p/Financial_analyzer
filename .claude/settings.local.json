@@ -8,7 +8,10 @@
       "Bash(ls -1 \"C:\\\\Users\\\\LK\\\\.claude\\\\skills\\\\\" 2>/dev/null || echo \"Directory not found\")",
       "Read(//c/Users/LK/.claude/skills\" 2>/dev/**)",
       "Read(//c/Users/LK/.claude/skills//**)",
-      "Read(//c/Users/LK/.claude/skills/**)"
+      "Read(//c/Users/LK/.claude/skills/**)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(.venv/Scripts/python run_web.py)",
+      "Read(//c/Users/LK/AppData/Local/Temp/**)"
     ]
   }
 }

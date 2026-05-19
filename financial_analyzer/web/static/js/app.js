@@ -125,6 +125,12 @@ function startDebate() {
     stream.innerHTML += '<p style="color:var(--fg-secondary)">请通过左侧「Token 配置」设置 API Key 后重试</p>';
 }
 
+// ---- 导出 ----
+function exportData(format) {
+    const stockCode = document.querySelector('input[name="stock_code"]')?.value || 'data';
+    window.open('/export/' + format + '?analysis_type=' + encodeURIComponent(stockCode), '_blank');
+}
+
 // ---- 时钟 ----
 function updateClock() {
     const now = new Date();

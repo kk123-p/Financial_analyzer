@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from .data_api import _get_session
 from financial_analyzer.utils.export import DataExporter
@@ -60,7 +61,7 @@ async def export_data(
             str(tmp_path),
             media_type=media_type,
             filename=filename,
-            background=lambda: tmp_path.unlink(missing_ok=True),
+            background=BackgroundTask(tmp_path.unlink, missing_ok=True),
         )
     except Exception as e:
         tmp_path.unlink(missing_ok=True)

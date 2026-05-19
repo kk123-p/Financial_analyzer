@@ -57,7 +57,7 @@ async def fetch_data(
     end_date = datetime.now().strftime("%Y%m%d")
     ds = DataService(adapter)
 
-    # 第一阶段：获取基本行情数据（快速）
+    # 获取基本行情数据
     def do_fetch_basic():
         return ds.fetch_stock_data(stock_code, start_date, end_date, source,
                                    include_financials=False)
@@ -68,34 +68,48 @@ async def fetch_data(
     if not data:
         return _error_response(_diagnose_error(adapter, stock_code))
 
-    # 保存基本数据
+    # 保存数据到 session
     session = _get_session(request)
     session["data"] = {k: df.to_dict("records") for k, df in data.items()}
     session["stock_code"] = stock_code
 
     kpis = ds.extract_kpis(data)
 
-    # 统计哪些财务数据已/未加载
-    fin_loaded = [k for k in data if k in DataService.FINANCIAL_DATA_TYPES]
-    fin_pending = [k for k in DataService.FINANCIAL_DATA_TYPES if k not in data]
+    # 统计财务报表状态
+    fin_types = DataService.FINANCIAL_DATA_TYPES
+    fin_loaded = [k for k in fin_types if k in data and data[k]]
+    fin_pending = [k for k in fin_types if k not in data or not data[k]]
 
-    # 第二阶段：后台加载财务报表数据
+    # 后台加载财务报表（使用 session ID 避免请求对象过期）
     if fin_pending:
+        sid = request.cookies.get("fa_session", DEFAULT_SESSION_ID)
+
         def do_fetch_financials():
             return ds.fetch_financials_async(stock_code, start_date, end_date)
 
-        # 在线程池中启动，但不等待
         async def background_financials():
-            fin_data = await loop.run_in_executor(None, do_fetch_financials)
-            if fin_data:
-                session = _get_session(request)
-                for k, df in fin_data.items():
-                    session["data"][k] = df.to_dict("records")
-                logger.info(f"后台财务报表加载完成: {list(fin_data.keys())}")
+            try:
+                logger.info(f"开始后台加载财务报表: {fin_pending}")
+                fin_data = await loop.run_in_executor(None, do_fetch_financials)
+                # 确保使用正确的 session（必须存在）
+                sess = _sessions.get(sid)
+                if sess is None:
+                    logger.error(f"后台任务: session {sid} 不存在")
+                    return
+                if fin_data:
+                    for k, df in fin_data.items():
+                        sess["data"][k] = df.to_dict("records")
+                    logger.info(f"后台财务报表加载完成: {list(fin_data.keys())}")
+                # 标记所有待加载类型（成功或失败都标记，避免一直显示加载中）
+                for k in fin_pending:
+                    if k not in sess["data"]:
+                        sess["data"][k] = []
+                logger.info(f"财务报表后台加载结束。已加载: {list(fin_data.keys()) if fin_data else '无'}")
+            except Exception as e:
+                logger.error(f"后台财务报表加载失败: {e}", exc_info=True)
 
         asyncio.create_task(background_financials())
 
-    # 返回 KPI + 触发后台加载
     from fastapi.responses import HTMLResponse
     response = templates.TemplateResponse(request, "partials/kpi_cards.html", {
         "kpis": kpis,
@@ -105,9 +119,6 @@ async def fetch_data(
         "fin_loaded": fin_loaded,
         "fin_pending": fin_pending,
     })
-    # htmx 触发后台轮询
-    if fin_pending:
-        response.headers["HX-Trigger"] = "financials-loading"
     return response
 
 
@@ -119,20 +130,21 @@ async def financials_status(request: Request):
 
     fin_types = DataService.FINANCIAL_DATA_TYPES
     loaded = [k for k in fin_types if k in data and data[k]]
-    pending = [k for k in fin_types if k not in data or not data[k]]
+    pending = [k for k in fin_types if k not in data]
 
     if not pending:
         return HTMLResponse(f"""
         <div id="fin-status" class="fin-status-done">
             <span style="color:var(--success);">●</span> 财务数据加载完成
-            ({', '.join(loaded)})
+            ({', '.join(loaded) if loaded else '无'})
         </div>
         """)
     else:
         return HTMLResponse(f"""
-        <div id="fin-status" class="fin-status-loading" hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML">
-            <span class="htmx-indicator" style="color:var(--warning);">◌</span> 正在加载财务数据...
-            (已加载: {', '.join(loaded) if loaded else '无'} | 等待: {', '.join(pending)})
+        <div id="fin-status" class="fin-status-loading"
+             hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML">
+            <span style="color:var(--warning);">◌</span> 正在加载财务数据...
+            已加载: {', '.join(loaded) if loaded else '无'} | 等待: {', '.join(pending)}
         </div>
         """)
 

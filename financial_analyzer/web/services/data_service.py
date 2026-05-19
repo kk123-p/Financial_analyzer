@@ -113,11 +113,24 @@ class DataService:
         daily = data.get("daily")
         daily_basic = data.get("daily_basic")
 
-        # 股票名称
+        # 股票名称 — 从多个来源回退
+        name = None
+        # 1) basic 表
         if basic is not None and not basic.empty:
             name = basic.iloc[0].get("name", "")
-            if name and name != "--":
-                kpis["stock_name"] = name
+        # 2) stock_basic 表
+        if (not name or name == "--") and "stock_basic" in data:
+            sb = data.get("stock_basic")
+            if sb is not None and not sb.empty:
+                name = sb.iloc[0].get("name", "") or sb.iloc[0].get("NAME", "")
+        # 3) Sina 格式: basic 的 ts_code 中提取
+        if not name or name == "--":
+            if basic is not None and not basic.empty:
+                ts = basic.iloc[0].get("ts_code", "")
+                if ts and "." in str(ts):
+                    name = str(ts).split(".")[1] if "." in str(ts) else str(ts)
+        if name and str(name).strip() and str(name) != "--":
+            kpis["stock_name"] = str(name).strip()
 
         # 价格 & 涨跌幅
         if daily is not None and not daily.empty and "close" in daily.columns:

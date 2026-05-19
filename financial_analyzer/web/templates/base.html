@@ -88,6 +88,9 @@
                 <div class="spacer"></div>
                 <div class="btn-group">
                     <button type="submit" class="btn btn-accent">获取数据</button>
+                    <button type="button" class="btn" onclick="exportData('xlsx')" title="导出 Excel">Excel</button>
+                    <button type="button" class="btn" onclick="exportData('csv')" title="导出 CSV">CSV</button>
+                    <button type="button" class="btn" onclick="exportData('json')" title="导出 JSON">JSON</button>
                     <button type="button" class="btn" onclick="location.reload()">清空</button>
                 </div>
             </form>
