@@ -16,9 +16,8 @@ from financial_analyzer.config import APP_VERSION
 
 @router.get("/")
 async def index(request: Request):
-    from ..services.analysis_service import get_analysis_list
+    from ..services.analysis_service import get_pipeline_stages
 
-    # 不调用 get_adapter() 以避免网络阻塞；仅列出可用源名称
     sources = ["tushare", "akshare", "sina", "yfinance"]
     active_source = "tushare"
 
@@ -26,7 +25,7 @@ async def index(request: Request):
 
     return templates.TemplateResponse(request, "base.html", {
         "version": APP_VERSION,
-        "sections": get_analysis_list(),
+        "stages": get_pipeline_stages(),
         "sources": sources,
         "active_source": active_source,
         "kpis": {

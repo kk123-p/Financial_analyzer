@@ -5,11 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Analyzer Pro — 财务分析终端</title>
 
-    <!-- Fonts: Inter (UI) + DM Serif Display (headings) + JetBrains Mono (data) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
     <link rel="stylesheet" href="/static/css/terminal.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
@@ -25,15 +20,15 @@
             </div>
 
             <nav class="sidebar-nav" id="sidebar-nav">
-                {% for section_name, items in sections %}
+                {% for stage_label, entry_key, items in stages %}
                 <div class="nav-section">
                     <div class="nav-section-header" onclick="toggleSection(this)">
                         <span class="arrow open">▶</span>
-                        <span>{{ section_name }}</span>
+                        <span>{{ stage_label }}</span>
                     </div>
                     <div class="nav-section-items">
                         {% for key, label in items %}
-                        <div class="nav-item-row" data-key="{{ key }}"
+                        <div class="nav-item-row{% if loop.first %} nav-item-entry{% endif %}" data-key="{{ key }}"
                              hx-get="/analyze/{{ key }}"
                              hx-target="#result-content"
                              hx-swap="outerHTML transition:true"

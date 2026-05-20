@@ -149,7 +149,6 @@ async def financials_status(request: Request):
             ({', '.join(loaded) if loaded else '无'})
         </div>
         """
-        from fastapi.responses import HTMLResponse
         resp = HTMLResponse(content=status_html)
         resp.headers["HX-Trigger"] = "refreshDataTable"
         return resp
