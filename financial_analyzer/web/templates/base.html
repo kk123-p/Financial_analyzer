@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Analyzer Pro — 财务分析终端</title>
+
+    <!-- Fonts: Inter (UI) + DM Serif Display (headings) + JetBrains Mono (data) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/static/css/terminal.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
@@ -11,7 +17,7 @@
 </head>
 <body>
     <div class="app-layout">
-        <!-- 侧边栏 -->
+        <!-- ========== 侧边栏 — 毛玻璃面板 ========== -->
         <aside class="sidebar">
             <div class="sidebar-logo">
                 <div class="logo-text">FA</div>
@@ -30,7 +36,7 @@
                         <div class="nav-item-row" data-key="{{ key }}"
                              hx-get="/analyze/{{ key }}"
                              hx-target="#result-content"
-                             hx-swap="outerHTML"
+                             hx-swap="outerHTML transition:true"
                              hx-indicator="#page-progress"
                              onclick="activateNav(this)">
                             <div class="nav-indicator"></div>
@@ -46,6 +52,7 @@
                 <div class="sidebar-footer-btn"
                      hx-get="/settings/tokens"
                      hx-target="#modal-body"
+                     hx-swap="innerHTML transition:true"
                      hx-indicator="#page-progress"
                      onclick="openModal('token-modal')">
                     <span class="dot"></span> Token 配置
@@ -53,11 +60,12 @@
                 <div class="sidebar-footer-btn"
                      hx-get="/fetch/status"
                      hx-target="#modal-body"
+                     hx-swap="innerHTML transition:true"
                      hx-indicator="#page-progress"
                      onclick="openModal('token-modal')">
                     <span class="dot"></span> 数据源状态
                 </div>
-                <div class="sidebar-footer-btn" onclick="alert('缓存管理: ' + '缓存目录 ~/.financialanalyzer/cache/')">
+                <div class="sidebar-footer-btn" onclick="alert('缓存管理: 缓存目录 ~/.financialanalyzer/cache/')">
                     <span class="dot"></span> 缓存设置
                 </div>
                 <div class="sidebar-footer-btn" onclick="alert('Financial Analyzer Pro v{{ version }}\nFastAPI + Jinja2 + htmx\n基于 DeepSeek AI 的财务分析平台')">
@@ -66,10 +74,10 @@
             </div>
         </aside>
 
-        <!-- 主区域 -->
+        <!-- ========== 主区域 ========== -->
         <main class="main-area">
-            <!-- 顶部输入栏 -->
-            <form class="top-bar" hx-post="/fetch" hx-target="#kpi-container" hx-indicator="#page-progress">
+            <!-- 顶栏 — 毛玻璃面板 -->
+            <form class="top-bar" hx-post="/fetch" hx-target="#kpi-container" hx-swap="innerHTML transition:true" hx-indicator="#page-progress">
                 <div class="input-group">
                     <label>股票代码</label>
                     <input type="text" name="stock_code" value="{{ stock_code }}" placeholder="000001.SZ">
@@ -107,9 +115,9 @@
             <!-- 财务数据加载状态（OOB 目标） -->
             <div id="fin-status"></div>
 
-            <!-- 主内容区 -->
+            <!-- 内容区 -->
             <div class="content-area">
-                <!-- Tabs -->
+                <!-- 标签页 -->
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab('analysis', this)">分析结果</button>
                     <button class="tab-btn" onclick="switchTab('charts', this)">图表</button>
@@ -124,7 +132,7 @@
                     </div>
                 </div>
 
-                <!-- Tab: 图表 -->
+                <!-- Tab: 图表 — 玻璃画框 -->
                 <div id="tab-charts" class="tab-panel">
                     <div class="chart-controls">
                         <button class="chart-type-btn active" onclick="loadChart('candlestick', this)">K线图</button>
@@ -139,14 +147,13 @@
                 <!-- Tab: AI 投研 -->
                 <div id="tab-ai" class="tab-panel">
                     <div class="ai-layout">
-                        <!-- AI 对话 -->
                         <div class="ai-subtabs" style="display:flex;gap:0;margin-bottom:8px;">
                             <button class="tab-btn active" onclick="switchAiTab('chat', this)">AI 智能分析</button>
                             <button class="tab-btn" onclick="switchAiTab('debate', this)">三方辩论</button>
                         </div>
 
                         <div id="ai-chat-panel" class="ai-layout" style="display:flex;">
-                            <form class="ai-input-row" hx-post="/ai/chat" hx-target="#ai-chat-result" hx-indicator="#page-progress">
+                            <form class="ai-input-row" hx-post="/ai/chat" hx-target="#ai-chat-result" hx-swap="innerHTML transition:true" hx-indicator="#page-progress">
                                 <input type="text" name="question" placeholder="输入分析问题，例如：这家公司的盈利能力如何？">
                                 <button type="submit" class="btn btn-accent">提问</button>
                             </form>
@@ -172,7 +179,7 @@
                 </div>
             </div>
 
-            <!-- 状态栏 -->
+            <!-- 状态栏 — 毛玻璃 -->
             <div class="status-bar">
                 <span class="status-dot"></span>
                 <span id="status-text">就绪</span>
@@ -184,7 +191,7 @@
         </main>
     </div>
 
-    <!-- Modal -->
+    <!-- 模态框 — 毛玻璃深度 4 -->
     <div id="token-modal" class="modal-overlay" style="display:none;">
         <div class="modal-container">
             <div class="modal-header">

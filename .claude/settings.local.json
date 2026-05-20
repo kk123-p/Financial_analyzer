@@ -11,7 +11,10 @@
       "Read(//c/Users/LK/.claude/skills/**)",
       "Bash(taskkill //F //IM python.exe)",
       "Bash(.venv/Scripts/python run_web.py)",
-      "Read(//c/Users/LK/AppData/Local/Temp/**)"
+      "Read(//c/Users/LK/AppData/Local/Temp/**)",
+      "Bash(find \"C:/Users/LK/Desktop/《Python大数据财务分析》源代码（读者版） - 2023版\" -type f -name \"*.py\" -o -name \"*.ipynb\" | sort)",
+      "Read(//c/Users/LK/Desktop/《Python大数据财务分析》源代码（读者版） - 2023版/**)",
+      "Bash(find \"C:/Users/LK/Desktop/《Python大数据财务分析》源代码（读者版） - 2023版\" -type f -name \"*.md\" -o -name \"*.txt\" -o -name \"*.docx\" | sort)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-<!-- KPI 卡片行 -->
+<!-- KPI 卡片行 — 精密玻璃 -->
 <div class="kpi-bar" id="kpi-bar">
     <div class="kpi-card">
         <div class="kpi-label">股票名称</div>
@@ -10,7 +10,7 @@
     </div>
     <div class="kpi-card">
         <div class="kpi-label">涨跌幅</div>
-        <div class="kpi-value" style="color:{% if kpis.price_change_up %}var(--success){% else %}var(--danger){% endif %}">
+        <div class="kpi-value" style="color:{% if kpis.price_change_up %}var(--positive){% else %}var(--negative){% endif %}">
             {{ kpis.price_change }}
         </div>
     </div>
@@ -42,15 +42,15 @@
 <!-- 财务数据加载状态 -->
 {% if fin_pending %}
 <div id="fin-status" class="fin-status-loading"
-     hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML"
-     style="padding:4px 16px;font-size:11px;color:var(--warning);">
+     hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML transition:true"
+     style="font-size:11px;">
     ◌ 正在后台加载财务报表数据...
     (已加载: {{ fin_loaded|join(', ') or '无' }})
 </div>
 {% endif %}
 
 <div hx-swap-oob="true" id="data-table-content"
-     hx-get="/fetch/data-table" hx-trigger="refreshDataTable from:body" hx-swap="outerHTML">
+     hx-get="/fetch/data-table" hx-trigger="refreshDataTable from:body" hx-swap="outerHTML transition:true">
     <table class="data-table">
         <thead><tr><th>数据类型</th><th>说明</th><th>状态</th></tr></thead>
         <tbody>
@@ -58,7 +58,7 @@
             <tr>
                 <td>{{ dtype }}</td>
                 <td style="color:var(--fg-muted);font-size:11px;">{{ dtype }}</td>
-                <td style="color:var(--success);">✓</td>
+                <td style="color:var(--positive);">✓</td>
             </tr>
             {% endfor %}
             {% if fin_pending %}
