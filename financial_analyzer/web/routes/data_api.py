@@ -22,6 +22,10 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 _sessions: dict[str, dict] = {}
 DEFAULT_SESSION_ID = "default"
 
+# 缓存配置，避免每次 /fetch 都读磁盘
+_cached_token_config: dict | None = None
+_token_config_loaded = False
+
 
 def _get_session(request: Request) -> dict:
     sid = request.cookies.get("fa_session", DEFAULT_SESSION_ID)
@@ -31,13 +35,17 @@ def _get_session(request: Request) -> dict:
 
 
 def _load_and_apply_token(adapter):
-    """从 config.json 加载 token 并应用到 adapter"""
+    """从 config.json 加载 token 并应用到 adapter（首次读磁盘后缓存）"""
+    global _cached_token_config, _token_config_loaded
     from financial_analyzer.config import CONFIG_FILE
     try:
-        if CONFIG_FILE.exists():
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            tushare_token = config.get("tushare", "")
+        if not _token_config_loaded:
+            _token_config_loaded = True
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    _cached_token_config = json.load(f)
+        if _cached_token_config:
+            tushare_token = _cached_token_config.get("tushare", "")
             if tushare_token and not adapter.tushare_pro:
                 adapter.set_tushare_token(tushare_token)
                 logger.info("已从配置加载 Tushare Token")
@@ -130,15 +138,21 @@ async def financials_status(request: Request):
 
     fin_types = DataService.FINANCIAL_DATA_TYPES
     loaded = [k for k in fin_types if k in data and data[k]]
-    pending = [k for k in fin_types if k not in data]
+    pending = [k for k in fin_types if k not in loaded]
 
     if not pending:
-        return HTMLResponse(f"""
-        <div id="fin-status" class="fin-status-done">
+        # 全部加载完成：更新状态 + 触发数据表格刷新
+        status_html = f"""
+        <div id="fin-status" class="fin-status-done"
+             hx-swap-oob="true">
             <span style="color:var(--success);">●</span> 财务数据加载完成
             ({', '.join(loaded) if loaded else '无'})
         </div>
-        """)
+        """
+        from fastapi.responses import HTMLResponse
+        resp = HTMLResponse(content=status_html)
+        resp.headers["HX-Trigger"] = "refreshDataTable"
+        return resp
     else:
         return HTMLResponse(f"""
         <div id="fin-status" class="fin-status-loading"
@@ -149,12 +163,49 @@ async def financials_status(request: Request):
         """)
 
 
+@router.get("/data-table")
+async def data_table(request: Request):
+    """返回最新的数据表格（供 htmx 刷新）"""
+    session = _get_session(request)
+    data = session.get("data", {})
+
+    all_data_types = DataService.BASIC_DATA_TYPES + DataService.FINANCIAL_DATA_TYPES
+    loaded = [k for k in all_data_types if k in data and data[k]]
+    pending = [k for k in all_data_types if k not in loaded]
+
+    rows = []
+    for dtype in loaded:
+        rows.append(f"""
+        <tr>
+            <td>{dtype}</td>
+            <td style="color:var(--fg-muted);font-size:11px;">{dtype}</td>
+            <td style="color:var(--success);">✓</td>
+        </tr>""")
+
+    if pending:
+        rows.append(f"""
+        <tr><td colspan="3" style="color:var(--warning);text-align:center;">
+            ◌ 另有 {len(pending)} 项数据仍在等待加载...
+        </td></tr>""")
+
+    return HTMLResponse(f"""
+    <div id="data-table-content"
+         hx-get="/fetch/data-table" hx-trigger="refreshDataTable from:body" hx-swap="outerHTML">
+        <table class="data-table">
+            <thead><tr><th>数据类型</th><th>说明</th><th>状态</th></tr></thead>
+            <tbody>{"".join(rows)}</tbody>
+        </table>
+    </div>
+    """)
+
+
 def _diagnose_error(adapter, stock_code: str) -> str:
+    from html import escape
     available = adapter.get_available_sources()
     tried = adapter.active_source
     has_token = bool(adapter.tushare_pro)
     lines = [
-        f"无法获取 {stock_code} 的数据",
+        f"无法获取 {escape(stock_code)} 的数据",
         f"尝试数据源: {tried.upper()} | 可用: {', '.join(available)}",
         f"Tushare Token: {'已配置' if has_token else '未配置'}",
     ]
@@ -200,7 +251,8 @@ async def fetch_status(request: Request):
 
 
 def _error_response(msg: str):
+    from html import escape
     return HTMLResponse(
-        content=f'<div class="error-toast" id="fetch-status">{msg}</div>',
+        content=f'<div class="error-toast" id="fetch-status">{escape(msg)}</div>',
         status_code=200,
     )

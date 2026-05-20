@@ -30,6 +30,7 @@
                         <div class="nav-item-row" data-key="{{ key }}"
                              hx-get="/analyze/{{ key }}"
                              hx-target="#result-content"
+                             hx-swap="outerHTML"
                              hx-indicator="#page-progress"
                              onclick="activateNav(this)">
                             <div class="nav-indicator"></div>
@@ -50,11 +51,11 @@
                     <span class="dot"></span> Token 配置
                 </div>
                 <div class="sidebar-footer-btn"
-                     hx-get="/settings/tokens"
+                     hx-get="/fetch/status"
                      hx-target="#modal-body"
                      hx-indicator="#page-progress"
                      onclick="openModal('token-modal')">
-                    <span class="dot"></span> 数据源管理
+                    <span class="dot"></span> 数据源状态
                 </div>
                 <div class="sidebar-footer-btn" onclick="alert('缓存管理: ' + '缓存目录 ~/.financialanalyzer/cache/')">
                     <span class="dot"></span> 缓存设置
@@ -102,6 +103,9 @@
             <div id="kpi-container">
                 {% include "partials/kpi_cards.html" %}
             </div>
+
+            <!-- 财务数据加载状态（OOB 目标） -->
+            <div id="fin-status"></div>
 
             <!-- 主内容区 -->
             <div class="content-area">

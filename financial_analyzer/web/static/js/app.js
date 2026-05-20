@@ -107,8 +107,23 @@ function loadChartImg(chartType, btn) {
         });
 }
 
-// ---- AI 辩论 WebSocket ----
+// ---- AI 辩论 WebSocket (3轮完整辩论) ----
 let debateWs = null;
+
+// 分析师显示名与颜色
+const ANALYST_DISPLAY = {
+    value:   { name: '价值分析师', icon: '💰', color: 'var(--accent)' },
+    growth:  { name: '成长分析师', icon: '🚀', color: 'var(--success)' },
+    risk:    { name: '风控分析师', icon: '🛡️', color: 'var(--warning)' },
+    consensus: { name: '综合共识', icon: '📊', color: '#BC8CFF' },
+};
+
+// 轮次显示名
+const ROUND_NAMES = {
+    round1_start: '第1轮：独立陈述',
+    round2_start: '第2轮：交叉质询',
+    round3_start: '第3轮：共识与情景概率',
+};
 
 function startDebate() {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
@@ -117,18 +132,123 @@ function startDebate() {
         return;
     }
 
+    if (debateWs && debateWs.readyState === WebSocket.OPEN) {
+        debateWs.close();
+    }
+
     const stream = document.getElementById('debate-stream');
     stream.innerHTML = '<p style="color:var(--accent)">正在连接辩论引擎...</p>';
+    stream._roleEls = {};     // 每个角色的当前文本段落
+    stream._currentRound = '';
 
-    // 使用轮询方式替代 WebSocket（更简单可靠）
-    stream.innerHTML += '<p style="color:var(--fg-muted)">提示：辩论功能需配置 DeepSeek API Key</p>';
-    stream.innerHTML += '<p style="color:var(--fg-secondary)">请通过左侧「Token 配置」设置 API Key 后重试</p>';
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${location.host}/ai/debate`;
+
+    try {
+        debateWs = new WebSocket(wsUrl);
+
+        debateWs.onopen = function() {
+            stream.innerHTML = '<p style="color:var(--accent)">已连接，正在准备辩论数据...</p>';
+            debateWs.send(JSON.stringify({ stock_code: stockCode }));
+        };
+
+        debateWs.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'meta') {
+                // 轮次切换
+                if (msg.content in ROUND_NAMES) {
+                    stream._currentRound = msg.content;
+                    const roundDiv = document.createElement('div');
+                    roundDiv.className = 'debate-round-header';
+                    roundDiv.textContent = ROUND_NAMES[msg.content];
+                    stream.appendChild(roundDiv);
+                    stream.scrollTop = stream.scrollHeight;
+                }
+                // 分析师开始
+                else if (msg.content.startsWith('analyst_') && msg.content.endsWith('_start')) {
+                    const roleKey = msg.content.replace('analyst_', '').replace('_start', '');
+                    const analyst = ANALYST_DISPLAY[roleKey];
+                    if (analyst && !stream._roleEls[roleKey]) {
+                        const header = document.createElement('div');
+                        header.className = 'debate-analyst-header';
+                        header.innerHTML = `<span>${analyst.icon}</span> ${analyst.name}`;
+                        header.style.color = analyst.color;
+                        stream.appendChild(header);
+                        stream._roleEls[roleKey] = document.createElement('div');
+                        stream._roleEls[roleKey].className = 'debate-analyst-text';
+                        stream.appendChild(stream._roleEls[roleKey]);
+                        stream.scrollTop = stream.scrollHeight;
+                    }
+                }
+                else if (msg.content === 'debate_complete') {
+                    const doneEl = document.createElement('p');
+                    doneEl.style.cssText = 'color:var(--success);margin-top:12px;';
+                    doneEl.textContent = '✅ 辩论完成';
+                    stream.appendChild(doneEl);
+                }
+                else if (msg.content.startsWith('error:')) {
+                    stream.insertAdjacentHTML('beforeend', `<p style="color:var(--danger);">⚠️ ${msg.content.substring(6)}</p>`);
+                }
+            }
+            else if (msg.type === 'chunk') {
+                // 确定角色元素
+                let roleKey = msg.role;
+                if (roleKey === 'consensus') {
+                    if (!stream._roleEls['consensus']) {
+                        const header = document.createElement('div');
+                        header.className = 'debate-analyst-header';
+                        const a = ANALYST_DISPLAY.consensus;
+                        header.innerHTML = `<span>${a.icon}</span> ${a.name}`;
+                        header.style.color = a.color;
+                        stream.appendChild(header);
+                        stream._roleEls['consensus'] = document.createElement('div');
+                        stream._roleEls['consensus'].className = 'debate-analyst-text';
+                        stream.appendChild(stream._roleEls['consensus']);
+                    }
+                    stream._roleEls['consensus'].textContent += msg.content;
+                } else if (stream._roleEls[roleKey]) {
+                    stream._roleEls[roleKey].textContent += msg.content;
+                } else {
+                    // 回退：直接追加
+                    if (!stream._fallbackEl) {
+                        stream._fallbackEl = document.createElement('p');
+                        stream.appendChild(stream._fallbackEl);
+                    }
+                    stream._fallbackEl.textContent += msg.content;
+                }
+                stream.scrollTop = stream.scrollHeight;
+            }
+            else if (msg.type === 'done') {
+                stream._roleEls = {};
+                stream.insertAdjacentHTML('beforeend', '<p style="color:var(--success);margin-top:8px;">--- 辩论结束 ---</p>');
+                stream.scrollTop = stream.scrollHeight;
+            }
+            else if (msg.type === 'status') {
+                stream.insertAdjacentHTML('beforeend', `<p style="color:var(--fg-muted);">${msg.content}</p>`);
+            }
+            else if (msg.type === 'error') {
+                stream.insertAdjacentHTML('beforeend', `<p style="color:var(--danger);">⚠️ ${msg.content}</p>`);
+            }
+        };
+
+        debateWs.onerror = function() {
+            stream.insertAdjacentHTML('beforeend', '<p style="color:var(--danger);">⚠️ WebSocket 连接失败，请检查网络或API Key配置</p>');
+        };
+
+        debateWs.onclose = function() {
+            stream._roleEls = {};
+            stream._fallbackEl = null;
+        };
+    } catch (e) {
+        stream.innerHTML = `<p style="color:var(--danger);">⚠️ 连接失败: ${e.message}</p>`;
+    }
 }
 
 // ---- 导出 ----
 function exportData(format) {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || 'data';
-    window.open('/export/' + format + '?analysis_type=' + encodeURIComponent(stockCode), '_blank');
+    window.open('/export/' + format + '?stock_code=' + encodeURIComponent(stockCode), '_blank');
 }
 
 // ---- 时钟 ----

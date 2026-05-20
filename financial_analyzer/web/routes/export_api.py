@@ -20,13 +20,13 @@ router = APIRouter(prefix="/export", tags=["export"])
 async def export_data(
     request: Request,
     format: str,
-    analysis_type: str = Query(""),
+    stock_code: str = Query(""),
 ):
     session = _get_session(request)
     data_raw = session.get("data", {})
-    stock_code = session.get("stock_code", "")
+    sc = stock_code or session.get("stock_code", "")
 
-    if not data_raw or not stock_code:
+    if not data_raw or not sc:
         from fastapi.responses import HTMLResponse
         return HTMLResponse("<p>无可导出数据</p>", status_code=400)
 
@@ -34,7 +34,7 @@ async def export_data(
 
     suffix_map = {"csv": ".csv", "xlsx": ".xlsx", "json": ".json"}
     suffix = suffix_map.get(format, f".{format}")
-    filename = f"{stock_code}_{analysis_type or 'data'}{suffix}"
+    filename = f"{sc}_data{suffix}"
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = Path(tmp.name)

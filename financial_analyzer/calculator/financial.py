@@ -100,8 +100,8 @@ class FinancialCalculator:
         df["MA20"] = df["close"].rolling(window=MA_LONG).mean()
         df["MA60"] = df["close"].rolling(window=MA_VERY_LONG).mean()
 
-        # RSI
-        delta = df["close"].diff()
+        # RSI — 数据按降序排列（最新在前），diff() 符号反转，需取负修正
+        delta = -df["close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=RSI_PERIOD).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=RSI_PERIOD).mean()
         rs = gain / loss

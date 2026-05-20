@@ -87,21 +87,30 @@ class MarketAnalyzer(BaseAnalyzer):
         ma10 = close_prices.rolling(window=MA_MEDIUM).mean()
         ma20 = close_prices.rolling(window=MA_LONG).mean()
 
-        result += f"  5日均线: {ma5.iloc[0]:.2f}\n"
-        result += f"  10日均线: {ma10.iloc[0]:.2f}\n"
-        result += f"  20日均线: {ma20.iloc[0]:.2f}\n\n"
+        import pandas as pd
+        ma5_val = ma5.iloc[0]
+        ma10_val = ma10.iloc[0]
+        ma20_val = ma20.iloc[0]
+
+        result += f"  5日均线: {ma5_val:.2f}\n" if pd.notna(ma5_val) else "  5日均线: 数据不足\n"
+        result += f"  10日均线: {ma10_val:.2f}\n" if pd.notna(ma10_val) else "  10日均线: 数据不足\n"
+        result += f"  20日均线: {ma20_val:.2f}\n\n" if pd.notna(ma20_val) else "  20日均线: 数据不足\n\n"
 
         current_price = close_prices.iloc[0]
-        if current_price > ma5.iloc[0] > ma10.iloc[0] > ma20.iloc[0]:
+        mas_valid = pd.notna(ma5_val) and pd.notna(ma10_val) and pd.notna(ma20_val)
+        if mas_valid and current_price > ma5_val > ma10_val > ma20_val:
             result += "  📈 趋势判断: 强势上涨趋势\n"
-        elif current_price < ma5.iloc[0] < ma10.iloc[0] < ma20.iloc[0]:
+        elif mas_valid and current_price < ma5_val < ma10_val < ma20_val:
             result += "  📉 趋势判断: 强势下跌趋势\n"
-        elif ma5.iloc[0] > ma10.iloc[0] > ma20.iloc[0]:
+        elif mas_valid and ma5_val > ma10_val > ma20_val:
             result += "  ↗️  趋势判断: 多头排列\n"
-        elif ma5.iloc[0] < ma10.iloc[0] < ma20.iloc[0]:
+        elif mas_valid and ma5_val < ma10_val < ma20_val:
             result += "  ↘️  趋势判断: 空头排列\n"
-        else:
+        elif mas_valid:
             result += "  ↔️  趋势判断: 震荡整理\n"
+        else:
+            remaining = MA_LONG - len(close_prices.dropna())
+            result += f"  ↔️  趋势判断: 数据不足（需要至少{MA_LONG}个交易日，当前缺少~{max(0, remaining)}个）\n"
 
         # 支撑阻力
         result += "\n" + RF.section("支撑阻力分析")

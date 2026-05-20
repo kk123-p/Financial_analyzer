@@ -2,6 +2,8 @@
 import asyncio
 import json
 import logging
+import queue
+import threading
 
 import pandas as pd
 from fastapi import APIRouter, Request, Form, WebSocket, WebSocketDisconnect
@@ -10,6 +12,27 @@ from .data_api import _get_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+# 队列哨兵类型，避免字符串魔法值
+class _Sentinel:
+    pass
+QUEUE_DONE = _Sentinel()
+
+# 缓存配置，避免每次 WebSocket 连接都读磁盘
+_cached_ai_config: dict | None = None
+_cache_lock = threading.Lock()
+
+
+def _get_ai_config() -> dict:
+    global _cached_ai_config
+    if _cached_ai_config is not None:
+        return _cached_ai_config
+    with _cache_lock:
+        if _cached_ai_config is not None:
+            return _cached_ai_config
+        from financial_analyzer.deepseek.prompts import _load_config
+        _cached_ai_config = _load_config()
+        return _cached_ai_config
 
 
 @router.post("/chat")
@@ -68,11 +91,11 @@ async def ai_chat(
 
 @router.websocket("/debate")
 async def ai_debate(websocket: WebSocket):
-    """AI 三方辩论 — WebSocket 流式推送"""
+    """AI 三方辩论 — 完整3轮辩论，复用桌面版 DebateEngine"""
     await websocket.accept()
+    engine = None
 
     try:
-        # 等待客户端发送初始参数
         init_data = await websocket.receive_text()
         params = json.loads(init_data)
         stock_code = params.get("stock_code", "")
@@ -82,16 +105,10 @@ async def ai_debate(websocket: WebSocket):
             await websocket.close()
             return
 
-        # 这里复用现有的同步 DebateEngine + DeepSeek stream client
-        # 简化版：收集数据 + 使用 DeepSeek stream client 流式推送
+        from financial_analyzer.deepseek.client import DeepSeekConfig
+        from financial_analyzer.ai.debate_engine import DebateEngine
 
-        from financial_analyzer.deepseek.client import DeepSeekStreamClient, DeepSeekConfig
-        from financial_analyzer.deepseek.prompts import (
-            _load_config, get_debate_system_prompt,
-            build_debate_round1,
-        )
-
-        ai_config = _load_config()
+        ai_config = _get_ai_config()
         api_key = ai_config.get("api_key", "")
         if not api_key:
             await websocket.send_text(json.dumps({"type": "error", "content": "请先配置 DeepSeek API Key"}))
@@ -99,45 +116,68 @@ async def ai_debate(websocket: WebSocket):
             return
 
         config = DeepSeekConfig(api_key=api_key)
-        client = DeepSeekStreamClient(config)
+        engine = DebateEngine(config=config)
 
-        # 构建分析报告
+        # 准备分析数据
         session = _get_session_for_ws(stock_code)
         if session and session.get("data"):
-            from financial_analyzer.ai.report_builder import ReportBuilder
             data = {k: pd.DataFrame(v) for k, v in session["data"].items()}
-            report = ReportBuilder.build(data, stock_code)
-            report_text = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+            prepare_result = engine.prepare(data, stock_code)
+            company_name = prepare_result.get("report", {}).get("company_snapshot", {}).get("name", stock_code)
         else:
-            report_text = f"股票代码: {stock_code}\n(无法获取完整财务数据)"
+            await websocket.send_text(json.dumps({"type": "status",
+                "role": "system", "content": "财务数据不足，将使用基本股票信息进行辩论"}))
+            company_name = stock_code
+            engine.state.report_text = f"股票代码: {stock_code}\n(无详细财务数据)"
 
-        system_prompt = get_debate_system_prompt()
-        prompt = build_debate_round1(report_text, stock_code, stock_code, "value")
+        msg_queue: queue.Queue = queue.Queue()
+        loop = asyncio.get_event_loop()
 
-        await websocket.send_text(json.dumps({"type": "status", "content": "辩论开始..."}))
+        def debate_callback(role: str, chunk: str, done: bool):
+            msg_queue.put((role, chunk, done))
 
-        # 流式发送
-        def stream_callback(chunk: str):
-            """回调在线程中运行，通过 asyncio 转发到 WebSocket"""
-            pass  # 由 client 内部处理
+        def on_debate_complete(state):
+            msg_queue.put(QUEUE_DONE)
 
-        # 使用生成器方式流式输出
-        try:
-            full_text = ""
-            for chunk in client.chat_stream(prompt, system_prompt):
-                full_text += chunk
+        engine.start_debate(
+            company_name=company_name,
+            stock_code=stock_code,
+            callback=debate_callback,
+            on_complete=on_debate_complete,
+        )
+
+        while True:
+            msg = await loop.run_in_executor(None, msg_queue.get)
+            if msg is QUEUE_DONE:
+                await websocket.send_text(json.dumps({"type": "done", "content": ""}))
+                break
+
+            role, content, done = msg
+
+            if role == "_meta":
+                await websocket.send_text(json.dumps({
+                    "type": "meta",
+                    "content": content,
+                    "info": done,
+                }))
+            else:
                 await websocket.send_text(json.dumps({
                     "type": "chunk",
-                    "content": chunk,
+                    "role": role,
+                    "content": content,
+                    "done": done,
                 }))
-                await asyncio.sleep(0.01)
-        except Exception as e:
-            logger.error(f"Stream error: {e}")
-
-        await websocket.send_text(json.dumps({"type": "done", "content": ""}))
+                # 仅当队列为空时才让出事件循环，避免每chunk 5ms的累积延迟
+                if msg_queue.empty():
+                    await asyncio.sleep(0)
 
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
+        if engine:
+            try:
+                engine.stop()
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"Debate error: {e}", exc_info=True)
         try:
@@ -152,24 +192,31 @@ async def ai_debate(websocket: WebSocket):
 
 
 def _get_session_for_ws(stock_code: str) -> dict | None:
-    """WebSocket 无 HTTP request，通过默认 session 获取"""
+    """WebSocket 无 HTTP request，查找匹配 stock_code 的 session"""
     from .data_api import _sessions
+    # 优先查找 stock_code 匹配的 session
+    for sid, sess in _sessions.items():
+        if sess.get("stock_code") == stock_code:
+            return sess
+    # 回退到默认 session
     return _sessions.get("default", None)
 
 
 def _ai_response(content: str):
+    from html import escape
     from fastapi.responses import HTMLResponse
     return HTMLResponse(f"""
     <div class="ai-response" id="ai-result">
-        <div class="ai-content">{content}</div>
+        <div class="ai-content">{escape(content)}</div>
     </div>
     """)
 
 
 def _ai_error(msg: str):
+    from html import escape
     from fastapi.responses import HTMLResponse
     return HTMLResponse(f"""
     <div class="ai-error" id="ai-result">
-        <p>⚠️ {msg}</p>
+        <p>⚠️ {escape(msg)}</p>
     </div>
     """)

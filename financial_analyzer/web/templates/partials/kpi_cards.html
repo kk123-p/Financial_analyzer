@@ -31,14 +31,12 @@
 {% if has_data %}
 <div hx-swap-oob="true" id="status-text">数据获取完成 — {{ stock_code }}</div>
 <div hx-swap-oob="true" id="source-label">{{ kpis.source }}</div>
-<div hx-swap-oob="true" id="result-content">
-    <div class="result-empty">
+<div hx-swap-oob="true" id="result-content" class="result-empty">
         数据已就绪，请从左侧导航选择分析项目<br>
         <span style="font-size:11px;color:var(--fg-muted);">
             已加载 {{ data_types|length }} 种数据:
             {{ data_types[:4]|join(', ') }}{% if data_types|length > 4 %} 等{% endif %}
         </span>
-    </div>
 </div>
 
 <!-- 财务数据加载状态 -->
@@ -51,7 +49,8 @@
 </div>
 {% endif %}
 
-<div hx-swap-oob="true" id="data-table-content">
+<div hx-swap-oob="true" id="data-table-content"
+     hx-get="/fetch/data-table" hx-trigger="refreshDataTable from:body" hx-swap="outerHTML">
     <table class="data-table">
         <thead><tr><th>数据类型</th><th>说明</th><th>状态</th></tr></thead>
         <tbody>
@@ -62,13 +61,11 @@
                 <td style="color:var(--success);">✓</td>
             </tr>
             {% endfor %}
-            {% for dtype in fin_pending %}
-            <tr>
-                <td>{{ dtype }}</td>
-                <td style="color:var(--fg-muted);font-size:11px;">{{ dtype }}</td>
-                <td style="color:var(--warning);">◌ 加载中</td>
-            </tr>
-            {% endfor %}
+            {% if fin_pending %}
+            <tr><td colspan="3" style="color:var(--warning);text-align:center;">
+                ◌ 另有 {{ fin_pending|length }} 项财务数据正在后台加载中...
+            </td></tr>
+            {% endif %}
         </tbody>
     </table>
 </div>

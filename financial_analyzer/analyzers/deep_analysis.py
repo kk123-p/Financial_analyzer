@@ -747,7 +747,7 @@ class DeepAnalyzer(BaseAnalyzer):
         # 各维度得分
         result += RF.section("各维度得分")
         for factor, f_score in moat.get("factors", {}).items():
-            bar = "█" * (f_score // 5) + "░" * ((25 - f_score) // 5)
+            bar = "█" * (int(f_score) // 5) + "░" * ((25 - int(f_score)) // 5)
             result += f"  {factor:<16} {bar} {f_score}/25\n"
 
         # 详细诊断

@@ -48,8 +48,11 @@ class AnalysisService:
 def _make_analyzer(cls, method_name: str):
     """工厂函数: 创建分析器实例并调用指定方法"""
     def runner(data: dict, stock_code: str, adapter, cache) -> str:
-        # 确定实例化参数
-        if issubclass(cls, BaseAnalyzer):
+        try:
+            is_base = issubclass(cls, BaseAnalyzer)
+        except TypeError:
+            is_base = False
+        if is_base:
             analyzer = cls(data, stock_code, adapter, cache)
         else:
             analyzer = cls(data, stock_code)
@@ -60,44 +63,79 @@ def _make_analyzer(cls, method_name: str):
 def _run_ratio_analyzer(data: dict, stock_code: str, adapter, cache) -> str:
     fa = FinancialRatioAnalyzer(data, stock_code)
     result = fa.analyze()
-    # 格式化 dict 为文本
     lines = ["═══════════════════ 财务比率分析 ═══════════════════", ""]
+
+    def _flatten_ratio_dict(d: dict, indent: int = 0) -> None:
+        """递归展平嵌套的比率字典，类似桌面UI的 _format_ratio_table"""
+        prefix = "  " * indent + "  "
+        # 收集所有指标项：先展平子字典（如"短期偿债"、"长期偿债"、"指标"、"杜邦拆解"）
+        for k, v in d.items():
+            if k in ("评级",):
+                continue
+            if isinstance(v, dict):
+                lines.append(f"{prefix}▸ {k}:")
+                _flatten_sub_items(v, indent + 1)
+            elif isinstance(v, (int, float)):
+                lines.append(f"{prefix}{k}: {v:.2f}" if isinstance(v, float) and v == int(v) is False else f"{prefix}{k}: {v}")
+            else:
+                lines.append(f"{prefix}{k}: {v}")
+
+    def _flatten_sub_items(d: dict, indent: int) -> None:
+        """展平子指标项"""
+        prefix = "  " * indent + "    "
+        for k, v in d.items():
+            if k in ("评级", "ROE验证"):
+                continue
+            if isinstance(v, dict):
+                _flatten_sub_items(v, indent)
+            elif isinstance(v, float):
+                # 格式化浮点数，保留合理精度
+                if abs(v) < 0.01:
+                    lines.append(f"{prefix}{k}: {v:.4f}")
+                elif abs(v) < 1:
+                    lines.append(f"{prefix}{k}: {v:.3f}")
+                else:
+                    lines.append(f"{prefix}{k}: {v:.2f}")
+            else:
+                lines.append(f"{prefix}{k}: {v}")
+
     for category, ratios in result.items():
         if category == "综合评分":
             lines.append(f"\n▌ {category}")
-            lines.append(f"  总得分: {ratios.get('总分', 'N/A')}")
-            lines.append(f"  评级: {ratios.get('评级', 'N/A')}")
+            if isinstance(ratios, dict):
+                lines.append(f"  总得分: {ratios.get('总分', 'N/A')} / {ratios.get('满分', 'N/A')}")
+                pct = ratios.get("得分率", "N/A")
+                lines.append(f"  得分率: {pct}%" if pct != "N/A" else f"  得分率: {pct}")
+                sub = ratios.get("各项", {})
+                if isinstance(sub, dict):
+                    for k, v in sub.items():
+                        lines.append(f"    {k}: {v}")
+                lines.append(f"  综合评级: {ratios.get('评级', 'N/A')}")
         else:
             lines.append(f"\n▌ {category}")
             if isinstance(ratios, dict):
-                for k, v in ratios.items():
-                    if k != "评级":
-                        lines.append(f"  {k}: {v}")
+                _flatten_ratio_dict(ratios)
                 if "评级" in ratios:
                     lines.append(f"  综合评级: {ratios['评级']}")
+
     lines.append("\n═══════════════════════════════════════════════════")
     return "\n".join(lines)
 
 
-def _run_phase2(data: dict, stock_code: str, adapter, cache) -> str:
-    pa = Phase2Analyzer(data, stock_code, adapter)
-    result = pa.analyze()
-    lines = ["═══════════════════ 估值与质量分析 ═══════════════════", ""]
-    for section, content in result.items():
-        lines.append(f"\n▌ {section}")
-        lines.append(str(content))
-    lines.append("\n═══════════════════════════════════════════════════")
-    return "\n".join(lines)
+def _make_phase2_runner(method_name: str):
+    """工厂: 创建 Phase2Analyzer 并调用指定方法"""
+    def runner(data: dict, stock_code: str, adapter, cache) -> str:
+        pa = Phase2Analyzer(data, stock_code, adapter)
+        return getattr(pa, method_name)()
+    return runner
 
 
-def _run_audit_asset(data: dict, stock_code: str, adapter, cache) -> str:
-    analyzer = AuditAnalyzer(data, stock_code, adapter, cache)
-    return analyzer.analyze_audit()
-
-
-def _run_audit_full(data: dict, stock_code: str, adapter, cache) -> str:
-    analyzer = AuditAnalyzer(data, stock_code, adapter, cache)
-    return analyzer.analyze_audit()
+def _make_audit_runner(categories: list = None):
+    """工厂: 创建 AuditAnalyzer 并调用 analyze_audit，可选按维度过滤"""
+    def runner(data: dict, stock_code: str, adapter, cache) -> str:
+        analyzer = AuditAnalyzer(data, stock_code, adapter, cache)
+        return analyzer.analyze_audit(categories=categories)
+    return runner
 
 
 _ANALYSIS_MAP: dict[str, Any] = {
@@ -120,11 +158,11 @@ _ANALYSIS_MAP: dict[str, Any] = {
     # 财务比率
     "ratio_analysis": _run_ratio_analyzer,
     # 财务审计
-    "audit_asset": _run_audit_asset,
-    "audit_profit": _run_audit_asset,
-    "audit_cashflow": _run_audit_asset,
-    "audit_cross": _run_audit_asset,
-    "audit_full": _run_audit_full,
+    "audit_asset": _make_audit_runner(["asset"]),
+    "audit_profit": _make_audit_runner(["profit"]),
+    "audit_cashflow": _make_audit_runner(["cashflow"]),
+    "audit_cross": _make_audit_runner(["cross"]),
+    "audit_full": _make_audit_runner(),
     # 深度分析
     "dupont": _make_analyzer(DeepAnalyzer, "analyze_dupont"),
     "zscore": _make_analyzer(DeepAnalyzer, "analyze_zscore"),
@@ -135,10 +173,12 @@ _ANALYSIS_MAP: dict[str, Any] = {
     "moat": _make_analyzer(DeepAnalyzer, "analyze_moat"),
     "deep_comprehensive": _make_analyzer(DeepAnalyzer, "generate_comprehensive_report"),
     # 估值与质量
-    "peer": _run_phase2,
-    "valuation": _run_phase2,
-    "shareholder": _run_phase2,
-    "quality": _run_phase2,
+    "pe_valuation": _make_phase2_runner("valuation_analysis"),
+    "pe_percentile": _make_phase2_runner("pe_percentile_analysis"),
+    "pb_roe": _make_phase2_runner("pb_roe_analysis"),
+    "ev_ebitda": _make_phase2_runner("ev_ebitda_analysis"),
+    "shareholder_return": _make_phase2_runner("shareholder_return_analysis"),
+    "quality": _make_phase2_runner("financial_quality_analysis"),
 }
 
 
@@ -186,9 +226,11 @@ def get_analysis_list() -> list[dict]:
             ("deep_comprehensive", "综合深度报告"),
         ]),
         ("估值与质量", [
-            ("peer", "行业对比"),
-            ("valuation", "相对估值"),
-            ("shareholder", "股东回报"),
+            ("pe_valuation", "PE估值分析"),
+            ("pe_percentile", "PE历史分位"),
+            ("pb_roe", "PB-ROE模型"),
+            ("ev_ebitda", "EV/EBITDA"),
+            ("shareholder_return", "股东回报"),
             ("quality", "财报质量"),
         ]),
     ]

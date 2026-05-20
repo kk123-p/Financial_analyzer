@@ -19,6 +19,9 @@ import unicodedata
 
 logger = get_logger(__name__)
 
+# 信号等级排序权重（模块级常量，避免 lambda 内每比较一次就分配 dict）
+_LEVEL_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
+
 
 def _cjk_ljust(s, width):
     s = str(s)
@@ -149,8 +152,15 @@ class AuditAnalyzer(BaseAnalyzer):
 
         return ctx
 
-    def analyze_audit(self) -> str:
-        """生成财务异常排查报告"""
+    def analyze_audit(self, categories: list = None) -> str:
+        """生成财务异常排查报告
+
+        Args:
+            categories: 可选，限定显示的维度列表。
+                        例如 ['asset'] 只显示资产端信号。
+                        None 表示显示全部维度。
+        """
+        category_filter = set(categories) if categories else None
         result = RF.header("财务异常排查报告")
 
         basic_info = self._get_basic_info()
@@ -207,11 +217,13 @@ class AuditAnalyzer(BaseAnalyzer):
         # 各维度得分
         result += RF.section("各维度评分")
         for cat in SignalCategory:
+            if category_filter and cat.value not in category_filter:
+                continue
             dim = audit.dimensions.get(cat.value)
             if dim:
                 icon = CATEGORY_ICONS.get(cat, "📊")
                 name = CATEGORY_NAMES.get(cat, cat.value)
-                s = dim.score
+                s = round(dim.score)
                 bar = "█" * (s // 10) + "░" * ((100 - s) // 10)
                 sig_count = len(dim.signals)
                 result += f"  {icon} {name:<12} {bar} {s:>5.0f}/100"
@@ -221,7 +233,7 @@ class AuditAnalyzer(BaseAnalyzer):
         result += "\n"
 
         # ===== 雷达图数据预览 =====
-        if audit.radar_data:
+        if not category_filter and audit.radar_data:
             result += RF.section("📊 雷达图数据")
             for name, score in audit.radar_data.items():
                 result += f"  {name}: {score:.0f}\n"
@@ -229,28 +241,38 @@ class AuditAnalyzer(BaseAnalyzer):
 
         # ===== 详细信号 =====
         if audit.all_signals:
-            result += RF.section("⚠️ 异常信号详情")
+            filtered_signals = audit.all_signals
+            if category_filter:
+                filtered_signals = [s for s in audit.all_signals
+                                    if s.category.value in category_filter]
+            if filtered_signals:
+                result += RF.section("⚠️ 异常信号详情")
 
-            # 按等级排序：HIGH > MEDIUM > LOW
-            sorted_signals = sorted(audit.all_signals,
-                                    key=lambda s: {"high": 0, "medium": 1, "low": 2, "info": 3}.get(s.level.value, 9))
+                # 按等级排序：HIGH > MEDIUM > LOW
+                sorted_signals = sorted(filtered_signals,
+                                        key=lambda s: _LEVEL_ORDER.get(s.level.value, 9))
 
-            for i, sig in enumerate(sorted_signals, 1):
-                level_icon = LEVEL_ICONS.get(sig.level, "⚪")
-                cat_name = CATEGORY_NAMES.get(sig.category, "")
-                result += f"\n  {level_icon} [{i}] {sig.name}"
-                result += f"  ({cat_name})\n"
-                result += f"     当前值: {sig.value}\n"
-                result += f"     标  准: {sig.threshold}\n"
-                result += f"     结  论: {sig.conclusion}\n"
-                if sig.detail:
-                    result += f"     补  充: {sig.detail}\n"
+                for i, sig in enumerate(sorted_signals, 1):
+                    level_icon = LEVEL_ICONS.get(sig.level, "⚪")
+                    cat_name = CATEGORY_NAMES.get(sig.category, "")
+                    result += f"\n  {level_icon} [{i}] {sig.name}"
+                    result += f"  ({cat_name})\n"
+                    result += f"     当前值: {sig.value}\n"
+                    result += f"     标  准: {sig.threshold}\n"
+                    result += f"     结  论: {sig.conclusion}\n"
+                    if sig.detail:
+                        result += f"     补  充: {sig.detail}\n"
+            else:
+                result += RF.section("✅ 异常信号详情")
+                result += "  该维度未发现明显异常信号\n"
         else:
             result += RF.section("✅ 异常信号详情")
             result += "  未发现明显异常信号\n"
 
         # ===== 各维度详细数据 =====
         for cat in SignalCategory:
+            if category_filter and cat.value not in category_filter:
+                continue
             dim = audit.dimensions.get(cat.value)
             if dim and dim.details:
                 icon = CATEGORY_ICONS.get(cat, "📊")
