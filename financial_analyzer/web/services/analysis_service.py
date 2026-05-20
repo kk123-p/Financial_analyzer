@@ -15,6 +15,7 @@ from financial_analyzer.analyzers.audit import AuditAnalyzer
 from financial_analyzer.analyzers.phase2_analysis import Phase2Analyzer
 from financial_analyzer.analyzers.financial_ratios import FinancialRatioAnalyzer
 from financial_analyzer.analyzers.combined import CombinedAnalyzer
+from financial_analyzer.analyzers.comprehensive import ComprehensiveAnalyzer
 from financial_analyzer.data_sources.adapter import DataSourceAdapter
 from financial_analyzer.cache.manager import DataCacheManager
 
@@ -138,6 +139,73 @@ def _make_audit_runner(categories: list = None):
     return runner
 
 
+def _run_comprehensive(data: dict, stock_code: str, adapter, cache) -> str:
+    """综合投资分析 — 7维金字塔评分 + DCF估值"""
+    analyzer = ComprehensiveAnalyzer(data, stock_code, adapter, cache)
+    thesis = analyzer.analyze()
+
+    # 格式化为可读文本报告
+    lines = [
+        "═══════════════════ 综合投资分析报告 ═══════════════════",
+        "",
+        f"  公司: {thesis.company_name} ({thesis.stock_code})",
+        f"  行业: {thesis.industry}",
+        f"  当前股价: {thesis.current_price:.2f} 元",
+        "",
+        "▌ 综合评级",
+        f"  综合评分: {thesis.overall_score:.1f}/100  {thesis.star_rating}",
+        f"  投资评级: {thesis.overall_rating}",
+    ]
+
+    if thesis.upside_potential != 0:
+        direction = "上涨" if thesis.upside_potential > 0 else "下跌"
+        lines.append(f"  估测空间: {direction}{abs(thesis.upside_potential):.1f}%")
+    if thesis.fair_value_range[0] > 0:
+        lines.append(f"  公允价值: {thesis.fair_value_range[0]:.2f} - {thesis.fair_value_range[1]:.2f} 元")
+
+    lines.extend([
+        "",
+        "▌ 七维评分卡",
+        f"  L1 商业模式:    {'█' * int(thesis.business_score / 10) + '░' * (10 - int(thesis.business_score / 10))} {thesis.business_score:.0f}/100",
+        f"  L2 会计质量:    {'█' * int(thesis.accounting_quality_score / 10) + '░' * (10 - int(thesis.accounting_quality_score / 10))} {thesis.accounting_quality_score:.0f}/100",
+        f"  L3 财务健康:    {'█' * int(thesis.financial_health_score / 10) + '░' * (10 - int(thesis.financial_health_score / 10))} {thesis.financial_health_score:.0f}/100",
+        f"  L4 盈利能力:    {'█' * int(thesis.profitability_score / 10) + '░' * (10 - int(thesis.profitability_score / 10))} {thesis.profitability_score:.0f}/100",
+        f"  L5 成长质量:    {'█' * int(thesis.growth_quality_score / 10) + '░' * (10 - int(thesis.growth_quality_score / 10))} {thesis.growth_quality_score:.0f}/100",
+        f"  L6 估值吸引力:  {'█' * int(thesis.valuation_score / 10) + '░' * (10 - int(thesis.valuation_score / 10))} {thesis.valuation_score:.0f}/100",
+        "",
+        "▌ 核心指标",
+    ])
+
+    for key, val in thesis.key_metrics.items():
+        if isinstance(val, float):
+            lines.append(f"  {key}: {val:.2f}")
+        else:
+            lines.append(f"  {key}: {val}")
+
+    if thesis.strengths:
+        lines.append("\n▌ 投资亮点")
+        for s in thesis.strengths:
+            lines.append(f"  ✅ {s}")
+
+    if thesis.risks:
+        lines.append("\n▌ 风险提示")
+        for r in thesis.risks:
+            lines.append(f"  ⚠️ {r}")
+
+    if thesis.catalysts:
+        lines.append("\n▌ 催化剂")
+        for c in thesis.catalysts:
+            lines.append(f"  📈 {c}")
+
+    if thesis.radar_data:
+        lines.append("\n▌ 雷达图数据（可用于可视化）")
+        for dim, score in thesis.radar_data.items():
+            lines.append(f"  {dim}: {score:.0f}")
+
+    lines.append("\n═══════════════════════════════════════════════════")
+    return "\n".join(lines)
+
+
 _ANALYSIS_MAP: dict[str, Any] = {
     # 行情分析
     "market_overview": _make_analyzer(MarketAnalyzer, "analyze_market_overview"),
@@ -179,6 +247,8 @@ _ANALYSIS_MAP: dict[str, Any] = {
     "ev_ebitda": _make_phase2_runner("ev_ebitda_analysis"),
     "shareholder_return": _make_phase2_runner("shareholder_return_analysis"),
     "quality": _make_phase2_runner("financial_quality_analysis"),
+    # 综合投资分析 (v11 新)
+    "comprehensive": _run_comprehensive,
 }
 
 
@@ -232,5 +302,8 @@ def get_analysis_list() -> list[dict]:
             ("ev_ebitda", "EV/EBITDA"),
             ("shareholder_return", "股东回报"),
             ("quality", "财报质量"),
+        ]),
+        ("综合投资分析", [
+            ("comprehensive", "⭐⭐⭐ 综合投资评级"),
         ]),
     ]
