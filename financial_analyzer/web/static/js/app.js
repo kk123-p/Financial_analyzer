@@ -311,7 +311,11 @@ function sendMessage() {
         let _currentAssistantEl = null;
 
         chatWs.onopen = function() {
-            chatWs.send(JSON.stringify({ stock_code: stockCode }));
+            chatWs.send(JSON.stringify({
+                stock_code: stockCode,
+                template_name: currentTemplateName || '',
+                template: currentTemplateData || null,
+            }));
             setTimeout(function() {
                 if (chatWs.readyState === WebSocket.OPEN) {
                     chatWs.send(JSON.stringify({ type: 'message', content: message }));
@@ -711,4 +715,331 @@ function startDebateNew() {
         startBtn.textContent = '重试';
         debateRunning = false;
     }
+}
+
+
+// ============================================================================
+// Phase 2 UX: Prompt Lab + 数据/Prompt 查看
+// ============================================================================
+
+let currentTemplateName = '深度分析-默认';
+let currentTemplateData = null;
+let currentReportData = null;
+
+// ---- 模板选择器 ----
+
+async function loadTemplateList() {
+    try {
+        const resp = await fetch('/ai/prompts');
+        const templates = await resp.json();
+        const selector = document.getElementById('prompt-template-selector');
+        if (!selector) return;
+        selector.innerHTML = '';
+        templates.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            opt.textContent = (t.is_default ? '⭐ ' : '') + t.name + ' (' + t.mode + ')';
+            if (t.name === currentTemplateName) opt.selected = true;
+            selector.appendChild(opt);
+        });
+    } catch (e) {
+        console.error('加载模板列表失败:', e);
+    }
+}
+
+async function onTemplateChange() {
+    const selector = document.getElementById('prompt-template-selector');
+    const name = selector.value;
+    if (!name) return;
+    currentTemplateName = name;
+    try {
+        const resp = await fetch('/ai/prompts/' + encodeURIComponent(name));
+        if (resp.ok) {
+            currentTemplateData = await resp.json();
+        }
+    } catch (e) {
+        console.error('加载模板失败:', e);
+    }
+}
+
+// 页面加载时初始化
+(function initPromptLab() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTemplateList();
+            fetch('/ai/prompts/' + encodeURIComponent('深度分析-默认'))
+                .then(r => r.json())
+                .then(d => { currentTemplateData = d; })
+                .catch(() => {});
+        });
+    } else {
+        loadTemplateList();
+        fetch('/ai/prompts/' + encodeURIComponent('深度分析-默认'))
+            .then(r => r.json())
+            .then(d => { currentTemplateData = d; })
+            .catch(() => {});
+    }
+})();
+
+// ---- Prompt 编辑器 ----
+
+async function openPromptEditor(templateName) {
+    const name = templateName || currentTemplateName;
+    try {
+        const resp = await fetch('/ai/prompts/' + encodeURIComponent(name));
+        if (!resp.ok) { alert('模板加载失败'); return; }
+        const t = await resp.json();
+
+        document.getElementById('pe-name').value = t.name || '';
+        document.getElementById('pe-desc').value = t.description || '';
+        document.getElementById('pe-mode').value = t.mode || 'deep';
+        document.getElementById('pe-role').value = t.system_role || '';
+        document.getElementById('pe-harvard').value = (t.frameworks && t.frameworks.harvard) || '';
+        document.getElementById('pe-crosscheck').value = (t.frameworks && t.frameworks.crosscheck) || '';
+        document.getElementById('pe-lifecycle').value = (t.frameworks && t.frameworks.lifecycle) || '';
+        document.getElementById('pe-warnings').value = (t.frameworks && t.frameworks.warnings) || '';
+        document.getElementById('pe-output').value = t.output_format || '';
+
+        document.getElementById('prompt-editor-overlay').style.display = 'flex';
+        requestAnimationFrame(function() {
+            document.getElementById('prompt-editor-overlay').classList.add('modal--visible');
+        });
+    } catch (e) {
+        alert('打开编辑器失败: ' + e.message);
+    }
+}
+
+function closePromptEditor() {
+    const overlay = document.getElementById('prompt-editor-overlay');
+    overlay.classList.remove('modal--visible');
+    overlay.addEventListener('transitionend', function h() {
+        overlay.removeEventListener('transitionend', h);
+        overlay.style.display = 'none';
+    });
+}
+
+async function saveTemplate() {
+    const name = document.getElementById('pe-name').value.trim();
+    if (!name) { alert('请输入模板名称'); return; }
+
+    const data = {
+        name: name,
+        description: document.getElementById('pe-desc').value.trim(),
+        mode: document.getElementById('pe-mode').value,
+        system_role: document.getElementById('pe-role').value,
+        frameworks: {
+            harvard: document.getElementById('pe-harvard').value,
+            crosscheck: document.getElementById('pe-crosscheck').value,
+            lifecycle: document.getElementById('pe-lifecycle').value,
+            warnings: document.getElementById('pe-warnings').value,
+        },
+        output_format: document.getElementById('pe-output').value,
+    };
+
+    try {
+        const resp = await fetch('/ai/prompts/' + encodeURIComponent(name), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (resp.ok) {
+            currentTemplateName = name;
+            currentTemplateData = data;
+            closePromptEditor();
+            loadTemplateList();
+        } else {
+            const err = await resp.json();
+            alert('保存失败: ' + (err.error || '未知错误'));
+        }
+    } catch (e) {
+        alert('保存失败: ' + e.message);
+    }
+}
+
+async function exportTemplate() {
+    const name = document.getElementById('pe-name').value.trim();
+    if (!name) { alert('请先输入模板名称'); return; }
+    window.open('/ai/prompts/' + encodeURIComponent(name) + '/export', '_blank');
+}
+
+function importTemplate() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async function() {
+        const file = input.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const resp = await fetch('/ai/prompts/import', { method: 'POST', body: formData });
+            if (resp.ok) {
+                loadTemplateList();
+                alert('模板导入成功');
+            } else {
+                const err = await resp.json();
+                alert('导入失败: ' + (err.error || '未知错误'));
+            }
+        } catch (e) {
+            alert('导入失败: ' + e.message);
+        }
+    };
+    input.click();
+}
+
+async function duplicateTemplate() {
+    const name = document.getElementById('pe-name').value.trim();
+    const newName = prompt('新模板名称:', name + ' - 副本');
+    if (!newName) return;
+    try {
+        const resp = await fetch('/ai/prompts/' + encodeURIComponent(name) + '/duplicate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_name: newName }),
+        });
+        if (resp.ok) {
+            loadTemplateList();
+            alert('模板已复制为: ' + newName);
+        }
+    } catch (e) {
+        alert('复制失败: ' + e.message);
+    }
+}
+
+// ---- 数据报告查看器 ----
+
+async function openDataViewer() {
+    document.getElementById('data-viewer-overlay').style.display = 'flex';
+    requestAnimationFrame(function() {
+        document.getElementById('data-viewer-overlay').classList.add('modal--visible');
+    });
+
+    const body = document.getElementById('data-viewer-body');
+    body.innerHTML = '<p style="color:var(--text-muted);">加载中...</p>';
+
+    try {
+        const resp = await fetch('/ai/report');
+        if (!resp.ok) {
+            const err = await resp.json();
+            body.innerHTML = '<p style="color:var(--negative);">' + (err.error || '请先获取财务数据') + '</p>';
+            return;
+        }
+        const report = await resp.json();
+        currentReportData = report;
+
+        const snap = report.company_snapshot || {};
+        const titleEl = document.getElementById('data-viewer-title');
+        titleEl.textContent = '财务体检报告 — ' + (snap.name || report.stock_code || '');
+
+        let html = '';
+
+        // 公司快照
+        html += '<div class="viewer-section"><h4>公司快照</h4>';
+        html += '<div class="kv-row"><span>股价</span><span class="kv-value">' + (snap.price || 'N/A') + '</span></div>';
+        html += '<div class="kv-row"><span>PE</span><span class="kv-value">' + (snap.pe || 'N/A') + '</span></div>';
+        html += '<div class="kv-row"><span>PB</span><span class="kv-value">' + (snap.pb || 'N/A') + '</span></div>';
+        html += '<div class="kv-row"><span>市值(亿)</span><span class="kv-value">' + (snap.market_cap_yi || 'N/A') + '</span></div>';
+        html += '</div>';
+
+        // 财务健康
+        const health = report.financial_health || {};
+        for (const [section, data] of Object.entries(health)) {
+            if (section.startsWith('_') || !data || typeof data !== 'object') continue;
+            html += '<div class="viewer-section"><h4>' + section + '</h4>';
+            for (const [k, v] of Object.entries(data)) {
+                html += '<div class="kv-row"><span>' + k + '</span><span class="kv-value">' + (v != null ? v : 'N/A') + '</span></div>';
+            }
+            html += '</div>';
+        }
+
+        // 杜邦
+        const dupont = report.dupont_analysis || {};
+        if (dupont.three_factor && dupont.three_factor.length > 0) {
+            html += '<div class="viewer-section"><h4>杜邦分析</h4>';
+            dupont.three_factor.forEach(dp => {
+                html += '<div class="kv-row"><span>' + (dp.end_date || '') + '</span><span class="kv-value">ROE=' + dp.roe + '% = ' + dp.net_margin + '% x ' + dp.asset_turnover + ' x ' + dp.equity_multiplier + '</span></div>';
+            });
+            html += '</div>';
+        }
+
+        // 风险模型
+        const risk = report.risk_models || {};
+        if (Object.keys(risk).length > 0) {
+            html += '<div class="viewer-section"><h4>风险模型</h4>';
+            for (const [key, val] of Object.entries(risk)) {
+                if (val && typeof val === 'object') {
+                    html += '<div class="kv-row"><span>' + key + '</span><span class="kv-value">' + JSON.stringify(val).substring(0, 120) + '</span></div>';
+                }
+            }
+            html += '</div>';
+        }
+
+        // 现金流
+        const cf = report.cashflow_analysis || {};
+        if (cf.quadrant && cf.quadrant.length > 0) {
+            html += '<div class="viewer-section"><h4>现金流象限</h4>';
+            cf.quadrant.forEach(q => {
+                html += '<div class="kv-row"><span>' + (q.end_date || '') + '</span><span class="kv-value">' + q.quadrant_type + '</span></div>';
+            });
+            html += '</div>';
+        }
+
+        body.innerHTML = html || '<p style="color:var(--text-muted);">暂无数据</p>';
+    } catch (e) {
+        body.innerHTML = '<p style="color:var(--negative);">加载失败: ' + e.message + '</p>';
+    }
+}
+
+function closeDataViewer() {
+    const overlay = document.getElementById('data-viewer-overlay');
+    overlay.classList.remove('modal--visible');
+    overlay.addEventListener('transitionend', function h() {
+        overlay.removeEventListener('transitionend', h);
+        overlay.style.display = 'none';
+    });
+}
+
+function exportDataReport() {
+    window.open('/ai/report/export', '_blank');
+}
+
+// ---- Prompt 预览 ----
+
+async function openPromptPreview() {
+    document.getElementById('prompt-preview-overlay').style.display = 'flex';
+    requestAnimationFrame(function() {
+        document.getElementById('prompt-preview-overlay').classList.add('modal--visible');
+    });
+
+    const contentEl = document.getElementById('prompt-preview-content');
+    contentEl.textContent = '加载中...';
+
+    if (!currentTemplateData) {
+        try {
+            const resp = await fetch('/ai/prompts/' + encodeURIComponent(currentTemplateName));
+            if (resp.ok) currentTemplateData = await resp.json();
+        } catch (e) {}
+    }
+
+    if (currentTemplateData) {
+        let preview = '【系统角色】\n' + (currentTemplateData.system_role || '(未设置)') + '\n\n';
+        preview += '【分析模式】' + (currentTemplateData.mode || 'deep') + '\n\n';
+        const fws = currentTemplateData.frameworks || {};
+        for (const [key, content] of Object.entries(fws)) {
+            if (content) preview += '--- ' + key + ' ---\n' + content + '\n\n';
+        }
+        preview += '【输出格式】\n' + (currentTemplateData.output_format || '(未设置)');
+        contentEl.textContent = preview;
+    } else {
+        contentEl.textContent = '请先获取数据并选择模板';
+    }
+}
+
+function closePromptPreview() {
+    const overlay = document.getElementById('prompt-preview-overlay');
+    overlay.classList.remove('modal--visible');
+    overlay.addEventListener('transitionend', function h() {
+        overlay.removeEventListener('transitionend', h);
+        overlay.style.display = 'none';
+    });
 }

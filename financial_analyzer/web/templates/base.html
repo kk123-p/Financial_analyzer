@@ -145,6 +145,15 @@
                 <!-- Tab: AI 投研 — Phase 2 统一对话面板 -->
                 <div id="tab-ai" class="tab-panel">
                     <div class="chat-container" id="chat-container">
+                        <!-- AI 工具栏 -->
+                        <div class="ai-toolbar" id="ai-toolbar">
+                            <select id="prompt-template-selector" onchange="onTemplateChange()" title="选择 Prompt 模板">
+                                <option value="">加载中...</option>
+                            </select>
+                            <button class="ai-toolbar-btn" onclick="openPromptEditor()" title="编辑当前模板">📝 编辑Prompt</button>
+                            <button class="ai-toolbar-btn" onclick="openDataViewer()" title="查看财务数据报告">📊 财务数据报告</button>
+                            <button class="ai-toolbar-btn" onclick="openPromptPreview()" title="预览组装后的Prompt">📋 预览Prompt</button>
+                        </div>
                         <div class="chat-messages" id="chat-messages">
                             <div class="chat-empty" id="chat-empty">
                                 <div style="font-size:40px;opacity:0.3;margin-bottom:8px;">📊</div>
@@ -167,6 +176,99 @@
                             <button class="chat-stop-btn" onclick="stopAnalysis()" id="chat-stop-btn" style="display:none;">停止</button>
                         </div>
                     </div>
+
+<!-- Prompt 编辑器模态弹窗 -->
+<div class="prompt-editor-overlay" id="prompt-editor-overlay">
+    <div class="prompt-editor">
+        <div class="prompt-editor-header">
+            <h3>编辑 Prompt 模板</h3>
+            <button class="prompt-editor-close" onclick="closePromptEditor()">&times;</button>
+        </div>
+        <div class="prompt-editor-body">
+            <div class="prompt-editor-field">
+                <label>模板名称</label>
+                <input type="text" id="pe-name" placeholder="模板名称">
+            </div>
+            <div class="prompt-editor-field">
+                <label>描述</label>
+                <input type="text" id="pe-desc" placeholder="简短描述">
+            </div>
+            <div class="prompt-editor-field">
+                <label>适用模式</label>
+                <select id="pe-mode">
+                    <option value="deep">deep — 深度分析</option>
+                    <option value="quick">quick — 快速问答</option>
+                </select>
+            </div>
+            <div class="prompt-editor-field">
+                <label>系统角色</label>
+                <textarea id="pe-role" rows="3" placeholder="系统角色提示词..."></textarea>
+            </div>
+            <div class="prompt-editor-field">
+                <label>哈佛分析框架</label>
+                <textarea id="pe-harvard" rows="5" class="pe-framework"></textarea>
+            </div>
+            <div class="prompt-editor-field">
+                <label>三表联动验证</label>
+                <textarea id="pe-crosscheck" rows="5" class="pe-framework"></textarea>
+            </div>
+            <div class="prompt-editor-field">
+                <label>生命周期定位</label>
+                <textarea id="pe-lifecycle" rows="4" class="pe-framework"></textarea>
+            </div>
+            <div class="prompt-editor-field">
+                <label>利润质量预警清单</label>
+                <textarea id="pe-warnings" rows="5" class="pe-framework"></textarea>
+            </div>
+            <div class="prompt-editor-field">
+                <label>输出格式</label>
+                <textarea id="pe-output" rows="5" placeholder="输出格式要求..."></textarea>
+            </div>
+        </div>
+        <div class="prompt-editor-footer">
+            <button class="pe-btn-import" onclick="importTemplate()">📥 导入</button>
+            <button class="pe-btn-export" onclick="exportTemplate()">📤 导出</button>
+            <button class="pe-btn-duplicate" onclick="duplicateTemplate()">📋 另存为新模板</button>
+            <span style="flex:1;"></span>
+            <button class="pe-btn-cancel" onclick="closePromptEditor()">取消</button>
+            <button class="pe-btn-save" onclick="saveTemplate()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 数据报告查看模态弹窗 -->
+<div class="viewer-overlay" id="data-viewer-overlay">
+    <div class="viewer-modal">
+        <div class="viewer-header">
+            <h3 id="data-viewer-title">财务体检报告</h3>
+            <button class="prompt-editor-close" onclick="closeDataViewer()">&times;</button>
+        </div>
+        <div class="viewer-body" id="data-viewer-body">
+            <p style="color:var(--text-muted);">加载中...</p>
+        </div>
+        <div class="viewer-footer">
+            <button class="pe-btn-export" onclick="exportDataReport()">导出 JSON</button>
+            <button class="pe-btn-cancel" onclick="closeDataViewer()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- Prompt 预览模态弹窗 -->
+<div class="viewer-overlay" id="prompt-preview-overlay">
+    <div class="viewer-modal">
+        <div class="viewer-header">
+            <h3>当前 Prompt 模板预览</h3>
+            <button class="prompt-editor-close" onclick="closePromptPreview()">&times;</button>
+        </div>
+        <div class="viewer-body">
+            <div class="viewer-pre" id="prompt-preview-content">加载中...</div>
+        </div>
+        <div class="viewer-footer">
+            <button class="pe-btn-save" onclick="closePromptPreview(); openPromptEditor();">在编辑器中打开</button>
+            <button class="pe-btn-cancel" onclick="closePromptPreview()">关闭</button>
+        </div>
+    </div>
+</div>
                 </div>
 
                 <!-- Tab: AI 辩论 — 三方投研辩论 -->
