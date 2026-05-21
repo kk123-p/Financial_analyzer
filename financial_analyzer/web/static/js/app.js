@@ -390,3 +390,210 @@ window.addEventListener('resize', function() {
         Plotly.Plots.resize(chartContainer);
     }
 });
+
+// ============================================================================
+// Phase 2: 统一 AI 对话 WebSocket 客户端
+// ============================================================================
+
+let chatWs = null;
+let chatInProgress = false;
+
+function sendQuick(question) {
+    document.getElementById('chat-input').value = question;
+    sendMessage();
+}
+
+function sendMessage() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message || chatInProgress) return;
+
+    const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
+    if (!stockCode) {
+        alert('请先输入股票代码并获取数据');
+        return;
+    }
+
+    const emptyEl = document.getElementById('chat-empty');
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const messages = document.getElementById('chat-messages');
+
+    const userBubble = document.createElement('div');
+    userBubble.className = 'chat-bubble chat-bubble--user';
+    userBubble.textContent = message;
+    messages.appendChild(userBubble);
+    messages.scrollTop = messages.scrollHeight;
+
+    input.value = '';
+    chatInProgress = true;
+
+    document.getElementById('chat-send-btn').style.display = 'none';
+    document.getElementById('chat-stop-btn').style.display = 'inline-block';
+
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+        chatWs.send(JSON.stringify({ type: 'message', content: message }));
+        return;
+    }
+
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + location.host + '/ai/conversation';
+
+    try {
+        chatWs = new WebSocket(wsUrl);
+        let _currentAssistantEl = null;
+
+        chatWs.onopen = function() {
+            chatWs.send(JSON.stringify({ stock_code: stockCode }));
+            setTimeout(function() {
+                if (chatWs.readyState === WebSocket.OPEN) {
+                    chatWs.send(JSON.stringify({ type: 'message', content: message }));
+                }
+            }, 200);
+        };
+
+        chatWs.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'meta') {
+                if (msg.content === 'ready') return;
+
+                if (msg.content.startsWith('intent:')) {
+                    const intent = msg.content.replace('intent:', '');
+                    const sysEl = document.createElement('div');
+                    sysEl.className = 'chat-system';
+                    const intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
+                    sysEl.textContent = intentLabels[intent] || intent;
+                    messages.appendChild(sysEl);
+                    messages.scrollTop = messages.scrollHeight;
+                } else if (msg.content === 'debate_start') {
+                    const header = document.createElement('div');
+                    header.className = 'debate-round-header';
+                    header.textContent = '三方辩论开始';
+                    messages.appendChild(header);
+                    messages.scrollTop = messages.scrollHeight;
+                } else if (msg.content.startsWith('section:')) {
+                    _currentAssistantEl = null;
+                }
+            } else if (msg.type === 'chunk') {
+                if (!_currentAssistantEl) {
+                    _currentAssistantEl = document.createElement('div');
+                    _currentAssistantEl.className = 'chat-bubble chat-bubble--assistant';
+                    messages.appendChild(_currentAssistantEl);
+                }
+                _currentAssistantEl.textContent += msg.content;
+                messages.scrollTop = messages.scrollHeight;
+            } else if (msg.type === 'structured') {
+                const card = buildStructuredCard(msg.content, msg.meta || {});
+                messages.appendChild(card);
+                _currentAssistantEl = null;
+                messages.scrollTop = messages.scrollHeight;
+            } else if (msg.type === 'done') {
+                _currentAssistantEl = null;
+                chatInProgress = false;
+                document.getElementById('chat-send-btn').style.display = 'inline-block';
+                document.getElementById('chat-stop-btn').style.display = 'none';
+            } else if (msg.type === 'error') {
+                const errEl = document.createElement('div');
+                errEl.className = 'chat-bubble chat-bubble--assistant';
+                errEl.style.color = 'var(--negative)';
+                errEl.textContent = '⚠️ ' + msg.content;
+                messages.appendChild(errEl);
+                messages.scrollTop = messages.scrollHeight;
+                chatInProgress = false;
+                document.getElementById('chat-send-btn').style.display = 'inline-block';
+                document.getElementById('chat-stop-btn').style.display = 'none';
+            }
+        };
+
+        chatWs.onerror = function() {
+            const errEl = document.createElement('div');
+            errEl.className = 'chat-bubble chat-bubble--assistant';
+            errEl.style.color = 'var(--negative)';
+            errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
+            messages.appendChild(errEl);
+            chatInProgress = false;
+            document.getElementById('chat-send-btn').style.display = 'inline-block';
+            document.getElementById('chat-stop-btn').style.display = 'none';
+        };
+
+        chatWs.onclose = function() {
+            chatWs = null;
+            chatInProgress = false;
+            document.getElementById('chat-send-btn').style.display = 'inline-block';
+            document.getElementById('chat-stop-btn').style.display = 'none';
+        };
+    } catch (e) {
+        const errEl = document.createElement('div');
+        errEl.className = 'chat-bubble chat-bubble--assistant';
+        errEl.style.color = 'var(--negative)';
+        errEl.textContent = '⚠️ 连接失败: ' + e.message;
+        messages.appendChild(errEl);
+        chatInProgress = false;
+        document.getElementById('chat-send-btn').style.display = 'inline-block';
+        document.getElementById('chat-stop-btn').style.display = 'none';
+    }
+}
+
+function stopAnalysis() {
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+        chatWs.send(JSON.stringify({ type: 'stop' }));
+    }
+}
+
+function buildStructuredCard(text, meta) {
+    const card = document.createElement('div');
+    card.className = 'chat-structured';
+
+    const sections = text.split(/(?=📊|🔍|✅)/);
+    sections.forEach(function(section) {
+        const secDiv = document.createElement('div');
+        secDiv.className = 'cs-section';
+
+        let labelClass = 'cs-label ';
+        if (section.startsWith('📊')) {
+            labelClass += 'cs-label--data';
+        } else if (section.startsWith('🔍')) {
+            labelClass += 'cs-label--reason';
+        } else if (section.startsWith('✅')) {
+            labelClass += 'cs-label--conclusion';
+        }
+
+        const nlIdx = section.indexOf('\n');
+        const title = nlIdx > -1 ? section.substring(0, nlIdx) : section;
+        const body = nlIdx > -1 ? section.substring(nlIdx + 1).replace(/\n/g, '<br>') : '';
+
+        secDiv.innerHTML = '<div class="' + labelClass + '">' + title + '</div>' +
+            (body ? '<div style="color:var(--text-secondary);">' + body + '</div>' : '');
+        card.appendChild(secDiv);
+    });
+
+    if (meta.confidence && meta.confidence !== '未标注') {
+        const badge = document.createElement('span');
+        badge.className = 'confidence-badge confidence-badge--' +
+            (meta.confidence === '高' ? 'high' : meta.confidence === '中' ? 'medium' : 'low');
+        badge.textContent = '置信度 ' + meta.confidence;
+        card.appendChild(badge);
+    }
+
+    if (meta.signal_tags && meta.signal_tags.length > 0) {
+        const tagsDiv = document.createElement('div');
+        tagsDiv.className = 'signal-tags';
+        meta.signal_tags.forEach(function(tag) {
+            const tagSpan = document.createElement('span');
+            const value = typeof tag === 'string' ? tag : (tag.name + ' ' + (tag.value || ''));
+            const level = value.includes('高') || value.includes('优') ? 'good' :
+                          value.includes('低') || value.includes('差') ? 'bad' : 'warn';
+            tagSpan.className = 'signal-tag signal-tag--' + level;
+            tagSpan.textContent = value;
+            tagsDiv.appendChild(tagSpan);
+        });
+        card.appendChild(tagsDiv);
+    }
+
+    return card;
+}
+
+// DEPRECATED: 旧 AI 函数保留以便向后兼容
+function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
+function startDebate() { sendQuick('/debate'); }
