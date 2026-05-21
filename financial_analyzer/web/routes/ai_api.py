@@ -192,6 +192,61 @@ async def ai_debate(websocket: WebSocket):
                 if msg_queue.empty():
                     await asyncio.sleep(0)
 
+        # 辩论主体结束，发送完成信号
+        await websocket.send_text(json.dumps({"type": "meta", "content": "debate_complete"}))
+
+        # 进入追问模式
+        FU_DONE = object()
+        while True:
+            try:
+                followup_msg = await asyncio.wait_for(websocket.receive_text(), timeout=300)
+            except asyncio.TimeoutError:
+                break
+
+            fu_data = json.loads(followup_msg)
+            if fu_data.get("type") == "followup":
+                question = fu_data.get("content", "")
+                if not question:
+                    continue
+
+                fu_queue: queue.Queue = queue.Queue()
+
+                def fu_callback(role: str, chunk: str, done: bool):
+                    fu_queue.put((role, chunk, done))
+
+                def fu_on_complete(state):
+                    fu_queue.put(FU_DONE)
+
+                engine.send_followup(
+                    question=question,
+                    callback=fu_callback,
+                    on_complete=fu_on_complete,
+                )
+
+                while True:
+                    item = await loop.run_in_executor(None, fu_queue.get)
+                    if item is FU_DONE:
+                        await websocket.send_text(json.dumps({"type": "done", "content": ""}))
+                        break
+                    role, content, done = item
+                    if role == "_meta":
+                        await websocket.send_text(json.dumps({
+                            "type": "meta",
+                            "content": content,
+                        }))
+                    else:
+                        await websocket.send_text(json.dumps({
+                            "type": "chunk",
+                            "role": role,
+                            "content": content,
+                            "done": done,
+                        }))
+                        if fu_queue.empty():
+                            await asyncio.sleep(0)
+
+            elif fu_data.get("type") == "stop":
+                break
+
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")
         if engine:
