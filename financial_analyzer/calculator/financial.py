@@ -38,14 +38,17 @@ class FinancialCalculator:
 
     @staticmethod
     def calc_cagr(values, years):
-        """计算复合增长率 (CAGR)"""
+        """计算复合增长率 (CAGR)
+        values: 按时间降序排列 [最新值, ..., 最早值]
+        years: 期数 (len(values) - 1)
+        """
         if len(values) < 2 or years <= 0:
             return None
-        start = values[-1]  # 最早的值
-        end = values[0]     # 最新的值
-        if start is None or start <= 0 or end is None or end <= 0:
+        newest = values[0]
+        oldest = values[-1]
+        if oldest is None or oldest <= 0 or newest is None or newest <= 0:
             return None
-        return ((end / start) ** (1 / years) - 1) * 100
+        return ((newest / oldest) ** (1 / years) - 1) * 100
 
     @staticmethod
     def safe_divide(numerator, denominator):

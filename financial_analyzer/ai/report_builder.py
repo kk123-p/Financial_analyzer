@@ -6,6 +6,8 @@
 import pandas as pd
 import numpy as np
 from ..logging_config import get_logger
+from ..pipeline.textbook.ch8_cashflow_portrait import classify_portrait
+from ..pipeline.textbook.ch9_dupont_roic import dupont_3factor
 
 logger = get_logger(__name__)
 
@@ -226,7 +228,7 @@ class ReportBuilder:
             return dupont
 
         try:
-            # 三因子杜邦（最近3年）
+            # 三因子杜邦（最近3年）→ 委托 ch9_dupont_roic
             for i in range(max(0, len(income) - 3), len(income)):
                 if i >= len(balance):
                     break
@@ -238,20 +240,17 @@ class ReportBuilder:
                 ta = ReportBuilder._val(bal, ["total_assets", "资产总计"])
                 eq = ReportBuilder._val(bal, ["total_equity", "股东权益合计"])
 
-                if rev and rev > 0 and ta and ta > 0 and eq and eq > 0 and np_val is not None:
-                    nm = np_val / rev  # 净利率
-                    at = rev / ta  # 资产周转率
-                    em = ta / eq  # 权益乘数
-                    roe = nm * at * em
-
-                    end_date = str(inc.get("end_date", "")) if "end_date" in inc.index else f"period_{i}"
-                    dupont["three_factor"].append({
-                        "end_date": end_date,
-                        "roe": round(roe * 100, 2),
-                        "net_margin": round(nm * 100, 2),
-                        "asset_turnover": round(at, 4),
-                        "equity_multiplier": round(em, 2),
-                    })
+                if rev and ta and eq and np_val is not None:
+                    dp = dupont_3factor(np_val, rev, ta, eq)
+                    if dp:
+                        end_date = str(inc.get("end_date", "")) if "end_date" in inc.index else f"period_{i}"
+                        dupont["three_factor"].append({
+                            "end_date": end_date,
+                            "roe": dp["ROE"],
+                            "net_margin": dp["销售净利率"],
+                            "asset_turnover": dp["总资产周转率"],
+                            "equity_multiplier": dp["权益乘数"],
+                        })
 
             # 改良杜邦（RNOA + 杠杆贡献）
             for i in range(max(0, len(income) - 3), len(income)):
@@ -447,18 +446,19 @@ class ReportBuilder:
             return val
 
         try:
-            # PE历史分位
+            # PE历史分位 — 使用对应历史期间的净利润
             if income is not None and len(income) > 0:
-                np_val = ReportBuilder._val(income.iloc[0], ["net_profit", "净利润"])
-                if np_val and np_val > 0:
-                    pe_list = []
-                    for i in range(len(basic)):
-                        close = ReportBuilder._val(basic.iloc[i], ["close", "收盘价"])
-                        share = ReportBuilder._val(basic.iloc[i], ["total_share", "总股本"])
-                        if close and share and share > 0:
-                            pe = close * share / (np_val * 10000)
-                            if 0 < pe < 300:
-                                pe_list.append(pe)
+                pe_list = []
+                for i in range(min(len(basic), len(income))):
+                    np_val = ReportBuilder._val(income.iloc[i], ["net_profit", "净利润"])
+                    if not np_val or np_val <= 0:
+                        continue
+                    close = ReportBuilder._val(basic.iloc[i], ["close", "收盘价"])
+                    share = ReportBuilder._val(basic.iloc[i], ["total_share", "总股本"])
+                    if close and share and share > 0:
+                        pe = close * share / (np_val * 10000)
+                        if 0 < pe < 300:
+                            pe_list.append(pe)
                     if pe_list:
                         current_pe = pe_list[-1]
                         pct = sum(1 for p in pe_list if p <= current_pe) / len(pe_list) * 100
@@ -517,19 +517,8 @@ class ReportBuilder:
                 fcf = ReportBuilder._val(row, ["n_cash_flows_fnc_act", "筹资活动产生的现金流量净额"])
 
                 if ocf is not None and icf is not None and fcf is not None:
-                    # 判断象限
-                    if ocf > 0 and icf < 0 and fcf < 0:
-                        qtype = "奶牛型（经营造血+投资+偿债）"
-                    elif ocf > 0 and icf < 0 and fcf > 0:
-                        qtype = "成长型（经营造血+融资扩张）"
-                    elif ocf > 0 and icf > 0 and fcf < 0:
-                        qtype = "偿债型（经营+投资回收+偿债）"
-                    elif ocf < 0 and icf < 0 and fcf > 0:
-                        qtype = "烧钱型（依赖融资维持）"
-                    elif ocf < 0 and icf > 0 and fcf > 0:
-                        qtype = "衰退型（变卖资产+融资）"
-                    else:
-                        qtype = "混合型"
+                    portrait = classify_portrait(ocf, icf, fcf)
+                    qtype = portrait["type_cn"]
 
                     end_date = str(row.get("end_date", "")) if "end_date" in row.index else f"period_{i}"
                     quadrant.append({

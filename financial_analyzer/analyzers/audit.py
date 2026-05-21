@@ -15,24 +15,10 @@ from ..calculator.signals import (
 from ..config import SEPARATOR_LIGHT
 from ..logging_config import get_logger
 
-import unicodedata
-
 logger = get_logger(__name__)
 
 # 信号等级排序权重（模块级常量，避免 lambda 内每比较一次就分配 dict）
 _LEVEL_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
-
-
-def _cjk_ljust(s, width):
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return s + ' ' * max(0, width - len(s) - cjk_count)
-
-
-def _cjk_rjust(s, width):
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return ' ' * max(0, width - len(s) - cjk_count) + s
 
 
 class AuditAnalyzer(BaseAnalyzer):

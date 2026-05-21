@@ -7,25 +7,10 @@ from ..audit_engine import (
     Signal, SignalLevel, SignalCategory, SignalRegistry,
     AuditThresholds, DEFAULT_THRESHOLDS,
 )
-import pandas as pd
+from ...utils.helpers import val_from_row as _v
 from ...logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def _v(row: dict, keys: list, default=None):
-    """从dict中按多个key名取值"""
-    if row is None:
-        return default
-    for k in keys:
-        if k in row and row[k] is not None:
-            try:
-                v = float(row[k])
-                if not pd.isna(v):
-                    return v
-            except (ValueError, TypeError):
-                pass
-    return default
 
 
 # ============================================================================

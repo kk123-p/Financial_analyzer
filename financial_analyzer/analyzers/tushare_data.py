@@ -4,23 +4,10 @@ Tushare 扩展数据分析器 - 审计意见、财务指标、主营业务构成
 from .base import BaseAnalyzer
 from .report_formatter import ReportFormatter as RF
 from ..calculator.financial import FinancialCalculator as FC
+from ..utils.helpers import cjk_ljust, cjk_rjust
 from ..logging_config import get_logger
 
-import unicodedata
-
 logger = get_logger(__name__)
-
-
-def _cjk_ljust(s, width):
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return s + ' ' * max(0, width - len(s) - cjk_count)
-
-
-def _cjk_rjust(s, width):
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return ' ' * max(0, width - len(s) - cjk_count) + s
 
 
 class TushareDataAnalyzer(BaseAnalyzer):
@@ -72,7 +59,7 @@ class TushareDataAnalyzer(BaseAnalyzer):
 
         # 表头
         result += RF.section("历年审计意见")
-        result += f"  {_cjk_ljust('报告期', 12)}{_cjk_ljust('审计意见', 20)}{_cjk_ljust('审计师', 16)}{_cjk_ljust('事务所', 20)}\n"
+        result += f"  {cjk_ljust('报告期', 12)}{cjk_ljust('审计意见', 20)}{cjk_ljust('审计师', 16)}{cjk_ljust('事务所', 20)}\n"
         result += f"  {'─' * 70}\n"
 
         # 审计意见类型判断
@@ -98,7 +85,7 @@ class TushareDataAnalyzer(BaseAnalyzer):
                     icon = ic
                     break
 
-            result += f"  {_cjk_ljust(end_date, 12)}{icon} {_cjk_ljust(opinion, 18)}{_cjk_ljust(sign, 16)}{_cjk_ljust(auditor, 20)}\n"
+            result += f"  {cjk_ljust(end_date, 12)}{icon} {cjk_ljust(opinion, 18)}{cjk_ljust(sign, 16)}{cjk_ljust(auditor, 20)}\n"
 
         # 分析
         result += f"\n{RF.section('审计意见分析')}\n"
@@ -164,7 +151,7 @@ class TushareDataAnalyzer(BaseAnalyzer):
         result += RF.section("核心财务指标（近5年）\n")
         header = "  "
         for k, label in available.items():
-            header += _cjk_rjust(label, 12)
+            header += cjk_rjust(label, 12)
         result += header + "\n"
         result += f"  {'─' * (12 * len(available))}\n"
 
@@ -174,11 +161,11 @@ class TushareDataAnalyzer(BaseAnalyzer):
             for k in available:
                 val = row.get(k)
                 if val is None or (isinstance(val, float) and str(val) == "nan"):
-                    line += _cjk_rjust("N/A", 12)
+                    line += cjk_rjust("N/A", 12)
                 elif k == "end_date":
-                    line += _cjk_rjust(str(val), 12)
+                    line += cjk_rjust(str(val), 12)
                 else:
-                    line += _cjk_rjust(f"{val:.2f}", 12)
+                    line += cjk_rjust(f"{val:.2f}", 12)
             result += line + "\n"
 
         result += f"\n  * 数据来源于 Tushare fina_indicator 接口\n"
@@ -226,17 +213,17 @@ class TushareDataAnalyzer(BaseAnalyzer):
                     period_df = period_df.sort_values(sort_col, ascending=False)
 
                 # 表头
-                result += f"  {_cjk_ljust('业务名称', 20)}"
+                result += f"  {cjk_ljust('业务名称', 20)}"
                 if "mainbz_income" in period_df.columns:
-                    result += _cjk_rjust("收入(亿)", 12)
+                    result += cjk_rjust("收入(亿)", 12)
                 if "mainbz_income_ratio" in period_df.columns:
-                    result += _cjk_rjust("收入占比", 10)
+                    result += cjk_rjust("收入占比", 10)
                 if "mainbz_profit" in period_df.columns:
-                    result += _cjk_rjust("利润(亿)", 12)
+                    result += cjk_rjust("利润(亿)", 12)
                 if "mainbz_profit_ratio" in period_df.columns:
-                    result += _cjk_rjust("利润占比", 10)
+                    result += cjk_rjust("利润占比", 10)
                 if "industry" in period_df.columns:
-                    result += _cjk_ljust("行业", 16)
+                    result += cjk_ljust("行业", 16)
                 result += "\n"
                 result += f"  {'─' * 70}\n"
 
@@ -245,22 +232,22 @@ class TushareDataAnalyzer(BaseAnalyzer):
                     if len(bz_name) > 18:
                         bz_name = bz_name[:18] + ".."
 
-                    line = f"  {_cjk_ljust(bz_name, 20)}"
+                    line = f"  {cjk_ljust(bz_name, 20)}"
                     if "mainbz_income" in period_df.columns:
                         inc = row.get("mainbz_income")
-                        line += _cjk_rjust(f"{inc/1e8:.2f}" if inc else "N/A", 12)
+                        line += cjk_rjust(f"{inc/1e8:.2f}" if inc else "N/A", 12)
                     if "mainbz_income_ratio" in period_df.columns:
                         ratio = row.get("mainbz_income_ratio")
-                        line += _cjk_rjust(f"{ratio:.1f}%" if ratio else "N/A", 10)
+                        line += cjk_rjust(f"{ratio:.1f}%" if ratio else "N/A", 10)
                     if "mainbz_profit" in period_df.columns:
                         pft = row.get("mainbz_profit")
-                        line += _cjk_rjust(f"{pft/1e8:.2f}" if pft else "N/A", 12)
+                        line += cjk_rjust(f"{pft/1e8:.2f}" if pft else "N/A", 12)
                     if "mainbz_profit_ratio" in period_df.columns:
                         ratio = row.get("mainbz_profit_ratio")
-                        line += _cjk_rjust(f"{ratio:.1f}%" if ratio else "N/A", 10)
+                        line += cjk_rjust(f"{ratio:.1f}%" if ratio else "N/A", 10)
                     if "industry" in period_df.columns:
                         ind = str(row.get("industry", "N/A"))
-                        line += _cjk_ljust(ind[:14], 16)
+                        line += cjk_ljust(ind[:14], 16)
                     result += line + "\n"
 
                 result += "\n"

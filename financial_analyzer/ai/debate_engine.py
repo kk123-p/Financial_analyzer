@@ -286,7 +286,7 @@ class DebateEngine:
         """Execute weight adjustment."""
         try:
             self.state.phase = "weight"
-            prompt = build_weight_adjustment(wv, wg, wr)
+            prompt = build_weight_adjustment(wv, wg, wr, self.state.round3_result or "")
             full_debate = self._build_full_debate_text()
             prompt = f"Full debate record:\n{full_debate}\n\n{prompt}"
 

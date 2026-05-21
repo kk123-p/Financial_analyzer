@@ -2,12 +2,43 @@
 工具函数模块
 """
 import json
+import unicodedata
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from ..config import CONFIG_FILE, DEFAULT_CACHE_EXPIRY_HOURS
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def cjk_ljust(s, width):
+    """左对齐字符串，CJK字符占2个宽度"""
+    s = str(s)
+    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
+    return s + ' ' * max(0, width - len(s) - cjk_count)
+
+
+def cjk_rjust(s, width):
+    """右对齐字符串，CJK字符占2个宽度"""
+    s = str(s)
+    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
+    return ' ' * max(0, width - len(s) - cjk_count) + s
+
+
+def val_from_row(row, keys: list, default=None):
+    """从dict/Series中按多个key名取值，返回float或default"""
+    if row is None:
+        return default
+    for k in keys:
+        if k in row and row[k] is not None:
+            try:
+                v = float(row[k])
+                if not pd.isna(v):
+                    return v
+            except (ValueError, TypeError):
+                pass
+    return default
 
 
 def load_config() -> dict:

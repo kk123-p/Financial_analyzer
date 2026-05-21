@@ -7,24 +7,10 @@ from ..audit_engine import (
     Signal, SignalLevel, SignalCategory, SignalRegistry,
     AuditThresholds, DEFAULT_THRESHOLDS,
 )
+from ...utils.helpers import val_from_row as _v
 from ...logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def _v(row, keys, default=None):
-    if row is None:
-        return default
-    for k in keys:
-        if k in row and row[k] is not None:
-            try:
-                import pandas as pd
-                v = float(row[k])
-                if not pd.isna(v):
-                    return v
-            except (ValueError, TypeError):
-                pass
-    return default
 
 
 # ============================================================================

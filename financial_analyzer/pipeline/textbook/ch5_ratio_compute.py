@@ -235,30 +235,7 @@ def classify_cashflow_portrait(
     icf: float | None,
     fcf: float | None,
 ) -> str:
-    """
-    现金流5型画像分类 — 完全复现教科书 Ch8 lines 301-358
-
-    妖精型: 经营+ 投资+ 筹资+ (钱多到到处花)
-    老母鸡型: 经营+ 投资+ 筹资- (靠经营还债/分红)
-    蛮牛型: 经营+ 投资- 筹资+ (烧钱扩张中)
-    奶牛型: 经营+ 投资- 筹资- (成熟稳健，现金牛)
-    危险型: 经营- (经营现金流为负，需警惕)
-    """
-    if ocf is None:
-        return "数据不足"
-
-    if ocf <= 0:
-        return "危险型（经营现金流为负）"
-
-    # 经营现金流为正
-    invest_positive = icf is not None and icf > 0
-    fin_positive = fcf is not None and fcf > 0
-
-    if invest_positive and fin_positive:
-        return "妖精型（经营+投资+筹资+）"
-    elif invest_positive and not fin_positive:
-        return "老母鸡型（经营+投资+筹资-）"
-    elif not invest_positive and fin_positive:
-        return "蛮牛型（经营+投资-筹资+）"
-    else:
-        return "奶牛型（经营+投资-筹资-）"
+    """现金流5型画像分类 → 委托 ch8_cashflow_portrait.classify_portrait"""
+    from .ch8_cashflow_portrait import classify_portrait
+    result = classify_portrait(ocf, icf, fcf)
+    return result["type_cn"]

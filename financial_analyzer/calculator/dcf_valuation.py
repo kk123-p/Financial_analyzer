@@ -121,10 +121,23 @@ class DCFValuator:
         debt = self._safe_float(self._extract(financial_data, [
             "total_liab", "tot_liabilities",
         ]))
-        # 有息负债估算（如无法获取精确值，用总负债的50%近似）
+        # 有息负债估算（优先从财报科目，降级用总负债50%近似）
         ib_debt = self._safe_float(self._extract(financial_data, [
             "interest_bearing_debt",
-        ])) or (debt * 0.5 if debt else 0)
+        ]))
+        if ib_debt is None:
+            short_borrowing = self._safe_float(self._extract(financial_data, [
+                "short_borrowing", "短期借款",
+            ])) or 0
+            long_borrowing = self._safe_float(self._extract(financial_data, [
+                "long_borrowing", "长期借款",
+            ])) or 0
+            bonds_payable = self._safe_float(self._extract(financial_data, [
+                "bonds_payable", "应付债券",
+            ])) or 0
+            ib_debt = short_borrowing + long_borrowing + bonds_payable
+            if ib_debt == 0:
+                ib_debt = (debt * 0.5 if debt else 0)  # 最后降级
 
         # 市值权重
         close = self._safe_float(self._extract(financial_data, ["close", "price"]))
@@ -231,17 +244,29 @@ class DCFValuator:
         if not ebit:
             return None
 
-        # 折旧摊销 — 粗略估算
-        da = (ebit * 0.15)  # 假设折旧摊销占EBIT的15%
+        # 折旧摊销 — 优先从财务数据提取，否则估算
+        da = self._safe_float(self._extract(financial_data, [
+            "depreciation", "depreciation_amortization",
+        ]))
+        if da is None:
+            da = (ebit * 0.15)  # 降级：假设折旧摊销占EBIT的15%
 
-        # 资本支出 — 粗略估算
-        capex = (ebit * 0.25)  # 假设CapEx占EBIT的25%
+        # 资本支出 — 优先从财务数据提取，否则估算
+        capex = self._safe_float(self._extract(financial_data, [
+            "capital_expenditure", "capex",
+        ]))
+        if capex is None:
+            capex = (ebit * 0.25)  # 降级：假设CapEx占EBIT的25%
 
-        # 营运资本增加 — 粗略估算
+        # 营运资本增加 — 优先从财务数据提取，否则估算
         revenue = self._safe_float(self._extract(financial_data, [
             "revenue", "total_revenue", "营业收入",
         ]))
-        delta_wc = (revenue * 0.03) if revenue else 0  # 假设ΔWC占营收3%
+        delta_wc = self._safe_float(self._extract(financial_data, [
+            "delta_working_capital", "working_capital_change",
+        ]))
+        if delta_wc is None:
+            delta_wc = (revenue * 0.03) if revenue else 0  # 降级：假设ΔWC占营收3%
 
         fcff = (ebit * (1 - self.TAX_RATE) + da - capex - delta_wc)
         return fcff
@@ -500,12 +525,23 @@ class DCFValuator:
         ib_debt = self._safe_float(self._extract(financial_data, [
             "interest_bearing_debt",
         ])) or 0
-        # 若无法获取精确有息负债，用总负债的50%
+        # 若无法获取精确有息负债，从财报科目估算
         if not ib_debt:
-            total_liab = self._safe_float(self._extract(financial_data, [
-                "total_liab", "负债合计",
+            short_borrowing = self._safe_float(self._extract(financial_data, [
+                "short_borrowing", "短期借款",
             ])) or 0
-            ib_debt = total_liab * 0.5
+            long_borrowing = self._safe_float(self._extract(financial_data, [
+                "long_borrowing", "长期借款",
+            ])) or 0
+            bonds_payable = self._safe_float(self._extract(financial_data, [
+                "bonds_payable", "应付债券",
+            ])) or 0
+            ib_debt = short_borrowing + long_borrowing + bonds_payable
+            if ib_debt == 0:
+                total_liab = self._safe_float(self._extract(financial_data, [
+                    "total_liab", "负债合计",
+                ])) or 0
+                ib_debt = total_liab * 0.5  # 最后降级：用总负债的50%近似
         return (ib_debt - cash) / 1e4  # 转亿元
 
     @staticmethod

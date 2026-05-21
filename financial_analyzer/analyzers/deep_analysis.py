@@ -6,28 +6,14 @@ from .base import BaseAnalyzer
 from .report_formatter import ReportFormatter as RF
 from ..calculator.financial import FinancialCalculator as FC
 from ..calculator.deep_analysis import DeepAnalysisCalculator as DAC
+from ..utils.helpers import cjk_ljust, cjk_rjust
 from ..config import SEPARATOR_LIGHT, SEPARATOR_HEAVY, DCF_SCENARIOS, DCF_GROWTH_YEARS
 from ..logging_config import get_logger
 
 import pandas as pd
 import numpy as np
-import unicodedata
 
 logger = get_logger(__name__)
-
-
-def _cjk_ljust(s, width):
-    """左对齐字符串，CJK 字符占2个宽度"""
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return s + ' ' * max(0, width - len(s) - cjk_count)
-
-
-def _cjk_rjust(s, width):
-    """右对齐字符串，CJK 字符占2个宽度"""
-    s = str(s)
-    cjk_count = sum(1 for c in s if unicodedata.east_asian_width(c) in ('F', 'W'))
-    return ' ' * max(0, width - len(s) - cjk_count) + s
 
 
 class DeepAnalyzer(BaseAnalyzer):
@@ -215,7 +201,7 @@ class DeepAnalyzer(BaseAnalyzer):
 
         # ① 杜邦三因素分解表
         result += RF.section("杜邦三因素分解（近5年）")
-        result += f"{_cjk_ljust('报告期', 12)}{_cjk_rjust('ROE(%)', 10)}{_cjk_rjust('净利率(%)', 10)}{_cjk_rjust('资产周转(次)', 14)}{_cjk_rjust('权益乘数', 10)}\n"
+        result += f"{cjk_ljust('报告期', 12)}{cjk_rjust('ROE(%)', 10)}{cjk_rjust('净利率(%)', 10)}{cjk_rjust('资产周转(次)', 14)}{cjk_rjust('权益乘数', 10)}\n"
         result += f"{SEPARATOR_LIGHT}\n"
 
         dupont_data = []
@@ -231,7 +217,7 @@ class DeepAnalyzer(BaseAnalyzer):
             nm_s = FC.format_percentage(dp['net_margin'])
             at_s = FC.format_value(dp['asset_turnover'], 2)
             em_s = FC.format_value(dp['equity_multiplier'], 2)
-            result += f"{_cjk_ljust(p['end_date'], 12)}{_cjk_rjust(roe_s, 10)}{_cjk_rjust(nm_s, 10)}{_cjk_rjust(at_s, 14)}{_cjk_rjust(em_s, 10)}\n"
+            result += f"{cjk_ljust(p['end_date'], 12)}{cjk_rjust(roe_s, 10)}{cjk_rjust(nm_s, 10)}{cjk_rjust(at_s, 14)}{cjk_rjust(em_s, 10)}\n"
 
         # ② ROE 驱动因素诊断
         if dupont_data and dupont_data[0]["diagnosis"]:

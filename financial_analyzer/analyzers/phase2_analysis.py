@@ -5,6 +5,7 @@ v10.5: 基于专业财务分析框架全面重写
 import pandas as pd
 import numpy as np
 from ..logging_config import get_logger
+from ..pipeline.textbook.ch7_peer_score import score_peer_single, composite_peer_score
 
 logger = get_logger(__name__)
 
@@ -82,7 +83,7 @@ class Phase2Analyzer:
         if daily is not None and not daily.empty:
             return daily
         # 退而从 basic 获取
-        basic = self._get_price_data()
+        basic = self.data.get("basic")
         if basic is not None and not basic.empty:
             return basic
         return None
@@ -185,7 +186,7 @@ class Phase2Analyzer:
             lines.append("\n  【综合股东回报率】")
             if basic is not None and len(basic) >= 2:
                 close_now = self._val(basic.iloc[0], ["close"])
-                close_prev = self._val(basic.iloc[0], ["close"])
+                close_prev = self._val(basic.iloc[-1], ["close"])
                 if close_now and close_prev and close_prev > 0:
                     price_return = (close_now - close_prev) / close_prev * 100
                     lines.append(f"  股价变动: {close_prev:.2f} → {close_now:.2f}（{price_return:+.2f}%）")
@@ -194,7 +195,7 @@ class Phase2Analyzer:
             # --- 留存收益效率 ---
             if len(balance) >= 2 and len(income) >= 2:
                 eq_cur = self._val(balance.iloc[0], ["total_equity"])
-                eq_prev = self._val(balance.iloc[0], ["total_equity"])
+                eq_prev = self._val(balance.iloc[-2], ["total_equity"])
                 np_sum = sum(self._val(income.iloc[i], ["net_profit"]) or 0 for i in range(len(income)))
                 if eq_cur and eq_prev and np_sum > 0:
                     equity_growth = eq_cur - eq_prev
@@ -565,9 +566,10 @@ class Phase2Analyzer:
                 if peer_vals:
                     avg = np.mean(peer_vals)
                     med = np.median(peer_vals)
+                    # 四分位同业评分（ch7_peer_score）
+                    peer_score, diag = score_peer_single(val, peer_vals)
                     lines.append(f"  行业均值: {avg:.2f} | 中位数: {med:.2f}")
-                    pct = sum(1 for v in peer_vals if v <= val) / len(peer_vals) * 100
-                    lines.append(f"  行业分位: {pct:.0f}%")
+                    lines.append(f"  同业评分: {peer_score:.0f}分 — {diag}")
                     if name == "资产负债率":
                         if val > avg * 1.2:
                             lines.append(f"  → 负债率高于行业均值，财务风险偏高")
@@ -582,6 +584,23 @@ class Phase2Analyzer:
                             lines.append(f"  → 低于行业均值20%以上，竞争力偏弱")
                         else:
                             lines.append(f"  → 处于行业平均水平")
+
+            # 综合同业评分
+            if metrics:
+                scores_map = {}
+                for name, val in metrics.items():
+                    peer_vals = [p.get(name) for p in peers_data if p.get(name) is not None]
+                    if peer_vals:
+                        scores_map[name] = score_peer_single(val, peer_vals)[0]
+                if scores_map:
+                    composite = composite_peer_score({k: {"score": v} for k, v in scores_map.items()})
+                    lines.append(f"\n  【综合同业评分】: {composite:.0f}/100")
+                    if composite >= 75:
+                        lines.append("  → 公司整体指标在同业中处于领先水平")
+                    elif composite >= 50:
+                        lines.append("  → 公司整体指标处于行业中等水平")
+                    else:
+                        lines.append("  → 公司整体指标落后于行业平均水平")
 
             return "\n".join(lines)
 
