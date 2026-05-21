@@ -344,3 +344,186 @@
   border-radius: 8px;
   font-size: var(--text-sm);
 }
+
+/* ============================================================================
+   Phase 2 UX: 辩论四区域布局
+   ============================================================================ */
+
+/* 辩论容器 — 竖向 flex */
+.debate-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 控制栏 */
+.debate-control-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 20px;
+  flex-shrink: 0;
+  background: rgba(11, 16, 33, 0.35);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.06);
+}
+
+.debate-control-bar .debate-status {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-left: auto;
+}
+
+/* 三列区域 */
+.debate-columns {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.debate-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(17, 24, 50, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.debate-column-header {
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.debate-column-body {
+  flex: 1 1 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  min-height: 0;
+}
+
+.debate-column-body::-webkit-scrollbar { width: 3px; }
+.debate-column-body::-webkit-scrollbar-track { background: transparent; }
+.debate-column-body::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.12);
+  border-radius: 2px;
+}
+
+.debate-column--value  { border-top: 2px solid #3B82F6; }
+.debate-column--growth { border-top: 2px solid #14B8A6; }
+.debate-column--risk   { border-top: 2px solid #F59E0B; }
+
+.debate-column--value  .debate-column-header { background: rgba(59, 130, 246, 0.06); color: #3B82F6; }
+.debate-column--growth .debate-column-header { background: rgba(20, 184, 166, 0.06); color: #14B8A6; }
+.debate-column--risk   .debate-column-header { background: rgba(245, 158, 11, 0.06); color: #F59E0B; }
+
+/* 轮次标签 */
+.debate-round-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(59, 130, 246, 0.06);
+  margin: 8px 0 4px;
+}
+
+/* 总结区 */
+.debate-consensus-area {
+  flex-shrink: 0;
+  margin: 4px 8px;
+  padding: 12px 14px;
+  background: rgba(167, 139, 250, 0.05);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.debate-consensus-area .consensus-header {
+  font-weight: 700;
+  font-size: var(--text-xs);
+  color: #A78BFA;
+  margin-bottom: 6px;
+}
+
+.debate-consensus-area .consensus-body {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.debate-consensus-area::-webkit-scrollbar { width: 3px; }
+.debate-consensus-area::-webkit-scrollbar-track { background: transparent; }
+.debate-consensus-area::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.15);
+  border-radius: 2px;
+}
+
+/* 追问栏 */
+.debate-followup-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 20px;
+  flex-shrink: 0;
+  background: rgba(11, 16, 33, 0.35);
+  border-top: 1px solid rgba(59, 130, 246, 0.06);
+  flex-wrap: wrap;
+}
+
+.debate-followup-bar input {
+  flex: 1;
+  min-width: 140px;
+  background: rgba(6, 8, 14, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+}
+
+.debate-followup-bar input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  outline: none;
+}
+
+.debate-followup-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.debate-followup-bar .btn-export {
+  padding: 6px 12px;
+  border: 1px solid rgba(20, 184, 166, 0.12);
+  border-radius: 6px;
+  background: rgba(20, 184, 166, 0.06);
+  color: var(--positive);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  white-space: nowrap;
+}
+
+.debate-followup-bar .btn-export:hover {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.25);
+}
