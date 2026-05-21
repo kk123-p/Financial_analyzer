@@ -197,140 +197,6 @@ function loadChartImg(chartType, btn) {
         });
 }
 
-// ---- AI 辩论 WebSocket (3轮完整辩论) ----
-let debateWs = null;
-
-// 分析师显示名与颜色
-const ANALYST_DISPLAY = {
-    value:   { name: '价值分析师', icon: '💰', color: 'var(--accent-primary)' },
-    growth:  { name: '成长分析师', icon: '🚀', color: 'var(--positive)' },
-    risk:    { name: '风控分析师', icon: '🛡️', color: 'var(--warning)' },
-    consensus: { name: '综合共识', icon: '📊', color: '#A78BFA' },
-};
-
-const ROUND_NAMES = {
-    round1_start: '第1轮：独立陈述',
-    round2_start: '第2轮：交叉质询',
-    round3_start: '第3轮：共识与情景概率',
-};
-
-function startDebate() {
-    const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
-    if (!stockCode) {
-        alert('请先输入股票代码并获取数据');
-        return;
-    }
-
-    if (debateWs && debateWs.readyState === WebSocket.OPEN) {
-        debateWs.close();
-    }
-
-    const stream = document.getElementById('debate-stream');
-    stream.innerHTML = '<p style="color:var(--accent-primary)">正在连接辩论引擎...</p>';
-    stream._roleEls = {};
-    stream._currentRound = '';
-    stream._fallbackEl = null;
-
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${location.host}/ai/debate`;
-
-    try {
-        debateWs = new WebSocket(wsUrl);
-
-        debateWs.onopen = function() {
-            stream.innerHTML = '<p style="color:var(--accent-primary)">已连接，正在准备辩论数据...</p>';
-            debateWs.send(JSON.stringify({ stock_code: stockCode }));
-        };
-
-        debateWs.onmessage = function(event) {
-            const msg = JSON.parse(event.data);
-
-            if (msg.type === 'meta') {
-                if (msg.content in ROUND_NAMES) {
-                    stream._currentRound = msg.content;
-                    const roundDiv = document.createElement('div');
-                    roundDiv.className = 'debate-round-header';
-                    roundDiv.textContent = ROUND_NAMES[msg.content];
-                    stream.appendChild(roundDiv);
-                    stream.scrollTop = stream.scrollHeight;
-                }
-                else if (msg.content.startsWith('analyst_') && msg.content.endsWith('_start')) {
-                    const roleKey = msg.content.replace('analyst_', '').replace('_start', '');
-                    const analyst = ANALYST_DISPLAY[roleKey];
-                    if (analyst && !stream._roleEls[roleKey]) {
-                        const header = document.createElement('div');
-                        header.className = 'debate-analyst-header';
-                        header.innerHTML = `<span>${analyst.icon}</span> ${analyst.name}`;
-                        header.style.color = analyst.color;
-                        stream.appendChild(header);
-                        stream._roleEls[roleKey] = document.createElement('div');
-                        stream._roleEls[roleKey].className = 'debate-analyst-text';
-                        stream.appendChild(stream._roleEls[roleKey]);
-                        stream.scrollTop = stream.scrollHeight;
-                    }
-                }
-                else if (msg.content === 'debate_complete') {
-                    const doneEl = document.createElement('p');
-                    doneEl.style.cssText = 'color:var(--positive);margin-top:12px;';
-                    doneEl.textContent = '✅ 辩论完成';
-                    stream.appendChild(doneEl);
-                }
-                else if (msg.content.startsWith('error:')) {
-                    stream.insertAdjacentHTML('beforeend', `<p style="color:var(--negative);">⚠️ ${msg.content.substring(6)}</p>`);
-                }
-            }
-            else if (msg.type === 'chunk') {
-                let roleKey = msg.role;
-                if (roleKey === 'consensus') {
-                    if (!stream._roleEls['consensus']) {
-                        const header = document.createElement('div');
-                        header.className = 'debate-analyst-header';
-                        const a = ANALYST_DISPLAY.consensus;
-                        header.innerHTML = `<span>${a.icon}</span> ${a.name}`;
-                        header.style.color = a.color;
-                        stream.appendChild(header);
-                        stream._roleEls['consensus'] = document.createElement('div');
-                        stream._roleEls['consensus'].className = 'debate-analyst-text';
-                        stream.appendChild(stream._roleEls['consensus']);
-                    }
-                    stream._roleEls['consensus'].textContent += msg.content;
-                } else if (stream._roleEls[roleKey]) {
-                    stream._roleEls[roleKey].textContent += msg.content;
-                } else {
-                    if (!stream._fallbackEl) {
-                        stream._fallbackEl = document.createElement('p');
-                        stream.appendChild(stream._fallbackEl);
-                    }
-                    stream._fallbackEl.textContent += msg.content;
-                }
-                stream.scrollTop = stream.scrollHeight;
-            }
-            else if (msg.type === 'done') {
-                stream._roleEls = {};
-                stream.insertAdjacentHTML('beforeend', '<p style="color:var(--positive);margin-top:8px;">--- 辩论结束 ---</p>');
-                stream.scrollTop = stream.scrollHeight;
-            }
-            else if (msg.type === 'status') {
-                stream.insertAdjacentHTML('beforeend', `<p style="color:var(--text-muted);">${msg.content}</p>`);
-            }
-            else if (msg.type === 'error') {
-                stream.insertAdjacentHTML('beforeend', `<p style="color:var(--negative);">⚠️ ${msg.content}</p>`);
-            }
-        };
-
-        debateWs.onerror = function() {
-            stream.insertAdjacentHTML('beforeend', '<p style="color:var(--negative);">⚠️ WebSocket 连接失败，请检查网络或API Key配置</p>');
-        };
-
-        debateWs.onclose = function() {
-            stream._roleEls = {};
-            stream._fallbackEl = null;
-        };
-    } catch (e) {
-        stream.innerHTML = `<p style="color:var(--negative);">⚠️ 连接失败: ${e.message}</p>`;
-    }
-}
-
 // ---- 导出 ----
 function exportData(format) {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || 'data';
@@ -391,10 +257,7 @@ window.addEventListener('resize', function() {
     }
 });
 
-<<<<<<< HEAD
-=======
 
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
 // ============================================================================
 // Phase 2: 统一 AI 对话 WebSocket 客户端
 // ============================================================================
@@ -468,7 +331,6 @@ function sendMessage() {
                     sysEl.className = 'chat-system';
                     const intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
                     sysEl.textContent = intentLabels[intent] || intent;
-<<<<<<< HEAD
                     // Insert AFTER the last user bubble (so it appears between user question and AI response)
                     const userBubbles = messages.querySelectorAll('.chat-bubble--user');
                     if (userBubbles.length > 0) {
@@ -477,9 +339,6 @@ function sendMessage() {
                     } else {
                         messages.appendChild(sysEl);
                     }
-=======
-                    messages.appendChild(sysEl);
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                     messages.scrollTop = messages.scrollHeight;
                 } else if (msg.content === 'debate_start') {
                     const header = document.createElement('div');
@@ -514,14 +373,11 @@ function sendMessage() {
                 errEl.style.color = 'var(--negative)';
                 errEl.textContent = '⚠️ ' + msg.content;
                 messages.appendChild(errEl);
-<<<<<<< HEAD
                 // Add retry hint
                 const retryEl = document.createElement('div');
                 retryEl.style.cssText = 'text-align:center;margin-top:4px;';
                 retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
                 messages.appendChild(retryEl);
-=======
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                 messages.scrollTop = messages.scrollHeight;
                 chatInProgress = false;
                 document.getElementById('chat-send-btn').style.display = 'inline-block';
@@ -535,14 +391,11 @@ function sendMessage() {
             errEl.style.color = 'var(--negative)';
             errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
             messages.appendChild(errEl);
-<<<<<<< HEAD
             // Add retry hint
             const retryEl = document.createElement('div');
             retryEl.style.cssText = 'text-align:center;margin-top:4px;';
             retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
             messages.appendChild(retryEl);
-=======
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
             chatInProgress = false;
             document.getElementById('chat-send-btn').style.display = 'inline-block';
             document.getElementById('chat-stop-btn').style.display = 'none';
@@ -560,14 +413,11 @@ function sendMessage() {
         errEl.style.color = 'var(--negative)';
         errEl.textContent = '⚠️ 连接失败: ' + e.message;
         messages.appendChild(errEl);
-<<<<<<< HEAD
         // Add retry hint
         const retryEl = document.createElement('div');
         retryEl.style.cssText = 'text-align:center;margin-top:4px;';
         retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
         messages.appendChild(retryEl);
-=======
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
         chatInProgress = false;
         document.getElementById('chat-send-btn').style.display = 'inline-block';
         document.getElementById('chat-stop-btn').style.display = 'none';
@@ -633,7 +483,6 @@ function buildStructuredCard(text, meta) {
     return card;
 }
 
-<<<<<<< HEAD
 function resetChat() {
     if (chatWs && chatWs.readyState === WebSocket.OPEN) {
         chatWs.close();
@@ -668,10 +517,198 @@ function resetChat() {
 
 // DEPRECATED: 旧 AI 函数保留以便向后兼容
 function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
-function startDebate() { sendQuick('/debate'); }
-=======
-// DEPRECATED: 旧 AI 函数保留以便向后兼容
-function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
-function startDebate() { sendQuick('/debate'); }
+function startDebate() {
+    // Switch to the debate tab
+    const debateBtn = document.querySelector('.tabs > .tab-btn:nth-child(5)'); // 5th tab
+    if (debateBtn) {
+        switchTab('debate', debateBtn);
+    }
+    // Auto-start debate
+    setTimeout(function() { startDebateNew(); }, 300);
+}
 
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
+
+// ============================================================================
+// AI 辩论 WebSocket 客户端
+// ============================================================================
+
+const ANALYST_META = {
+    'value':    { name: '格雷厄姆式价值分析师', icon: '📊', color: '#3B82F6' },
+    'growth':   { name: '费雪式成长分析师', icon: '🚀', color: '#14B8A6' },
+    'risk':     { name: '塔勒布式风控师', icon: '🛡️', color: '#F59E0B' },
+    'consensus': { name: '综合共识', icon: '📋', color: '#A78BFA' },
+};
+
+const ROUND_NAMES = {
+    'round1_start': '第1轮：独立陈述',
+    'round2_start': '第2轮：交叉质询',
+    'round3_start': '第3轮：共识与情景概率',
+};
+
+let debateWs = null;
+let debateRunning = false;
+
+function startDebateNew() {
+    const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
+    if (!stockCode) {
+        alert('请先输入股票代码并获取数据');
+        return;
+    }
+
+    if (debateWs && debateWs.readyState === WebSocket.OPEN) {
+        debateWs.close();
+    }
+
+    const output = document.getElementById('debate-output');
+    const emptyEl = document.getElementById('debate-empty');
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Clear previous debate content
+    while (output.firstChild) {
+        if (output.firstChild === emptyEl) break;
+        output.removeChild(output.firstChild);
+    }
+    output.appendChild(emptyEl); // ensure empty stays at end
+
+    const statusEl = document.getElementById('debate-status');
+    statusEl.textContent = '连接中...';
+
+    const startBtn = document.getElementById('debate-start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = '辩论中...';
+    debateRunning = true;
+
+    // Track current elements for each role
+    let roleEls = {};
+    let currentRound = '';
+
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + location.host + '/ai/debate';
+
+    try {
+        debateWs = new WebSocket(wsUrl);
+
+        debateWs.onopen = function() {
+            statusEl.textContent = '已连接，准备数据...';
+            debateWs.send(JSON.stringify({ stock_code: stockCode }));
+        };
+
+        debateWs.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'status') {
+                statusEl.textContent = msg.content;
+            }
+            else if (msg.type === 'meta') {
+                if (msg.content in ROUND_NAMES) {
+                    currentRound = msg.content;
+                    const header = document.createElement('div');
+                    header.className = 'debate-round-header';
+                    header.textContent = ROUND_NAMES[msg.content];
+                    output.appendChild(header);
+                    output.scrollTop = output.scrollHeight;
+                    statusEl.textContent = ROUND_NAMES[msg.content];
+                }
+                else if (msg.content.startsWith('analyst_') && msg.content.endsWith('_start')) {
+                    const roleKey = msg.content.replace('analyst_', '').replace('_start', '');
+                    const meta = ANALYST_META[roleKey];
+                    if (!meta) return;
+
+                    if (!roleEls[roleKey]) {
+                        const section = document.createElement('div');
+                        section.className = 'debate-analyst-section';
+
+                        const nameEl = document.createElement('div');
+                        nameEl.className = 'debate-analyst-name';
+                        nameEl.style.color = meta.color;
+                        nameEl.innerHTML = '<span>' + meta.icon + '</span> ' + meta.name;
+                        section.appendChild(nameEl);
+
+                        const textEl = document.createElement('div');
+                        textEl.className = 'debate-analyst-text';
+                        section.appendChild(textEl);
+
+                        output.appendChild(section);
+                        roleEls[roleKey] = textEl;
+                        output.scrollTop = output.scrollHeight;
+                    }
+                }
+                else if (msg.content === 'debate_complete') {
+                    statusEl.textContent = '辩论完成';
+                }
+                else if (msg.content.startsWith('error:')) {
+                    const errEl = document.createElement('div');
+                    errEl.className = 'debate-error';
+                    errEl.textContent = '⚠️ ' + msg.content.substring(6);
+                    output.appendChild(errEl);
+                    output.scrollTop = output.scrollHeight;
+                }
+            }
+            else if (msg.type === 'chunk') {
+                let roleKey = msg.role;
+                if (roleKey === 'consensus') {
+                    if (!roleEls['consensus']) {
+                        const section = document.createElement('div');
+                        section.className = 'debate-consensus';
+
+                        const nameEl = document.createElement('div');
+                        nameEl.className = 'debate-analyst-name';
+                        const m = ANALYST_META['consensus'];
+                        nameEl.style.color = m.color;
+                        nameEl.innerHTML = '<span>' + m.icon + '</span> ' + m.name;
+                        section.appendChild(nameEl);
+
+                        const textEl = document.createElement('div');
+                        textEl.className = 'debate-analyst-text';
+                        section.appendChild(textEl);
+
+                        output.appendChild(section);
+                        roleEls['consensus'] = textEl;
+                    }
+                    roleEls['consensus'].textContent += msg.content;
+                } else if (roleEls[roleKey]) {
+                    roleEls[roleKey].textContent += msg.content;
+                }
+                output.scrollTop = output.scrollHeight;
+            }
+            else if (msg.type === 'done') {
+                statusEl.textContent = '辩论结束';
+                startBtn.disabled = false;
+                startBtn.textContent = '重新辩论';
+                debateRunning = false;
+            }
+            else if (msg.type === 'error') {
+                const errEl = document.createElement('div');
+                errEl.className = 'debate-error';
+                errEl.textContent = '⚠️ ' + msg.content;
+                output.appendChild(errEl);
+                output.scrollTop = output.scrollHeight;
+                statusEl.textContent = '出错';
+                startBtn.disabled = false;
+                startBtn.textContent = '重试';
+                debateRunning = false;
+            }
+        };
+
+        debateWs.onerror = function() {
+            statusEl.textContent = '连接失败';
+            startBtn.disabled = false;
+            startBtn.textContent = '重试';
+            debateRunning = false;
+        };
+
+        debateWs.onclose = function() {
+            if (debateRunning) {
+                statusEl.textContent = '连接断开';
+                startBtn.disabled = false;
+                startBtn.textContent = '重试';
+                debateRunning = false;
+            }
+        };
+    } catch (e) {
+        statusEl.textContent = '连接失败: ' + e.message;
+        startBtn.disabled = false;
+        startBtn.textContent = '重试';
+        debateRunning = false;
+    }
+}

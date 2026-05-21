@@ -119,6 +119,7 @@
                     <button class="tab-btn" onclick="switchTab('charts', this)">图表</button>
                     <button class="tab-btn" onclick="switchTab('ai', this)">AI 投研</button>
                     <button class="tab-btn" onclick="switchTab('data', this)">数据</button>
+                    <button class="tab-btn" onclick="switchTab('debate', this)">AI 辩论</button>
                 </div>
 
                 <!-- Tab: 分析结果 -->
@@ -160,12 +161,31 @@
                             <input type="text" id="chat-input"
                                    placeholder="输入分析问题... (Enter 发送)"
                                    onkeydown="if(event.key==='Enter'){event.preventDefault();sendMessage();}">
-<<<<<<< HEAD
                             <button class="btn" onclick="resetChat()" title="新对话" style="padding:8px 12px;">↺</button>
-=======
->>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                             <button class="btn btn-accent" onclick="sendMessage()" id="chat-send-btn">发送</button>
                             <button class="chat-stop-btn" onclick="stopAnalysis()" id="chat-stop-btn" style="display:none;">停止</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: AI 辩论 — 三方投研辩论 -->
+                <div id="tab-debate" class="tab-panel">
+                    <div class="debate-container" style="display:flex;flex-direction:column;flex:1;min-height:0;padding:12px 0;">
+                        <div style="display:flex;gap:12px;align-items:center;padding:0 20px 12px;flex-shrink:0;">
+                            <button class="btn btn-accent" onclick="startDebateNew()" id="debate-start-btn">开始辩论</button>
+                            <span style="color:var(--text-muted);font-size:var(--text-xs);">三位分析师：价值 / 成长 / 风控</span>
+                            <span id="debate-status" style="color:var(--accent-primary);font-size:var(--text-xs);margin-left:auto;"></span>
+                        </div>
+                        <div id="debate-output" class="debate-output"
+                             style="flex:1;overflow-y:auto;padding:0 20px;min-height:0;">
+                            <div class="result-empty" id="debate-empty">
+                                <div style="font-size:32px;opacity:0.3;margin-bottom:8px;">⚔️</div>
+                                <div>三方投研辩论</div>
+                                <div class="hint">格雷厄姆价值派 × 费雪成长派 × 塔勒布风控派</div>
+                                <div style="margin-top:8px;font-size:var(--text-xs);color:var(--text-muted);">
+                                    点击"开始辩论"启动三轮辩论：独立陈述 → 交叉质询 → 共识地图
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
