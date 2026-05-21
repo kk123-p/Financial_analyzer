@@ -6,7 +6,8 @@ import queue
 import threading
 
 import pandas as pd
-from fastapi import APIRouter, Request, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, Form, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import PlainTextResponse
 
 from .data_api import _get_session
 
@@ -379,3 +380,102 @@ async def ai_conversation(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+
+
+# ============================================================================
+# Phase 2 UX: Prompt 模板管理 API
+# ============================================================================
+
+
+@router.get("/prompts")
+async def list_prompts():
+    """列出所有 Prompt 模板"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    store = PromptsStore()
+    return store.list_templates()
+
+
+@router.get("/prompts/{name:path}")
+async def get_prompt(name: str):
+    """获取单个 Prompt 模板完整内容"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    store = PromptsStore()
+    template = store.get_template(name)
+    if template is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "模板不存在"}, status_code=404)
+    return template
+
+
+@router.put("/prompts/{name:path}")
+async def save_prompt(name: str, request: Request):
+    """保存/更新 Prompt 模板"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    data = await request.json()
+    store = PromptsStore()
+    ok = store.save_template(name, data)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "不能覆盖系统预置模板"}, status_code=403)
+    return {"status": "ok"}
+
+
+@router.delete("/prompts/{name:path}")
+async def delete_prompt(name: str):
+    """删除 Prompt 模板"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    store = PromptsStore()
+    ok = store.delete_template(name)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "模板不存在或为系统预置"}, status_code=403)
+    return {"status": "ok"}
+
+
+@router.post("/prompts/{name:path}/duplicate")
+async def duplicate_prompt(name: str, request: Request):
+    """复制 Prompt 模板"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    body = await request.json()
+    new_name = body.get("new_name", name + " - 副本")
+    store = PromptsStore()
+    ok = store.duplicate_template(name, new_name)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "复制失败"}, status_code=400)
+    return {"status": "ok", "new_name": new_name}
+
+
+@router.get("/prompts/{name:path}/export")
+async def export_prompt(name: str):
+    """导出 Prompt 模板为 JSON 文件下载"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    store = PromptsStore()
+    json_str = store.export_template(name)
+    if json_str is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "模板不存在"}, status_code=404)
+    safe_name = name.replace("/", "_").replace("\\", "_")
+    return PlainTextResponse(
+        json_str,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"'}
+    )
+
+
+@router.post("/prompts/import")
+async def import_prompt(file: UploadFile):
+    """导入 Prompt 模板（上传 JSON 文件）"""
+    from financial_analyzer.ai.prompt_store import PromptsStore
+    try:
+        content = await file.read()
+        json_str = content.decode("utf-8")
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "文件读取失败"}, status_code=400)
+    store = PromptsStore()
+    ok = store.import_template(json_str)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "导入失败，JSON 格式不正确"}, status_code=400)
+    return {"status": "ok"}
