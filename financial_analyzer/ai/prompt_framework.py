@@ -154,6 +154,7 @@ class PromptBuilder:
         self._mode: str = "quick"
         self._context: str | None = None
         self._question: str = ""
+        self._template: dict | None = None  # 用户选择的模板
 
     def with_data(self, report: dict) -> "PromptBuilder":
         self._data = report
@@ -191,6 +192,23 @@ class PromptBuilder:
         self._question = question
         return self
 
+    def with_template(self, template: dict) -> "PromptBuilder":
+        """从 Prompt 模板加载配置（优先级高于硬编码默认值）"""
+        self._template = template
+        if template:
+            if template.get("mode"):
+                self._mode = template["mode"]
+            if template.get("frameworks"):
+                self._frameworks = list(template["frameworks"].keys())
+        return self
+
+    def _get_framework_content(self, fw_key: str) -> str | None:
+        """获取框架内容：优先模板，fallback 硬编码"""
+        if self._template and self._template.get("frameworks", {}).get(fw_key):
+            return self._template["frameworks"][fw_key]
+        _, template = self.FRAMEWORKS.get(fw_key, ("", ""))
+        return template if template else None
+
     def build(self) -> str:
         parts = []
         parts.append(self._build_role())
@@ -207,14 +225,18 @@ class PromptBuilder:
 
         if self._mode in ("deep", "debate"):
             for fw_key in self._frameworks:
-                name, template = self.FRAMEWORKS[fw_key]
-                parts.append(f"---\n{template}")
+                template_content = self._get_framework_content(fw_key)
+                if template_content:
+                    parts.append(f"---\n{template_content}")
 
         if self._signals and self._mode in ("deep", "debate"):
             parts.append(self._format_signals(self._signals))
 
-        if self._output_format == "structured" or self._mode in ("quick", "deep", "followup"):
-            parts.append(OUTPUT_FORMAT_STRUCTURED)
+        fmt = None
+        if self._template and self._template.get("output_format"):
+            fmt = self._template["output_format"]
+        if self._mode in ("quick", "deep", "followup"):
+            parts.append(fmt if fmt else OUTPUT_FORMAT_STRUCTURED)
 
         if self._mode == "debate":
             parts.append("\n请启动三视角辩论流程。")
@@ -228,15 +250,18 @@ class PromptBuilder:
         return "\n\n".join(parts)
 
     def _build_role(self) -> str:
-        mode_roles = {
-            "quick": "你是一位专业的财务分析师，请基于提供的财务数据，用简洁、专业的中文回答问题。",
-            "deep": "你是一位拥有20年经验的高级财务分析师，精通A股、港股和美股市场。你的分析以严谨、深刻和富有洞察力著称。请基于提供的财务数据和分析框架，进行深入、系统的分析。",
-            "debate": "你将同时扮演三位不同视角的资深分析师（格雷厄姆式价值分析师、费雪式成长分析师、塔勒布式风控师），对以下公司进行多维度辩论分析。",
-            "followup": "你是一位专业的财务分析师，请基于之前的分析上下文和数据，回答用户的追问。",
-        }
-        role = mode_roles.get(self._mode, mode_roles["quick"])
+        # 优先使用模板中的 system_role
+        if self._template and self._template.get("system_role"):
+            role = self._template["system_role"]
+        else:
+            mode_roles = {
+                "quick": "你是一位专业的财务分析师，请基于提供的财务数据，用简洁、专业的中文回答问题。",
+                "deep": "你是一位拥有20年经验的高级财务分析师，精通A股、港股和美股市场。你的分析以严谨、深刻和富有洞察力著称。请基于提供的财务数据和分析框架，进行深入、系统的分析。",
+                "debate": "你将同时扮演三位不同视角的资深分析师（格雷厄姆式价值分析师、费雪式成长分析师、塔勒布式风控师），对以下公司进行多维度辩论分析。",
+                "followup": "你是一位专业的财务分析师，请基于之前的分析上下文和数据，回答用户的追问。",
+            }
+            role = mode_roles.get(self._mode, mode_roles["quick"])
 
-        # 快速模式要求输出中提到快速分析
         if self._mode == "quick" and self._company_name:
             return f"{role}\n\n**分析对象：{self._company_name}**\n\n请给出快速分析："
         if self._company_name:
