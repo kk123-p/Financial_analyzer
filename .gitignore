@@ -33,3 +33,6 @@ Thumbs.db
 
 # User data (configs, caches)
 .financialanalyzer/
+
+# Brainstorming visual companion
+.superpowers/
