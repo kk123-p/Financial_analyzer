@@ -464,7 +464,14 @@ function sendMessage() {
                     sysEl.className = 'chat-system';
                     const intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
                     sysEl.textContent = intentLabels[intent] || intent;
-                    messages.appendChild(sysEl);
+                    // Insert AFTER the last user bubble (so it appears between user question and AI response)
+                    const userBubbles = messages.querySelectorAll('.chat-bubble--user');
+                    if (userBubbles.length > 0) {
+                        const lastUserBubble = userBubbles[userBubbles.length - 1];
+                        lastUserBubble.insertAdjacentElement('afterend', sysEl);
+                    } else {
+                        messages.appendChild(sysEl);
+                    }
                     messages.scrollTop = messages.scrollHeight;
                 } else if (msg.content === 'debate_start') {
                     const header = document.createElement('div');
@@ -499,6 +506,11 @@ function sendMessage() {
                 errEl.style.color = 'var(--negative)';
                 errEl.textContent = '⚠️ ' + msg.content;
                 messages.appendChild(errEl);
+                // Add retry hint
+                const retryEl = document.createElement('div');
+                retryEl.style.cssText = 'text-align:center;margin-top:4px;';
+                retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
+                messages.appendChild(retryEl);
                 messages.scrollTop = messages.scrollHeight;
                 chatInProgress = false;
                 document.getElementById('chat-send-btn').style.display = 'inline-block';
@@ -512,6 +524,11 @@ function sendMessage() {
             errEl.style.color = 'var(--negative)';
             errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
             messages.appendChild(errEl);
+            // Add retry hint
+            const retryEl = document.createElement('div');
+            retryEl.style.cssText = 'text-align:center;margin-top:4px;';
+            retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
+            messages.appendChild(retryEl);
             chatInProgress = false;
             document.getElementById('chat-send-btn').style.display = 'inline-block';
             document.getElementById('chat-stop-btn').style.display = 'none';
@@ -529,6 +546,11 @@ function sendMessage() {
         errEl.style.color = 'var(--negative)';
         errEl.textContent = '⚠️ 连接失败: ' + e.message;
         messages.appendChild(errEl);
+        // Add retry hint
+        const retryEl = document.createElement('div');
+        retryEl.style.cssText = 'text-align:center;margin-top:4px;';
+        retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
+        messages.appendChild(retryEl);
         chatInProgress = false;
         document.getElementById('chat-send-btn').style.display = 'inline-block';
         document.getElementById('chat-stop-btn').style.display = 'none';
@@ -592,6 +614,38 @@ function buildStructuredCard(text, meta) {
     }
 
     return card;
+}
+
+function resetChat() {
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+        chatWs.close();
+    }
+    chatWs = null;
+    chatInProgress = false;
+
+    const messages = document.getElementById('chat-messages');
+    // Remove all children except chat-empty
+    while (messages.firstChild) {
+        messages.removeChild(messages.firstChild);
+    }
+    // Re-create chat-empty
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'chat-empty';
+    emptyEl.id = 'chat-empty';
+    emptyEl.innerHTML = '<div style="font-size:40px;opacity:0.3;margin-bottom:8px;">📊</div>' +
+        '<div>AI 财务分析助手</div>' +
+        '<div class="hint">支持快速问答、深度分析（/deep）和三方辩论（/debate）</div>' +
+        '<div class="quick-actions">' +
+        '<button class="quick-action" onclick="sendQuick(\'分析盈利能力\')">分析盈利能力</button>' +
+        '<button class="quick-action" onclick="sendQuick(\'评估财务风险\')">评估财务风险</button>' +
+        '<button class="quick-action" onclick="sendQuick(\'/deep 全面深度分析\')">全面深度分析</button>' +
+        '<button class="quick-action" onclick="sendQuick(\'/debate\')">三方辩论</button>' +
+        '</div>';
+    messages.appendChild(emptyEl);
+
+    document.getElementById('chat-send-btn').style.display = 'inline-block';
+    document.getElementById('chat-stop-btn').style.display = 'none';
+    document.getElementById('chat-input').value = '';
 }
 
 // DEPRECATED: 旧 AI 函数保留以便向后兼容

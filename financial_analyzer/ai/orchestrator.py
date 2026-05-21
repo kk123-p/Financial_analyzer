@@ -247,6 +247,7 @@ class AnalysisOrchestrator:
         if not self._debate_factory:
             if callback:
                 callback("error", "辩论引擎不可用", None)
+                callback("done", "", None)
             return
 
         if callback:

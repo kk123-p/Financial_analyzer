@@ -160,6 +160,7 @@
                             <input type="text" id="chat-input"
                                    placeholder="输入分析问题... (Enter 发送)"
                                    onkeydown="if(event.key==='Enter'){event.preventDefault();sendMessage();}">
+                            <button class="btn" onclick="resetChat()" title="新对话" style="padding:8px 12px;">↺</button>
                             <button class="btn btn-accent" onclick="sendMessage()" id="chat-send-btn">发送</button>
                             <button class="chat-stop-btn" onclick="stopAnalysis()" id="chat-stop-btn" style="display:none;">停止</button>
                         </div>

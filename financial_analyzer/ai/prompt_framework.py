@@ -213,9 +213,7 @@ class PromptBuilder:
         if self._signals and self._mode in ("deep", "debate"):
             parts.append(self._format_signals(self._signals))
 
-        if self._output_format == "structured":
-            parts.append(OUTPUT_FORMAT_STRUCTURED)
-        elif self._mode == "deep" and not self._output_format:
+        if self._output_format == "structured" or self._mode in ("quick", "deep", "followup"):
             parts.append(OUTPUT_FORMAT_STRUCTURED)
 
         if self._mode == "debate":

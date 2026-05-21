@@ -247,6 +247,8 @@ class DebateEngine:
             self.state.phase = "error"
             if callback:
                 callback("_meta", f"error:{e}", True)
+            if on_complete:
+                on_complete(self.state)
 
     def _run_followup(self, question, callback, on_complete):
         """Execute user follow-up."""
@@ -281,6 +283,8 @@ class DebateEngine:
             self.state.error = str(e)
             if callback:
                 callback("_meta", f"error:{e}", True)
+            if on_complete:
+                on_complete(self.state)
 
     def _run_weight_adjustment(self, wv, wg, wr, callback, on_complete):
         """Execute weight adjustment."""
@@ -312,6 +316,8 @@ class DebateEngine:
             self.state.error = str(e)
             if callback:
                 callback("_meta", f"error:{e}", True)
+            if on_complete:
+                on_complete(self.state)
 
     def _stream_call(self, prompt, system_prompt, callback, analyst_id):
         """Helper to make a streaming API call."""
