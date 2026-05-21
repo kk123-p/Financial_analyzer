@@ -6,6 +6,7 @@
     <title>Financial Analyzer Pro — 财务分析终端</title>
 
     <link rel="stylesheet" href="/static/css/terminal.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
@@ -139,29 +140,28 @@
                     <div id="chart-container" class="chart-container"></div>
                 </div>
 
-                <!-- Tab: AI 投研 -->
+                <!-- Tab: AI 投研 — Phase 2 统一对话面板 -->
                 <div id="tab-ai" class="tab-panel">
-                    <div class="ai-layout">
-                        <div class="ai-subtabs" style="display:flex;gap:0;margin-bottom:8px;">
-                            <button class="tab-btn active" onclick="switchAiTab('chat', this)">AI 智能分析</button>
-                            <button class="tab-btn" onclick="switchAiTab('debate', this)">三方辩论</button>
-                        </div>
-
-                        <div id="ai-chat-panel" class="ai-layout" style="display:flex;">
-                            <form class="ai-input-row" hx-post="/ai/chat" hx-target="#ai-chat-result" hx-swap="innerHTML transition:true" hx-indicator="#page-progress">
-                                <input type="text" name="question" placeholder="输入分析问题，例如：这家公司的盈利能力如何？">
-                                <button type="submit" class="btn btn-accent">提问</button>
-                            </form>
-                            <div id="ai-chat-result" class="ai-response" style="flex:1;">
-                                <div class="result-empty">输入问题开始 AI 分析</div>
+                    <div class="chat-container" id="chat-container">
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="chat-empty" id="chat-empty">
+                                <div style="font-size:40px;opacity:0.3;margin-bottom:8px;">📊</div>
+                                <div>AI 财务分析助手</div>
+                                <div class="hint">支持快速问答、深度分析（/deep）和三方辩论（/debate）</div>
+                                <div class="quick-actions">
+                                    <button class="quick-action" onclick="sendQuick('分析盈利能力')">分析盈利能力</button>
+                                    <button class="quick-action" onclick="sendQuick('评估财务风险')">评估财务风险</button>
+                                    <button class="quick-action" onclick="sendQuick('/deep 全面深度分析')">全面深度分析</button>
+                                    <button class="quick-action" onclick="sendQuick('/debate')">三方辩论</button>
+                                </div>
                             </div>
                         </div>
-
-                        <div id="ai-debate-panel" class="ai-layout" style="display:none;flex:1;">
-                            <button class="btn btn-accent" onclick="startDebate()" style="width:120px;">开始辩论</button>
-                            <div id="debate-stream" class="debate-stream">
-                                <div class="result-empty">点击「开始辩论」启动三方投研辩论</div>
-                            </div>
+                        <div class="chat-input-area" id="chat-input-area">
+                            <input type="text" id="chat-input"
+                                   placeholder="输入分析问题... (Enter 发送)"
+                                   onkeydown="if(event.key==='Enter'){event.preventDefault();sendMessage();}">
+                            <button class="btn btn-accent" onclick="sendMessage()" id="chat-send-btn">发送</button>
+                            <button class="chat-stop-btn" onclick="stopAnalysis()" id="chat-stop-btn" style="display:none;">停止</button>
                         </div>
                     </div>
                 </div>
