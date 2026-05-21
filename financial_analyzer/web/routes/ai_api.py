@@ -137,7 +137,7 @@ async def ai_debate(websocket: WebSocket):
             return
 
         config = DeepSeekConfig(api_key=api_key)
-        engine = DebateEngine(config=config)
+        engine = DebateEngine(api_key=api_key, config=config)
 
         # 准备分析数据
         session = _get_session_for_ws(stock_code)
@@ -351,7 +351,7 @@ async def ai_conversation(websocket: WebSocket):
 
         def debate_factory():
             from financial_analyzer.ai.debate_engine import DebateEngine
-            engine = DebateEngine(config=config)
+            engine = DebateEngine(api_key=api_key, config=config)
             return engine
 
         orchestrator = AnalysisOrchestrator(

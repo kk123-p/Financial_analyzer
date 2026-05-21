@@ -17,7 +17,13 @@
       "Bash(find \"C:/Users/LK/Desktop/《Python大数据财务分析》源代码（读者版） - 2023版\" -type f -name \"*.md\" -o -name \"*.txt\" -o -name \"*.docx\" | sort)",
       "Bash(curl -s http://127.0.0.1:8000/)",
       "Read(//tmp/**)",
-      "Skill(**)"
-    ]
-  }
+      "Skill(**)",
+      "Bash(git -C \"C:/Users/LK/Desktop/FA/10.6\" add docs/superpowers/specs/2026-05-21-ai-ux-optimization-design.md)",
+      "Bash(git -C C:/Users/LK/Desktop/FA/10.6 commit -m ' *)",
+      "Bash(python -m pytest tests/test_prompt_store.py -v)",
+      "Bash(git -C \"C:/Users/LK/Desktop/FA/10.6\" log --oneline -5)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
 }

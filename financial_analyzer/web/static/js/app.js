@@ -674,7 +674,12 @@ function startDebateNew() {
                 debateRunning = false;
             }
             else if (msg.type === 'error') {
-                statusEl.textContent = '出错';
+                statusEl.textContent = '出错: ' + (msg.content || '未知错误');
+                // 在共识区显示错误详情
+                const consensusBody = document.getElementById('debate-consensus-body');
+                if (consensusBody && !consensusBody.textContent) {
+                    consensusBody.textContent = '⚠️ ' + (msg.content || '辩论启动失败，请检查 API Key 配置和网络连接');
+                }
                 startBtn.disabled = false;
                 startBtn.textContent = '重试';
                 debateRunning = false;
@@ -682,7 +687,11 @@ function startDebateNew() {
         };
 
         debateWs.onerror = function() {
-            statusEl.textContent = '连接失败';
+            statusEl.textContent = '连接失败，请检查 API Key 配置';
+            const consensusBody = document.getElementById('debate-consensus-body');
+            if (consensusBody && !consensusBody.textContent) {
+                consensusBody.textContent = '⚠️ WebSocket 连接失败，请检查：\n1. DeepSeek API Key 是否已配置\n2. 网络连接是否正常\n3. 服务器是否已启动';
+            }
             startBtn.disabled = false;
             startBtn.textContent = '重试';
             debateRunning = false;
