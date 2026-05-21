@@ -89,7 +89,7 @@ class TestPromptBuilderDeepMode:
         builder.with_mode("deep")
         prompt = builder.build()
 
-        assert "利润质量预警" in prompt
+        assert "利润质量恶化预警" in prompt
         assert "盈利质量预警" in prompt
 
     def test_build_deep_mode_all_frameworks(self):
@@ -119,7 +119,7 @@ class TestPromptBuilderDeepMode:
         assert "哈佛分析框架" in prompt
         assert "三表联动验证" in prompt
         assert "生命周期" in prompt
-        assert "利润质量预警" in prompt
+        assert "利润质量恶化预警" in prompt
         assert "数据依据" in prompt
         assert "推理过程" in prompt
         assert "综合结论" in prompt
