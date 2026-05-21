@@ -533,7 +533,7 @@ function startDebate() {
 
 
 // ============================================================================
-// AI 辩论 WebSocket 客户端
+// AI 辩论 WebSocket 客户端 — 四区域布局版
 // ============================================================================
 
 const ANALYST_META = {
@@ -549,8 +549,22 @@ const ROUND_NAMES = {
     'round3_start': '第3轮：共识与情景概率',
 };
 
+const BODY_IDS = {
+    'value': 'debate-body-value',
+    'growth': 'debate-body-growth',
+    'risk': 'debate-body-risk',
+};
+
 let debateWs = null;
 let debateRunning = false;
+let debateData = {
+    round1: {},
+    round2: {},
+    round3: {},
+    consensus: '',
+    followups: [],
+};
+let currentRoundKey = '';
 
 function startDebateNew() {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
@@ -563,16 +577,20 @@ function startDebateNew() {
         debateWs.close();
     }
 
-    const output = document.getElementById('debate-output');
-    const emptyEl = document.getElementById('debate-empty');
-    if (emptyEl) emptyEl.style.display = 'none';
+    // 显示布局，隐藏空状态
+    document.getElementById('debate-layout').style.display = 'flex';
+    const emptyState = document.getElementById('debate-empty-state');
+    if (emptyState) emptyState.style.display = 'none';
 
-    // Clear previous debate content
-    while (output.firstChild) {
-        if (output.firstChild === emptyEl) break;
-        output.removeChild(output.firstChild);
-    }
-    output.appendChild(emptyEl); // ensure empty stays at end
+    // 清空三列
+    ['value', 'growth', 'risk'].forEach(role => {
+        document.getElementById(BODY_IDS[role]).textContent = '';
+    });
+    document.getElementById('debate-consensus-body').textContent = '';
+
+    // 重置辩论数据
+    debateData = { round1: {}, round2: {}, round3: {}, consensus: '', followups: [] };
+    currentRoundKey = '';
 
     const statusEl = document.getElementById('debate-status');
     statusEl.textContent = '连接中...';
@@ -581,10 +599,6 @@ function startDebateNew() {
     startBtn.disabled = true;
     startBtn.textContent = '辩论中...';
     debateRunning = true;
-
-    // Track current elements for each role
-    let roleEls = {};
-    let currentRound = '';
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = protocol + '//' + location.host + '/ai/debate';
@@ -605,75 +619,53 @@ function startDebateNew() {
             }
             else if (msg.type === 'meta') {
                 if (msg.content in ROUND_NAMES) {
-                    currentRound = msg.content;
-                    const header = document.createElement('div');
-                    header.className = 'debate-round-header';
-                    header.textContent = ROUND_NAMES[msg.content];
-                    output.appendChild(header);
-                    output.scrollTop = output.scrollHeight;
+                    currentRoundKey = msg.content.replace('_start', '');
                     statusEl.textContent = ROUND_NAMES[msg.content];
                 }
                 else if (msg.content.startsWith('analyst_') && msg.content.endsWith('_start')) {
                     const roleKey = msg.content.replace('analyst_', '').replace('_start', '');
-                    const meta = ANALYST_META[roleKey];
-                    if (!meta) return;
-
-                    if (!roleEls[roleKey]) {
-                        const section = document.createElement('div');
-                        section.className = 'debate-analyst-section';
-
-                        const nameEl = document.createElement('div');
-                        nameEl.className = 'debate-analyst-name';
-                        nameEl.style.color = meta.color;
-                        nameEl.innerHTML = '<span>' + meta.icon + '</span> ' + meta.name;
-                        section.appendChild(nameEl);
-
-                        const textEl = document.createElement('div');
-                        textEl.className = 'debate-analyst-text';
-                        section.appendChild(textEl);
-
-                        output.appendChild(section);
-                        roleEls[roleKey] = textEl;
-                        output.scrollTop = output.scrollHeight;
+                    if (roleKey === 'value' || roleKey === 'growth' || roleKey === 'risk') {
+                        const body = document.getElementById(BODY_IDS[roleKey]);
+                        const tag = document.createElement('span');
+                        tag.className = 'debate-round-tag';
+                        tag.textContent = ROUND_NAMES[currentRoundKey + '_start'] || currentRoundKey;
+                        body.appendChild(tag);
+                        body.appendChild(document.createTextNode('\n'));
+                        body.scrollTop = body.scrollHeight;
                     }
                 }
                 else if (msg.content === 'debate_complete') {
                     statusEl.textContent = '辩论完成';
+                    startBtn.disabled = false;
+                    startBtn.textContent = '重新辩论';
+                    debateRunning = false;
                 }
                 else if (msg.content.startsWith('error:')) {
-                    const errEl = document.createElement('div');
-                    errEl.className = 'debate-error';
-                    errEl.textContent = '⚠️ ' + msg.content.substring(6);
-                    output.appendChild(errEl);
-                    output.scrollTop = output.scrollHeight;
+                    statusEl.textContent = '出错: ' + msg.content.substring(6);
+                    startBtn.disabled = false;
+                    startBtn.textContent = '重试';
+                    debateRunning = false;
                 }
             }
             else if (msg.type === 'chunk') {
-                let roleKey = msg.role;
+                const roleKey = msg.role;
                 if (roleKey === 'consensus') {
-                    if (!roleEls['consensus']) {
-                        const section = document.createElement('div');
-                        section.className = 'debate-consensus';
+                    const body = document.getElementById('debate-consensus-body');
+                    body.textContent += msg.content;
+                    debateData.consensus += msg.content;
+                    body.scrollTop = body.scrollHeight;
+                } else if (BODY_IDS[roleKey]) {
+                    const body = document.getElementById(BODY_IDS[roleKey]);
+                    body.textContent += msg.content;
+                    body.scrollTop = body.scrollHeight;
 
-                        const nameEl = document.createElement('div');
-                        nameEl.className = 'debate-analyst-name';
-                        const m = ANALYST_META['consensus'];
-                        nameEl.style.color = m.color;
-                        nameEl.innerHTML = '<span>' + m.icon + '</span> ' + m.name;
-                        section.appendChild(nameEl);
-
-                        const textEl = document.createElement('div');
-                        textEl.className = 'debate-analyst-text';
-                        section.appendChild(textEl);
-
-                        output.appendChild(section);
-                        roleEls['consensus'] = textEl;
+                    // 收集到 debateData
+                    const roundMap = { 'round1': 'round1', 'round2': 'round2', 'round3': 'round3' };
+                    const rk = roundMap[currentRoundKey] || currentRoundKey;
+                    if (rk && (rk === 'round1' || rk === 'round2' || rk === 'round3')) {
+                        debateData[rk][roleKey] = (debateData[rk][roleKey] || '') + msg.content;
                     }
-                    roleEls['consensus'].textContent += msg.content;
-                } else if (roleEls[roleKey]) {
-                    roleEls[roleKey].textContent += msg.content;
                 }
-                output.scrollTop = output.scrollHeight;
             }
             else if (msg.type === 'done') {
                 statusEl.textContent = '辩论结束';
@@ -682,11 +674,6 @@ function startDebateNew() {
                 debateRunning = false;
             }
             else if (msg.type === 'error') {
-                const errEl = document.createElement('div');
-                errEl.className = 'debate-error';
-                errEl.textContent = '⚠️ ' + msg.content;
-                output.appendChild(errEl);
-                output.scrollTop = output.scrollHeight;
                 statusEl.textContent = '出错';
                 startBtn.disabled = false;
                 startBtn.textContent = '重试';
@@ -714,6 +701,76 @@ function startDebateNew() {
         startBtn.disabled = false;
         startBtn.textContent = '重试';
         debateRunning = false;
+    }
+}
+
+function sendDebateFollowup() {
+    const input = document.getElementById('debate-followup-input');
+    const question = input.value.trim();
+    if (!question) return;
+    if (!debateWs || debateWs.readyState !== WebSocket.OPEN) {
+        alert('辩论未连接或已结束，请重新开始辩论');
+        return;
+    }
+
+    input.value = '';
+
+    const fuEntry = { question: question, value: '', growth: '', risk: '' };
+    debateData.followups.push(fuEntry);
+
+    ['value', 'growth', 'risk'].forEach(role => {
+        const body = document.getElementById(BODY_IDS[role]);
+        const tag = document.createElement('span');
+        tag.className = 'debate-round-tag';
+        tag.textContent = '追问: ' + question.substring(0, 40) + (question.length > 40 ? '...' : '');
+        body.appendChild(tag);
+        body.appendChild(document.createTextNode('\n'));
+        body.scrollTop = body.scrollHeight;
+    });
+
+    // 发送追问到服务器
+    debateWs.send(JSON.stringify({ type: 'followup', content: question }));
+}
+
+function stopDebate() {
+    if (debateWs && debateWs.readyState === WebSocket.OPEN) {
+        debateWs.send(JSON.stringify({ type: 'stop' }));
+        debateWs.close();
+    }
+    debateRunning = false;
+    document.getElementById('debate-status').textContent = '已停止';
+    const startBtn = document.getElementById('debate-start-btn');
+    startBtn.disabled = false;
+    startBtn.textContent = '重新辩论';
+}
+
+async function exportDebate(fmt) {
+    const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
+    try {
+        const resp = await fetch('/ai/debate/export/' + fmt, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                debate_data: debateData,
+                stock_code: stockCode,
+                company_name: '',
+            }),
+        });
+        if (resp.ok) {
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const ext = fmt === 'md' ? 'md' : 'html';
+            a.download = 'debate_' + (stockCode || 'result') + '.' + ext;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            const err = await resp.json();
+            alert('导出失败: ' + (err.error || '未知错误'));
+        }
+    } catch (e) {
+        alert('导出失败: ' + e.message);
     }
 }
 
