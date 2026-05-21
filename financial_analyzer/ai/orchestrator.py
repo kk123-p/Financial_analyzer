@@ -49,15 +49,15 @@ class AnalysisOrchestrator:
 
         intent = self._identify_intent(user_message, conversation)
 
+        # Always build report for data context (all modes need it)
         report = None
         signals = []
-        if intent in ("deep", "debate", "followup"):
-            try:
-                report = ReportBuilder.build(data, stock_code)
-                if intent in ("deep", "debate"):
-                    signals = SignalDetector.detect(report)
-            except Exception as e:
-                logger.warning(f"Report building failed: {e}")
+        try:
+            report = ReportBuilder.build(data, stock_code)
+            if intent in ("deep", "debate"):
+                signals = SignalDetector.detect(report)
+        except Exception as e:
+            logger.warning(f"Report building failed: {e}")
 
         if callback:
             callback("meta", f"intent:{intent}", None)
