@@ -545,3 +545,145 @@ async def export_financial_report(request: Request):
         logger.error(f"Report export error: {e}")
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================================================
+# Phase 2 UX: 辩论导出
+# ============================================================================
+
+
+@router.post("/debate/export/{fmt}")
+async def export_debate_result(fmt: str, request: Request):
+    """
+    导出辩论结果为 Markdown 或 HTML
+
+    Args:
+        fmt: "md" 或 "html"
+    Body: {"debate_data": {...}, "stock_code": "...", "company_name": "..."}
+    """
+    from datetime import datetime
+    body = await request.json()
+    debate_data = body.get("debate_data", {})
+    stock_code = body.get("stock_code", "")
+    company_name = body.get("company_name", stock_code)
+
+    if not debate_data:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "缺少辩论数据"}, status_code=400)
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    safe_name = stock_code.replace("/", "_").replace("\\", "_")
+
+    if fmt == "md":
+        md = _build_debate_markdown(debate_data, company_name, stock_code, now)
+        return PlainTextResponse(
+            md, media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="debate_{safe_name}.md"'}
+        )
+    elif fmt == "html":
+        html = _build_debate_html(debate_data, company_name, stock_code, now)
+        return PlainTextResponse(
+            html, media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="debate_{safe_name}.html"'}
+        )
+    else:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"不支持的格式: {fmt}"}, status_code=400)
+
+
+def _build_debate_markdown(debate_data: dict, company_name: str, stock_code: str, now: str) -> str:
+    """将辩论数据组装为 Markdown"""
+    lines = [
+        f"# 三方投研辩论 — {company_name}({stock_code})",
+        f"> 辩论时间：{now}",
+        "",
+    ]
+
+    ANALYST_LABELS = {
+        "value": "📊 格雷厄姆式价值分析师",
+        "growth": "🚀 费雪式成长分析师",
+        "risk": "🛡️ 塔勒布式风控师",
+    }
+
+    # 各轮辩论
+    for round_key, round_title in [("round1", "第1轮：独立陈述"),
+                                     ("round2", "第2轮：交叉质询"),
+                                     ("round3", "第3轮：共识与情景概率")]:
+        lines.append(f"## {round_title}")
+        statements = debate_data.get(round_key, {})
+        if isinstance(statements, dict):
+            for role_key in ["value", "growth", "risk"]:
+                content = statements.get(role_key, "")
+                label = ANALYST_LABELS.get(role_key, role_key)
+                lines.append(f"\n### {label}")
+                lines.append(content)
+        elif isinstance(statements, str):
+            lines.append(statements)
+        lines.append("")
+
+    # 综合共识
+    consensus = debate_data.get("consensus", "")
+    if consensus:
+        lines.append("## 综合共识")
+        lines.append(consensus)
+        lines.append("")
+
+    # 追问
+    followups = debate_data.get("followups", [])
+    if followups:
+        lines.append("## 用户追问")
+        for fu in followups:
+            lines.append(f"\n> {fu.get('question', '')}")
+            for role_key in ["value", "growth", "risk"]:
+                content = fu.get(role_key, "")
+                label = ANALYST_LABELS.get(role_key, role_key)
+                if content:
+                    lines.append(f"\n### {label}")
+                    lines.append(content)
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_debate_html(debate_data: dict, company_name: str, stock_code: str, now: str) -> str:
+    """将辩论数据组装为独立 HTML 页面"""
+    md_content = _build_debate_markdown(debate_data, company_name, stock_code, now)
+    html_body_parts = []
+    for line in md_content.split("\n"):
+        line_escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if line.startswith("# "):
+            html_body_parts.append(f'<h1 style="color:#F1F5F9;border-bottom:1px solid rgba(59,130,246,0.2);padding-bottom:8px;">{line_escaped[2:]}</h1>')
+        elif line.startswith("## "):
+            html_body_parts.append(f'<h2 style="color:#E2E8F0;margin-top:24px;">{line_escaped[3:]}</h2>')
+        elif line.startswith("### "):
+            html_body_parts.append(f'<h3 style="color:#94A3B8;margin-top:16px;">{line_escaped[4:]}</h3>')
+        elif line.startswith("> "):
+            html_body_parts.append(f'<blockquote style="color:#94A3B8;border-left:3px solid rgba(59,130,246,0.3);padding-left:12px;margin:8px 0;">{line_escaped[2:]}</blockquote>')
+        elif line.strip():
+            html_body_parts.append(f'<p style="color:#CBD5E1;line-height:1.8;">{line_escaped}</p>')
+        else:
+            html_body_parts.append("<br>")
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三方辩论 — {company_name}</title>
+<style>
+  body {{
+    max-width: 900px; margin: 40px auto; padding: 20px;
+    background: #0B1021; color: #CBD5E1;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.7;
+  }}
+  h1 {{ color: #F1F5F9; border-bottom: 1px solid rgba(59,130,246,0.2); padding-bottom: 8px; }}
+  h2 {{ color: #E2E8F0; margin-top: 24px; }}
+  h3 {{ color: #94A3B8; margin-top: 16px; }}
+  blockquote {{ color: #94A3B8; border-left: 3px solid rgba(59,130,246,0.3); padding-left: 12px; margin: 8px 0; }}
+</style>
+</head>
+<body>
+{"".join(html_body_parts)}
+</body>
+</html>"""
