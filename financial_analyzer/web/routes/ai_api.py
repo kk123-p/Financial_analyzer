@@ -30,8 +30,21 @@ def _get_ai_config() -> dict:
     with _cache_lock:
         if _cached_ai_config is not None:
             return _cached_ai_config
-        from financial_analyzer.deepseek.prompts import _load_config
-        _cached_ai_config = _load_config()
+        # 加载 AI 分析参数（分析权重、辩论轮数等）
+        from financial_analyzer.deepseek.prompts import _load_config as _load_ai_config
+        config = _load_ai_config()
+        # 从主配置文件加载 API key（UI Token 设置保存在此文件）
+        from financial_analyzer.config import CONFIG_FILE
+        if CONFIG_FILE.exists():
+            try:
+                import json
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    main_config = json.load(f)
+                if main_config.get("deepseek_api_key"):
+                    config["api_key"] = main_config["deepseek_api_key"]
+            except Exception:
+                pass
+        _cached_ai_config = config
         return _cached_ai_config
 
 
@@ -220,3 +233,128 @@ def _ai_error(msg: str):
         <p>⚠️ {escape(msg)}</p>
     </div>
     """)
+
+
+# ============================================================================
+# Phase 2: 统一 AI 对话 WebSocket（替代 /ai/chat + /ai/debate）
+# ============================================================================
+
+@router.websocket("/conversation")
+async def ai_conversation(websocket: WebSocket):
+    """统一 AI 对话入口 — 支持快速问答、深度分析、三方辩论"""
+    await websocket.accept()
+    orchestrator = None
+    conversation = None
+
+    try:
+        init_data = await websocket.receive_text()
+        params = json.loads(init_data)
+        stock_code = params.get("stock_code", "")
+
+        if not stock_code:
+            await websocket.send_text(json.dumps({"type": "error", "content": "缺少股票代码"}))
+            await websocket.close()
+            return
+
+        session = _get_session_for_ws(stock_code)
+        if not session or not session.get("data"):
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "content": "请先获取财务数据，再使用 AI 分析功能"
+            }))
+            await websocket.close()
+            return
+
+        data = {k: pd.DataFrame(v) for k, v in session["data"].items()}
+        company_name = session.get("stock_name", stock_code)
+
+        ai_config = _get_ai_config()
+        api_key = ai_config.get("api_key", "")
+        if not api_key:
+            await websocket.send_text(json.dumps({"type": "error", "content": "请先配置 DeepSeek API Key"}))
+            await websocket.close()
+            return
+
+        from financial_analyzer.deepseek.client import DeepSeekConfig, DeepSeekStreamClient
+        from financial_analyzer.ai.conversation import ConversationManager
+        from financial_analyzer.ai.orchestrator import AnalysisOrchestrator
+
+        config = DeepSeekConfig(api_key=api_key)
+        client = DeepSeekStreamClient(config=config)
+
+        def debate_factory():
+            from financial_analyzer.ai.debate_engine import DebateEngine
+            engine = DebateEngine(config=config)
+            return engine
+
+        orchestrator = AnalysisOrchestrator(
+            llm_client=client,
+            debate_engine_factory=debate_factory,
+        )
+        conversation = ConversationManager()
+
+        await websocket.send_text(json.dumps({"type": "meta", "content": "ready"}))
+
+        while True:
+            msg_data = await websocket.receive_text()
+            msg = json.loads(msg_data)
+
+            if msg.get("type") == "message":
+                user_message = msg.get("content", "").strip()
+                if not user_message:
+                    continue
+
+                import queue as q_module
+                msg_queue = q_module.Queue()
+                loop = asyncio.get_event_loop()
+
+                def analysis_callback(event_type: str, content: str, meta: dict | None):
+                    msg_queue.put((event_type, content, meta))
+
+                def run_analysis():
+                    try:
+                        orchestrator.analyze(
+                            user_message=user_message,
+                            conversation=conversation,
+                            data=data,
+                            stock_code=stock_code,
+                            company_name=company_name,
+                            callback=analysis_callback,
+                        )
+                    except Exception as e:
+                        logger.error(f"Analysis error: {e}", exc_info=True)
+                        msg_queue.put(("error", str(e), None))
+
+                thread = threading.Thread(target=run_analysis, daemon=True)
+                thread.start()
+
+                while True:
+                    item = await loop.run_in_executor(None, msg_queue.get)
+                    event_type, content, meta = item
+
+                    if event_type == "done":
+                        await websocket.send_text(json.dumps({"type": "done", "content": ""}))
+                        break
+
+                    payload = {"type": event_type, "content": content}
+                    if meta:
+                        payload["meta"] = meta
+                    await websocket.send_text(json.dumps(payload))
+
+            elif msg.get("type") == "stop":
+                await websocket.send_text(json.dumps({"type": "meta", "content": "stopped"}))
+                break
+
+    except WebSocketDisconnect:
+        logger.info("AI conversation WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"AI conversation error: {e}", exc_info=True)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "content": str(e)}))
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
