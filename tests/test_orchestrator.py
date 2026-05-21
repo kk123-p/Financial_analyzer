@@ -77,7 +77,7 @@ class TestAnalysisOrchestratorBuildPrompt:
         orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
         data = {"company_snapshot": {"name": "测试"}}
         prompt = orchestrator._build_prompt("quick", "测试问题", data, None, [])
-        assert "测试问题" not in prompt  # quick mode doesn't embed the original message in prompt
+        assert "测试问题" in prompt
         assert "测试" in prompt
 
     def test_build_prompt_deep_mode_includes_frameworks(self):

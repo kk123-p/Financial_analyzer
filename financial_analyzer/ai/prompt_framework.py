@@ -153,6 +153,7 @@ class PromptBuilder:
         self._output_format: str | None = None
         self._mode: str = "quick"
         self._context: str | None = None
+        self._question: str = ""
 
     def with_data(self, report: dict) -> "PromptBuilder":
         self._data = report
@@ -186,12 +187,19 @@ class PromptBuilder:
         self._context = context
         return self
 
+    def with_question(self, question: str) -> "PromptBuilder":
+        self._question = question
+        return self
+
     def build(self) -> str:
         parts = []
         parts.append(self._build_role())
 
         if self._data:
             parts.append(self._format_data(self._data))
+
+        if self._question and self._mode != "quick":
+            parts.append(f"## 用户问题\n{self._question}")
 
         if self._mode == "followup" and self._context:
             parts.append(f"## 之前的分析\n{self._context}")
@@ -215,6 +223,8 @@ class PromptBuilder:
         elif self._mode == "deep":
             parts.append("\n请基于以上框架和数据进行全面深度分析。")
         elif self._mode == "quick":
+            if self._question:
+                parts.append(f"\n## 用户问题\n{self._question}")
             parts.append("\n请基于数据给出简洁、专业的回答。")
 
         return "\n\n".join(parts)

@@ -103,12 +103,14 @@ class AnalysisOrchestrator:
 
         if intent == "quick":
             builder.with_mode("quick")
+            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
         elif intent == "deep":
             builder.with_mode("deep")
+            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
@@ -122,12 +124,14 @@ class AnalysisOrchestrator:
                 builder.with_signals(signals)
         elif intent == "followup":
             builder.with_mode("followup")
+            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
         elif intent == "debate":
             builder.with_mode("debate")
+            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
