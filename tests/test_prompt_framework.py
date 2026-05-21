@@ -80,7 +80,7 @@ class TestPromptBuilderDeepMode:
         report = {
             "company_snapshot": {"name": "测试公司"},
             "anomaly_signals": [
-                {"name": "盈利质量预警", "level": "high", "value": "CF/NP = 0.3"}
+                {"name": "盈利质量预警", "level": "high", "trigger_data": "CF/NP = 0.3"}
             ],
         }
         builder = PromptBuilder("测试公司")

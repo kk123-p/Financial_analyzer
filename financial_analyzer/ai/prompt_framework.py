@@ -160,7 +160,14 @@ class PromptBuilder:
 
     def with_framework(self, framework: str) -> "PromptBuilder":
         if framework in self.FRAMEWORKS:
-            self._frameworks.append(framework)
+            if framework not in self._frameworks:
+                self._frameworks.append(framework)
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Unknown framework '%s', ignored. Available: %s",
+                framework, list(self.FRAMEWORKS.keys()),
+            )
         return self
 
     def with_signals(self, signals: list) -> "PromptBuilder":
@@ -287,7 +294,8 @@ class PromptBuilder:
             lines.append("\n### 异常信号")
             for sig in anomalies:
                 lines.append(
-                    f"  - {sig.get('name', '')}: {sig.get('value', '')} (级别: {sig.get('level', '')})"
+                    f"  - {sig.get('name', '')}: {sig.get('data') or sig.get('trigger_data', '')} "
+                    f"(级别: {sig.get('level', '')})"
                 )
 
         return "\n".join(lines)
