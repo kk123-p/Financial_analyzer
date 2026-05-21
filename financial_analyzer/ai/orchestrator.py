@@ -101,6 +101,9 @@ class AnalysisOrchestrator:
         builder = PromptBuilder()
         company_name = report.get("company_snapshot", {}).get("name", "") if report else ""
 
+        # 加载当前模板
+        template = getattr(self, '_current_template', None)
+
         if intent == "quick":
             builder.with_mode("quick")
             builder.with_question(message)
@@ -108,6 +111,8 @@ class AnalysisOrchestrator:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
+            if template:
+                builder.with_template(template)
         elif intent == "deep":
             builder.with_mode("deep")
             builder.with_question(message)
@@ -115,11 +120,15 @@ class AnalysisOrchestrator:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
-            builder.with_framework("harvard")
-            builder.with_framework("crosscheck")
-            builder.with_framework("lifecycle")
-            builder.with_framework("warnings")
-            builder.with_output_format("structured")
+            if template:
+                builder.with_template(template)
+            else:
+                # fallback：没有模板时使用硬编码框架
+                builder.with_framework("harvard")
+                builder.with_framework("crosscheck")
+                builder.with_framework("lifecycle")
+                builder.with_framework("warnings")
+                builder.with_output_format("structured")
             if signals:
                 builder.with_signals(signals)
         elif intent == "followup":
@@ -129,6 +138,8 @@ class AnalysisOrchestrator:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
+            if template:
+                builder.with_template(template)
         elif intent == "debate":
             builder.with_mode("debate")
             builder.with_question(message)
@@ -136,6 +147,8 @@ class AnalysisOrchestrator:
                 builder.with_data(report)
             elif data:
                 builder.with_data(data)
+            if template:
+                builder.with_template(template)
 
         return builder.build()
 

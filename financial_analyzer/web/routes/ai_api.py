@@ -277,6 +277,9 @@ async def ai_conversation(websocket: WebSocket):
         data = {k: pd.DataFrame(v) for k, v in session["data"].items()}
         company_name = session.get("stock_name", stock_code)
 
+        template_name = params.get("template_name", "")
+        template_data = params.get("template")  # 前端传过来的完整模板 dict
+
         ai_config = _get_ai_config()
         api_key = ai_config.get("api_key", "")
         if not api_key:
@@ -300,6 +303,15 @@ async def ai_conversation(websocket: WebSocket):
             llm_client=client,
             debate_engine_factory=debate_factory,
         )
+
+        # 设置当前模板
+        if template_data and isinstance(template_data, dict) and template_data.get("name"):
+            orchestrator._current_template = template_data
+        elif template_name:
+            from financial_analyzer.ai.prompt_store import PromptsStore
+            store = PromptsStore()
+            orchestrator._current_template = store.get_template(template_name)
+
         conversation = ConversationManager()
 
         await websocket.send_text(json.dumps({"type": "meta", "content": "ready"}))
