@@ -45,7 +45,7 @@ class Phase2Analyzer:
         "accounts_receivable": ["accounts_receiv", "acc_receivable", "应收账款"],
         "operate_profit": ["营业利润"],
         "interest_expense": ["fin_exp", "财务费用"],
-        "close": ["收盘价"],
+        "close": ["收盘价", "close_price", "最新价"],
         "total_share": ["total_share_y", "总股本"],
         "inventories": ["inventory", "存货"],
         "goodwill": ["商誉"],
@@ -77,15 +77,44 @@ class Phase2Analyzer:
         return None
 
     def _get_price_data(self):
-        """获取股价数据（从 daily 或 basic 中查找）"""
-        # 优先从 daily 获取
+        """获取股价数据（多源回退：daily → daily_basic → basic → stock_basic）
+        自动补充 daily 缺失的 total_share / total_mv 等字段。"""
         daily = self.data.get("daily")
-        if daily is not None and not daily.empty:
-            return daily
-        # 退而从 basic 获取
+        daily_basic = self.data.get("daily_basic")
         basic = self.data.get("basic")
-        if basic is not None and not basic.empty:
-            return basic
+        stock_basic = self.data.get("stock_basic")
+
+        # 选定主数据源
+        if daily is not None and not daily.empty and "close" in daily.columns:
+            result = daily.copy()
+        elif daily_basic is not None and not daily_basic.empty:
+            result = daily_basic.copy()
+        elif basic is not None and not basic.empty:
+            result = basic.copy()
+        elif stock_basic is not None and not stock_basic.empty:
+            return stock_basic
+        elif daily is not None and not daily.empty:
+            result = daily.copy()
+        else:
+            return None
+
+        # 补充 daily 缺失的字段（total_share / total_mv / pe_ttm / pb）
+        missing = ["total_share", "total_mv", "pe_ttm", "pb"]
+        for col in missing:
+            if col not in result.columns or result[col].isna().all():
+                val = self._find_field(col, [basic, daily_basic, stock_basic])
+                if val is not None:
+                    result[col] = val
+        return result
+
+    def _find_field(self, field: str, sources: list) -> float | None:
+        """跨多个 DataFrame 查找字段值（取最新一条）"""
+        for df in sources:
+            if df is None or (isinstance(df, pd.DataFrame) and df.empty):
+                continue
+            val = self._val(df.iloc[0], [field])
+            if val is not None:
+                return val
         return None
 
     def _get_multi_year(self, data_type: str, years: int = 5) -> pd.DataFrame:

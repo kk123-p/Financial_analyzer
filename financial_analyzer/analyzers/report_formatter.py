@@ -19,6 +19,11 @@ class ReportFormatter:
         return f"【{title}】\n{SEPARATOR_LIGHT}\n"
 
     @staticmethod
+    def subsection(title: str) -> str:
+        """生成子段落标题"""
+        return f"\n▌ {title}\n"
+
+    @staticmethod
     def table_header(*columns) -> str:
         """生成表格头"""
         header_line = "".join(f"{col}" for col in columns)

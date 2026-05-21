@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 from ..analyzers.base import BaseAnalyzer
 from ..analyzers.market import MarketAnalyzer
-from ..analyzers.technical import TechnicalAnalyzer
 from ..analyzers.financial import FinancialStatementAnalyzer
 from ..analyzers.profitability import ProfitabilityAnalyzer
 from ..analyzers.risk_analyzer import RiskAnalyzer
@@ -17,6 +16,9 @@ from ..analyzers.phase2_analysis import Phase2Analyzer
 from ..analyzers.financial_ratios import FinancialRatioAnalyzer
 from ..analyzers.combined import CombinedAnalyzer
 from ..analyzers.comprehensive import ComprehensiveAnalyzer
+from ..analyzers.balance_sheet import BalanceSheetAnalyzer
+from ..analyzers.income_statement import IncomeStatementAnalyzer
+from ..analyzers.cash_flow import CashFlowAnalyzer
 from ..data_sources.adapter import DataSourceAdapter
 from ..cache.manager import DataCacheManager
 from ..pipeline.textbook.ch5_ratio_compute import compute_13_ratios, compute_4_cashflow_metrics
@@ -183,8 +185,39 @@ def _format_comprehensive(thesis) -> str:
         lines.append("\n▌ 雷达图数据")
         for dim, score in thesis.radar_data.items():
             lines.append(f"  {dim}: {score:.0f}")
+    # 追加13项核心比率 (Ch5)
+    lines.append("")
+    lines.extend(_textbook_ratios_lines(data))
     lines.append("\n═══════════════════════════════════════════════════")
     return "\n".join(lines)
+
+
+def _textbook_ratios_lines(data) -> list[str]:
+    """Ch5 13项核心财务比率 — 返回行列表，供合并使用"""
+    income_df, balance_df, cashflow_df = data.get("income"), data.get("balance"), data.get("cashflow")
+    lines = ["▌ 13项核心比率 (Ch5)"]
+    if income_df is None or income_df.empty:
+        lines.append("  错误：缺少利润表数据")
+        return lines
+    ratios = compute_13_ratios(income_df, balance_df, cashflow_df)
+    cf_metrics = compute_4_cashflow_metrics(income_df, balance_df, cashflow_df)
+    for group, keys in [("盈利能力", ["毛利率", "营业利润率", "净利润率", "ROE"]),
+                         ("营运能力", ["存货周转率", "总资产周转率", "应收账款周转率"]),
+                         ("偿债能力", ["流动比率", "速动比率", "利息保障倍数"]),
+                         ("成长能力", ["营收增长率", "营业利润增长率", "净利润增长率"])]:
+        lines.append(f"  ▸ {group}")
+        for k in keys:
+            if k in ratios:
+                lines.append(f"    {k}: {ratios[k]:.2f}{'%' if '率' in k or 'ROE' in k or '增长' in k else ' 次'}")
+    if cf_metrics:
+        lines.append("  ▸ 现金流质量")
+        for k in ["现金流利润比", "收入现金比", "现金充足率"]:
+            if k in cf_metrics:
+                lines.append(f"    {k}: {cf_metrics[k]:.2f}")
+        fcf = cf_metrics.get("自由现金流(亿元)")
+        if fcf is not None:
+            lines.append(f"    自由现金流: {fcf} 亿")
+    return lines
 
 
 def _run_textbook_ratios(data, stock_code, adapter, cache) -> str:
@@ -439,16 +472,10 @@ ANALYSIS_MAP: dict[str, Callable] = {
     # 行情分析
     "market_overview": _make_analyzer(MarketAnalyzer, "analyze_market_overview"),
     "price_trend": _make_analyzer(MarketAnalyzer, "analyze_price_trend"),
-    "technical": _make_analyzer(TechnicalAnalyzer, "analyze_technical_indicators"),
-    # 财务报表
-    "income_statement": _make_analyzer(FinancialStatementAnalyzer, "analyze_income_statement"),
-    "balance_sheet": _make_analyzer(FinancialStatementAnalyzer, "analyze_balance_sheet"),
-    "cashflow": _make_analyzer(FinancialStatementAnalyzer, "analyze_cashflow_statement"),
-    # 能力分析
-    "profitability": _make_analyzer(ProfitabilityAnalyzer, "analyze_profitability"),
-    "operational": _make_analyzer(ProfitabilityAnalyzer, "analyze_operation_ability"),
-    "solvency": _make_analyzer(ProfitabilityAnalyzer, "analyze_solvency"),
-    "growth": _make_analyzer(ProfitabilityAnalyzer, "analyze_growth_ability"),
+    # 财务报表综合分析（含偿债/营运/盈利/成长能力）
+    "balance_sheet_analysis": _make_analyzer(BalanceSheetAnalyzer, "analyze"),
+    "income_analysis": _make_analyzer(IncomeStatementAnalyzer, "analyze"),
+    "cashflow_analysis": _make_analyzer(CashFlowAnalyzer, "analyze"),
     # 综合评估
     "combined": _make_analyzer(CombinedAnalyzer, "analyze_price_financial_combined"),
     "risk": _make_analyzer(RiskAnalyzer, "generate_risk_warning_report"),
