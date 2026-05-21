@@ -122,6 +122,12 @@ async def save_tokens(
     if deepseek_key.strip():
         config["deepseek_api_key"] = deepseek_key.strip()
         messages.append("DeepSeek API Key 已保存")
+        # 清除 AI 配置缓存
+        try:
+            from .ai_api import invalidate_ai_config
+            invalidate_ai_config()
+        except Exception:
+            pass
 
     _save_config(config)
     msg_html = "<br>".join(messages) if messages else "配置未更改"

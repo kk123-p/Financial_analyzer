@@ -48,6 +48,13 @@ def _get_ai_config() -> dict:
         return _cached_ai_config
 
 
+def invalidate_ai_config():
+    """清除缓存的 AI 配置（API key 变更后调用）"""
+    global _cached_ai_config
+    with _cache_lock:
+        _cached_ai_config = None
+
+
 @router.post("/chat")
 async def ai_chat(
     request: Request,
@@ -295,6 +302,9 @@ async def ai_conversation(websocket: WebSocket):
 
         await websocket.send_text(json.dumps({"type": "meta", "content": "ready"}))
 
+        # Track current analysis thread for cancellation
+        _current_thread: threading.Thread | None = None
+
         while True:
             msg_data = await websocket.receive_text()
             msg = json.loads(msg_data)
@@ -324,8 +334,10 @@ async def ai_conversation(websocket: WebSocket):
                     except Exception as e:
                         logger.error(f"Analysis error: {e}", exc_info=True)
                         msg_queue.put(("error", str(e), None))
+                        msg_queue.put(("done", "", None))
 
                 thread = threading.Thread(target=run_analysis, daemon=True)
+                _current_thread = thread
                 thread.start()
 
                 while True:
@@ -342,11 +354,15 @@ async def ai_conversation(websocket: WebSocket):
                     await websocket.send_text(json.dumps(payload))
 
             elif msg.get("type") == "stop":
+                if _current_thread and _current_thread.is_alive():
+                    _current_thread.join(timeout=2.0)
                 await websocket.send_text(json.dumps({"type": "meta", "content": "stopped"}))
                 break
 
     except WebSocketDisconnect:
         logger.info("AI conversation WebSocket disconnected")
+        if _current_thread and _current_thread.is_alive():
+            _current_thread.join(timeout=1.0)
     except Exception as e:
         logger.error(f"AI conversation error: {e}", exc_info=True)
         try:

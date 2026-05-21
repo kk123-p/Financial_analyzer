@@ -170,6 +170,7 @@ class AnalysisOrchestrator:
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
+                callback("done", "", None)
 
     def _stream_deep(self, data, report, signals, message, conversation, callback):
         """深度模式：完整框架 + 结构化输出"""
@@ -202,6 +203,7 @@ class AnalysisOrchestrator:
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
+                callback("done", "", None)
 
     def _stream_followup(self, data, report, signals, message, conversation, callback):
         """追问模式：注入历史上下文"""
@@ -234,6 +236,7 @@ class AnalysisOrchestrator:
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
+                callback("done", "", None)
 
     def _stream_debate(self, data, stock_code, company_name, conversation, callback):
         """辩论模式：委托 DebateEngine"""
@@ -294,3 +297,4 @@ class AnalysisOrchestrator:
             logger.error(f"Debate failed: {e}")
             if callback:
                 callback("error", str(e), None)
+                callback("done", "", None)
