@@ -302,9 +302,12 @@ async def ai_conversation(websocket: WebSocket):
 
         await websocket.send_text(json.dumps({"type": "meta", "content": "ready"}))
 
+<<<<<<< HEAD
         # Track current analysis task for cancellation
         _current_task: asyncio.Task | None = None
 
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
         while True:
             msg_data = await websocket.receive_text()
             msg = json.loads(msg_data)
@@ -314,6 +317,7 @@ async def ai_conversation(websocket: WebSocket):
                 if not user_message:
                     continue
 
+<<<<<<< HEAD
                 import asyncio as aio
                 event_queue: aio.Queue = aio.Queue()
 
@@ -325,6 +329,18 @@ async def ai_conversation(websocket: WebSocket):
                     try:
                         await aio.to_thread(
                             orchestrator.analyze,
+=======
+                import queue as q_module
+                msg_queue = q_module.Queue()
+                loop = asyncio.get_event_loop()
+
+                def analysis_callback(event_type: str, content: str, meta: dict | None):
+                    msg_queue.put((event_type, content, meta))
+
+                def run_analysis():
+                    try:
+                        orchestrator.analyze(
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                             user_message=user_message,
                             conversation=conversation,
                             data=data,
@@ -334,6 +350,7 @@ async def ai_conversation(websocket: WebSocket):
                         )
                     except Exception as e:
                         logger.error(f"Analysis error: {e}", exc_info=True)
+<<<<<<< HEAD
                         await event_queue.put(("error", str(e), None))
                         await event_queue.put(("done", "", None))
 
@@ -345,6 +362,15 @@ async def ai_conversation(websocket: WebSocket):
                         item = await event_queue.get()
                     except aio.CancelledError:
                         break
+=======
+                        msg_queue.put(("error", str(e), None))
+
+                thread = threading.Thread(target=run_analysis, daemon=True)
+                thread.start()
+
+                while True:
+                    item = await loop.run_in_executor(None, msg_queue.get)
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                     event_type, content, meta = item
 
                     if event_type == "done":
@@ -354,6 +380,7 @@ async def ai_conversation(websocket: WebSocket):
                     payload = {"type": event_type, "content": content}
                     if meta:
                         payload["meta"] = meta
+<<<<<<< HEAD
                     try:
                         await websocket.send_text(json.dumps(payload))
                     except Exception:
@@ -362,13 +389,21 @@ async def ai_conversation(websocket: WebSocket):
             elif msg.get("type") == "stop":
                 if _current_task and not _current_task.done():
                     _current_task.cancel()
+=======
+                    await websocket.send_text(json.dumps(payload))
+
+            elif msg.get("type") == "stop":
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                 await websocket.send_text(json.dumps({"type": "meta", "content": "stopped"}))
                 break
 
     except WebSocketDisconnect:
         logger.info("AI conversation WebSocket disconnected")
+<<<<<<< HEAD
         if _current_task and not _current_task.done():
             _current_task.cancel()
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
     except Exception as e:
         logger.error(f"AI conversation error: {e}", exc_info=True)
         try:
@@ -376,8 +411,11 @@ async def ai_conversation(websocket: WebSocket):
         except Exception:
             pass
     finally:
+<<<<<<< HEAD
         if _current_task and not _current_task.done():
             _current_task.cancel()
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
         try:
             await websocket.close()
         except Exception:

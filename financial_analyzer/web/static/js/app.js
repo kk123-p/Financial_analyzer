@@ -391,6 +391,10 @@ window.addEventListener('resize', function() {
     }
 });
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
 // ============================================================================
 // Phase 2: 统一 AI 对话 WebSocket 客户端
 // ============================================================================
@@ -464,6 +468,7 @@ function sendMessage() {
                     sysEl.className = 'chat-system';
                     const intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
                     sysEl.textContent = intentLabels[intent] || intent;
+<<<<<<< HEAD
                     // Insert AFTER the last user bubble (so it appears between user question and AI response)
                     const userBubbles = messages.querySelectorAll('.chat-bubble--user');
                     if (userBubbles.length > 0) {
@@ -472,6 +477,9 @@ function sendMessage() {
                     } else {
                         messages.appendChild(sysEl);
                     }
+=======
+                    messages.appendChild(sysEl);
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                     messages.scrollTop = messages.scrollHeight;
                 } else if (msg.content === 'debate_start') {
                     const header = document.createElement('div');
@@ -506,11 +514,14 @@ function sendMessage() {
                 errEl.style.color = 'var(--negative)';
                 errEl.textContent = '⚠️ ' + msg.content;
                 messages.appendChild(errEl);
+<<<<<<< HEAD
                 // Add retry hint
                 const retryEl = document.createElement('div');
                 retryEl.style.cssText = 'text-align:center;margin-top:4px;';
                 retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
                 messages.appendChild(retryEl);
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
                 messages.scrollTop = messages.scrollHeight;
                 chatInProgress = false;
                 document.getElementById('chat-send-btn').style.display = 'inline-block';
@@ -524,11 +535,14 @@ function sendMessage() {
             errEl.style.color = 'var(--negative)';
             errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
             messages.appendChild(errEl);
+<<<<<<< HEAD
             // Add retry hint
             const retryEl = document.createElement('div');
             retryEl.style.cssText = 'text-align:center;margin-top:4px;';
             retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
             messages.appendChild(retryEl);
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
             chatInProgress = false;
             document.getElementById('chat-send-btn').style.display = 'inline-block';
             document.getElementById('chat-stop-btn').style.display = 'none';
@@ -546,11 +560,14 @@ function sendMessage() {
         errEl.style.color = 'var(--negative)';
         errEl.textContent = '⚠️ 连接失败: ' + e.message;
         messages.appendChild(errEl);
+<<<<<<< HEAD
         // Add retry hint
         const retryEl = document.createElement('div');
         retryEl.style.cssText = 'text-align:center;margin-top:4px;';
         retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
         messages.appendChild(retryEl);
+=======
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
         chatInProgress = false;
         document.getElementById('chat-send-btn').style.display = 'inline-block';
         document.getElementById('chat-stop-btn').style.display = 'none';
@@ -616,6 +633,7 @@ function buildStructuredCard(text, meta) {
     return card;
 }
 
+<<<<<<< HEAD
 function resetChat() {
     if (chatWs && chatWs.readyState === WebSocket.OPEN) {
         chatWs.close();
@@ -651,3 +669,9 @@ function resetChat() {
 // DEPRECATED: 旧 AI 函数保留以便向后兼容
 function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
 function startDebate() { sendQuick('/debate'); }
+=======
+// DEPRECATED: 旧 AI 函数保留以便向后兼容
+function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
+function startDebate() { sendQuick('/debate'); }
+
+>>>>>>> e0e0c9e60405e5fdebe1933aef34c0c834b9b84b
