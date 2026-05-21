@@ -528,3 +528,35 @@ BRIEFING_PROMPT = """## 三维投研简报
 def build_briefing_prompt(company_data: str) -> str:
     """构建简报提示词"""
     return BRIEFING_PROMPT.format(company_data=company_data)
+
+
+# ============================================================================
+# Phase 2: 框架模板导出（供 ai/prompt_framework.py 使用）
+# ============================================================================
+
+def get_framework_templates() -> dict:
+    """
+    返回专业分析框架模板字典
+
+    由 ai/prompt_framework.py 调用，将方法论从提示词文件中解耦导出。
+
+    Returns:
+        {
+            "harvard": str,       # 哈佛分析框架
+            "crosscheck": str,    # 三表联动验证
+            "lifecycle": str,     # 生命周期定位
+            "warnings": str,      # 13条利润质量预警
+        }
+    """
+    from ..ai.prompt_framework import (
+        HARVARD_FRAMEWORK,
+        CROSSCHECK_FRAMEWORK,
+        LIFECYCLE_FRAMEWORK,
+        WARNING_SIGNALS_FRAMEWORK,
+    )
+    return {
+        "harvard": HARVARD_FRAMEWORK,
+        "crosscheck": CROSSCHECK_FRAMEWORK,
+        "lifecycle": LIFECYCLE_FRAMEWORK,
+        "warnings": WARNING_SIGNALS_FRAMEWORK,
+    }
