@@ -155,3 +155,66 @@ class TestPromptBuilderDebateMode:
         assert "格雷厄姆" in prompt or "价值" in prompt
         assert "费雪" in prompt or "成长" in prompt
         assert "塔勒布" in prompt or "风控" in prompt
+
+
+class TestPromptBuilderFollowupMode:
+    def test_followup_with_context(self):
+        """追问模式：注入历史上下文"""
+        report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
+        builder = PromptBuilder("测试公司")
+        builder.with_data(report)
+        builder.with_context("之前的分析结论: ROE=30%, 盈利质量优秀")
+        builder.with_mode("followup")
+        prompt = builder.build()
+
+        assert "测试公司" in prompt
+        assert "之前的分析" in prompt
+        assert "ROE=30%" in prompt
+        assert "追问" in prompt
+
+    def test_followup_without_context_still_builds(self):
+        """追问模式无上下文时仍能正常构建"""
+        report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
+        builder = PromptBuilder("测试公司")
+        builder.with_data(report)
+        builder.with_mode("followup")
+        prompt = builder.build()
+
+        assert "测试公司" in prompt
+        assert len(prompt) > 50
+
+
+class TestPromptBuilderEdgeCases:
+    def test_quick_mode_does_not_inject_frameworks(self):
+        """快速模式下不注入任何分析框架"""
+        report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
+        builder = PromptBuilder("测试公司")
+        builder.with_data(report)
+        builder.with_framework("harvard")
+        builder.with_mode("quick")
+        prompt = builder.build()
+
+        assert "哈佛分析框架" not in prompt
+
+    def test_explicit_output_format_overrides_deep_default(self):
+        """显式设置 output_format 覆盖深度模式的默认结构化"""
+        report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
+        builder = PromptBuilder("测试公司")
+        builder.with_data(report)
+        builder.with_mode("deep")
+        builder.with_output_format("structured")
+        prompt = builder.build()
+
+        assert "数据依据" in prompt
+        assert "推理过程" in prompt
+
+    def test_unknown_framework_key_silently_ignored(self):
+        """未知框架键不报错，静默忽略"""
+        report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
+        builder = PromptBuilder("测试公司")
+        builder.with_data(report)
+        builder.with_framework("nonexistent_framework")
+        builder.with_mode("deep")
+        prompt = builder.build()
+
+        assert "测试公司" in prompt

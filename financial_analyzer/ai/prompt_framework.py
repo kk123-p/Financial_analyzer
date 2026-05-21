@@ -296,7 +296,7 @@ class PromptBuilder:
         lines = ["---\n## 已检测到的异常信号\n"]
         for sig in signals:
             level_icon = {"high": "🔴", "medium": "🟡"}.get(sig.get("level", ""), "⚪")
-            lines.append(f"- {level_icon} **{sig['name']}**: {sig.get('trigger_data', '')}")
+            lines.append(f"- {level_icon} **{sig.get('name', '未知信号')}**: {sig.get('trigger_data', '')}")
             if sig.get("task"):
                 lines.append(f"  → 请重点关注: {sig['task']}")
         lines.append("\n请在分析中对上述信号进行深入诊断。")
