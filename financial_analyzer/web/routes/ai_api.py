@@ -479,3 +479,69 @@ async def import_prompt(file: UploadFile):
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "导入失败，JSON 格式不正确"}, status_code=400)
     return {"status": "ok"}
+
+
+# ============================================================================
+# Phase 2 UX: 财务数据报告 API
+# ============================================================================
+
+
+@router.get("/report")
+async def get_financial_report(request: Request):
+    """获取当前 session 的财务体检报告"""
+    session = _get_session(request)
+    data_raw = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+
+    if not data_raw or not stock_code:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "请先获取财务数据"}, status_code=400)
+
+    # 优先返回缓存的 report
+    cached = session.get("ai_report")
+    if cached:
+        return cached
+
+    # 按需构建
+    try:
+        from financial_analyzer.ai.report_builder import ReportBuilder
+        import pandas as pd
+        data = {k: pd.DataFrame(v) for k, v in data_raw.items()}
+        report = ReportBuilder.build(data, stock_code)
+        session["ai_report"] = report
+        return report
+    except Exception as e:
+        logger.error(f"Report build error: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/report/export")
+async def export_financial_report(request: Request):
+    """导出财务体检报告为 JSON 文件"""
+    session = _get_session(request)
+    data_raw = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+
+    if not data_raw or not stock_code:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "请先获取财务数据"}, status_code=400)
+
+    try:
+        from financial_analyzer.ai.report_builder import ReportBuilder
+        import pandas as pd
+        import json
+        data = {k: pd.DataFrame(v) for k, v in data_raw.items()}
+        report = ReportBuilder.build(data, stock_code)
+        session["ai_report"] = report
+        json_str = json.dumps(report, ensure_ascii=False, indent=2, default=str)
+        safe_name = stock_code.replace("/", "_").replace("\\", "_")
+        return PlainTextResponse(
+            json_str,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="report_{safe_name}.json"'}
+        )
+    except Exception as e:
+        logger.error(f"Report export error: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=500)
