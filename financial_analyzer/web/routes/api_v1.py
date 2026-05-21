@@ -1,11 +1,12 @@
-"""JSON REST API v1 — 供 React 前端调用"""
+"""JSON REST API v1 — 供前端调用"""
+import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
-from fastapi import APIRouter, Request, Form, Query
-from fastapi.responses import JSONResponse
+import pandas as pd
+from fastapi import APIRouter, Request, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..services.data_service import DataService
 from ..services.analysis_service import AnalysisService, get_analysis_list, get_pipeline_stages
@@ -14,8 +15,7 @@ from ..dependencies import get_adapter, get_cache
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
-# Session 管理（与 data_api.py 共享 _sessions）
-from .data_api import _sessions, DEFAULT_SESSION_ID, _get_session
+from .data_api import _get_session
 
 _config_dir = Path.home() / ".financialanalyzer"
 
@@ -237,3 +237,232 @@ async def api_save_tokens(request: Request):
         json.dump(config, f, ensure_ascii=False, indent=2)
 
     return JSONResponse({"success": True, "message": "Token 已保存"})
+
+
+# ============================================================================
+# 流式 AI 对话 (SSE)
+# ============================================================================
+
+def _load_deepseek_config():
+    config_path = _config_dir / "config.json"
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+@router.post("/ai/chat/stream")
+async def api_ai_chat_stream(request: Request):
+    """AI 分析对话 → Server-Sent Events 流式响应"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    question = body.get("question", "")
+    stock_code = body.get("stock_code", "")
+
+    if not question:
+        return JSONResponse({"success": False, "error": "缺少 question"}, status_code=400)
+
+    config = _load_deepseek_config()
+    api_key = config.get("deepseek_api_key", "") or config.get("deepseek", {}).get("api_key", "")
+    if not api_key:
+        return JSONResponse({"success": False, "error": "未配置 DeepSeek API Key"}, status_code=400)
+
+    from financial_analyzer.ai.report_builder import ReportBuilder
+    from financial_analyzer.deepseek.client import DeepSeekStreamClient, DeepSeekConfig
+
+    session = _get_session(request)
+    data = session.get("data", {})
+    sc = stock_code or session.get("stock_code", "")
+
+    report = ReportBuilder.build(data, sc)
+    report_text = json.dumps(report, ensure_ascii=False, default=str)
+
+    system_prompt = "你是一位专业的中国A股财务分析师，请基于提供的财务数据进行分析。"
+    user_prompt = f"以下是公司 {sc} 的财务数据：\n\n{report_text}\n\n问题：{question}"
+
+    client = DeepSeekStreamClient(config=DeepSeekConfig(api_key=api_key))
+
+    async def generate():
+        queue = asyncio.Queue()
+        def callback(chunk: str, done: bool):
+            try:
+                queue.put_nowait((chunk, done))
+            except asyncio.QueueFull:
+                pass
+
+        import threading
+        def stream_call():
+            client.generate_deep_analysis_stream(
+                user_prompt, system_prompt=system_prompt, callback=callback
+            )
+
+        thread = threading.Thread(target=stream_call, daemon=True)
+        thread.start()
+
+        while True:
+            try:
+                chunk, done = await asyncio.wait_for(queue.get(), timeout=60)
+                yield f"data: {json.dumps({'chunk': chunk, 'done': done}, ensure_ascii=False)}\n\n"
+                if done:
+                    break
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'error': '请求超时'})}\n\n"
+                break
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ============================================================================
+# 结构化数据摘要
+# ============================================================================
+
+@router.get("/data/summary")
+async def api_data_summary(request: Request):
+    """返回当前 session 的结构化财务数据摘要"""
+    session = _get_session(request)
+    data = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+
+    if not data or not stock_code:
+        return JSONResponse({"success": False, "error": "请先获取股票数据"}, status_code=400)
+
+    summary = {"stock_code": stock_code}
+
+    # 行情数据
+    basic = data.get("basic")
+    if basic is not None and not basic.empty:
+        latest = basic.iloc[0]
+        summary["price"] = _safe_val(latest, ["close", "收盘价"])
+        summary["total_share"] = _safe_val(latest, ["total_share", "总股本"])
+        if summary["price"] and summary["total_share"]:
+            summary["market_cap_yi"] = round(summary["price"] * summary["total_share"] / 1e4, 2)
+
+    # 最新财务数据
+    income = data.get("income")
+    balance = data.get("balance")
+    cashflow = data.get("cashflow")
+
+    if income is not None and not income.empty:
+        inc = income.iloc[0]
+        np_val = _safe_val(inc, ["net_profit", "净利润"])
+        rev = _safe_val(inc, ["revenue", "total_revenue", "营业收入"])
+        summary["revenue_yi"] = round(rev / 1e8, 2) if rev else None
+        summary["net_profit_yi"] = round(np_val / 1e8, 2) if np_val else None
+        if rev and rev > 0:
+            op_cost = _safe_val(inc, ["oper_cost", "营业支出"])
+            if op_cost:
+                summary["gross_margin"] = round((rev - op_cost) / rev * 100, 2)
+            summary["net_margin"] = round(np_val / rev * 100, 2) if np_val else None
+
+    if balance is not None and not balance.empty:
+        bal = balance.iloc[0]
+        ta = _safe_val(bal, ["total_assets", "资产总计"])
+        tl = _safe_val(bal, ["total_liab", "负债合计"])
+        eq = _safe_val(bal, ["total_equity", "股东权益合计"])
+        summary["total_assets_yi"] = round(ta / 1e8, 2) if ta else None
+        summary["debt_ratio"] = round(tl / ta * 100, 2) if tl and ta else None
+        summary["roe"] = round(np_val / eq * 100, 2) if np_val and eq and eq > 0 else None
+        if summary["price"] and summary["total_share"] and eq:
+            summary["pb"] = round(summary["price"] * summary["total_share"] / (eq * 10000), 2)
+
+    if cashflow is not None and not cashflow.empty:
+        cf = cashflow.iloc[0]
+        ocf = _safe_val(cf, ["n_cashflow_act", "经营活动现金流量净额"])
+        summary["op_cashflow_yi"] = round(ocf / 1e8, 2) if ocf else None
+        summary["cf_np_ratio"] = round(ocf / np_val, 2) if ocf and np_val and np_val != 0 else None
+
+    summary["data_types"] = [k for k in data.keys() if data[k] is not None and not (hasattr(data[k], 'empty') and data[k].empty)]
+
+    return JSONResponse({"success": True, "summary": summary})
+
+
+# ============================================================================
+# 批量分析
+# ============================================================================
+
+@router.post("/analyze/batch")
+async def api_run_batch_analysis(request: Request):
+    """批量运行多个分析类型 → JSON"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    types = body.get("types", [])
+
+    if not types:
+        return JSONResponse({"success": False, "error": "缺少 types 参数"}, status_code=400)
+
+    session = _get_session(request)
+    data = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+
+    if not data or not stock_code:
+        return JSONResponse({"success": False, "error": "请先获取股票数据"}, status_code=400)
+
+    adapter = get_adapter()
+    cache = get_cache()
+    analysis_service = AnalysisService(adapter, cache)
+    loop = asyncio.get_event_loop()
+
+    from ..services.result_formatter import ResultFormatter
+
+    results = {}
+    for atype in types:
+        try:
+            text = await loop.run_in_executor(None, analysis_service.run, atype, data, stock_code)
+            results[atype] = {
+                "success": True,
+                "result_text": text,
+                "result_html": ResultFormatter.format(text),
+            }
+        except Exception as e:
+            results[atype] = {"success": False, "error": str(e)}
+
+    return JSONResponse({"success": True, "results": results})
+
+
+# ============================================================================
+# 缓存管理
+# ============================================================================
+
+@router.get("/cache/stats")
+async def api_cache_stats():
+    """缓存统计信息"""
+    cache = get_cache()
+    stats = cache.get_stats()
+    # 补充内存缓存信息
+    memory_keys = list(cache.memory_cache.keys()) if hasattr(cache, 'memory_cache') else []
+    stats["memory_entries"] = len(memory_keys)
+    stats["memory_keys"] = memory_keys[:20]
+    return JSONResponse({"success": True, "stats": stats})
+
+
+@router.post("/cache/clear")
+async def api_cache_clear(request: Request):
+    """清除缓存"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    data_type = body.get("data_type")
+    symbol = body.get("symbol")
+    cache = get_cache()
+    cache.clear_cache(data_type=data_type, symbol=symbol)
+    return JSONResponse({"success": True, "message": "缓存已清除"})
+
+
+def _safe_val(row, keys: list):
+    """从DataFrame行中安全提取数值"""
+    if row is None:
+        return None
+    for k in keys:
+        if k in row.index:
+            v = row[k]
+            try:
+                if pd.notna(v):
+                    return float(v)
+            except (ValueError, TypeError):
+                pass
+    return None

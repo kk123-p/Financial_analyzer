@@ -143,53 +143,67 @@ class ScenarioAnalyzer:
     def monte_carlo_dcf(
         base_fcff: float,
         wacc: float,
+        growth_rate: float = 0.08,
+        perpetuity_g: float = 0.025,
         years: int = 5,
         simulations: int = 1000,
-        vol_growth: float = 0.05,    # 增长率年化波动率
-        vol_margin: float = 0.03,    # 利润率年化波动率
+        vol_growth: float = 0.05,
     ) -> dict:
         """
         蒙特卡洛模拟DCF估值
 
-        对关键假设（增长率和WACC）引入随机性，
+        对关键假设（增长率、WACC、永续增长率）引入随机性，
         运行N次模拟得到公允价值概率分布。
+        终值使用标准Gordon增长模型。
+
+        Args:
+            base_fcff: 基准自由现金流
+            wacc: 加权平均资本成本
+            growth_rate: 基准增长率（用于对数正态分布的中心值）
+            perpetuity_g: 永续增长率默认值
+            years: 预测年数
+            simulations: 模拟次数
+            vol_growth: 增长率年化波动率
         """
-        np.random.seed(42)  # 可复现
+        rng = np.random.default_rng(42)  # 可复现
 
         fair_prices = []
-        growth_samples = []
-        wacc_samples = []
 
         for _ in range(simulations):
-            # 增长率：对数正态分布
-            g = np.random.lognormal(
-                mean=np.log(max(0.01, base_fcff / 1e4)),
+            # 增长率：对数正态分布，以 growth_rate 为中心
+            g = rng.lognormal(
+                mean=np.log(max(0.01, growth_rate)),
                 sigma=vol_growth,
             )
             g = max(0.01, min(0.30, g))
-            growth_samples.append(g)
 
             # WACC：正态分布
-            w = np.random.normal(loc=wacc, scale=0.015)
+            w = rng.normal(loc=wacc, scale=0.015)
             w = max(0.04, min(0.20, w))
-            wacc_samples.append(w)
 
-            # 简化DCF计算
+            # 永续增长率：正态分布
+            pg = rng.normal(loc=perpetuity_g, scale=0.005)
+            pg = max(0.005, min(w - 0.01, pg))  # 必须 < WACC
+
+            # DCF计算
             fcf_pv = 0
             for t in range(1, years + 1):
                 fcf_t = base_fcff * (1 + g) ** t
                 fcf_pv += fcf_t / (1 + w) ** t
 
-            # 终值
-            tv = fcf_pv / years * 15  # 简化终值估算
+            # 终值 — Gordon增长模型: TV = FCF_final × (1 + pg) / (w - pg)
+            final_fcf = base_fcff * (1 + g) ** years
+            tv = final_fcf * (1 + pg) / (w - pg)
             tv_pv = tv / (1 + w) ** years
 
-            price = (fcf_pv + tv_pv) / 1e4
+            price = (fcf_pv + tv_pv) / 1e4  # 万元→亿元
             fair_prices.append(round(price, 2))
 
         arr = np.array(fair_prices)
         return {
             "simulations": simulations,
+            "growth_rate": round(growth_rate * 100, 1),
+            "perpetuity_g": round(perpetuity_g * 100, 1),
             "mean": round(float(np.mean(arr)), 2),
             "median": round(float(np.median(arr)), 2),
             "std": round(float(np.std(arr)), 2),

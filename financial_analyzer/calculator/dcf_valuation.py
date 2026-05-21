@@ -494,6 +494,7 @@ class DCFValuator:
         shares: float,
     ) -> dict:
         """乐观/基准/悲观三情景DCF"""
+        base_g = self._estimate_growth(financial_data)
         scenarios = {}
 
         for name, growth_mult, g_mult in [
@@ -501,8 +502,8 @@ class DCFValuator:
             ("基准", 1.0, 1.0),
             ("悲观", 0.7, 0.5),
         ]:
-            g = self._estimate_growth(financial_data)
-            fcf = self.forecast_fcf(base_fcff, g * growth_mult)
+            g = base_g * growth_mult
+            fcf = self.forecast_fcf(base_fcff, g)
             tv = self.terminal_value_gordon(
                 fcf[-1], self.DEFAULT_PERPETUITY_G * g_mult, base_wacc
             )
@@ -511,7 +512,7 @@ class DCFValuator:
             price = (pv / 1e4 / shares) if shares > 0 else 0
             scenarios[name] = {
                 "fair_price": round(price, 2),
-                "growth_rate": round(g * growth_mult * 100, 1),
+                "growth_rate": round(g * 100, 1),
                 "perpetuity_g": round(self.DEFAULT_PERPETUITY_G * g_mult * 100, 1),
             }
 
