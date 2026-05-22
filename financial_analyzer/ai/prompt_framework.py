@@ -234,7 +234,8 @@ class PromptBuilder:
         fmt = None
         if self._template and self._template.get("output_format"):
             fmt = self._template["output_format"]
-        if self._mode in ("quick", "deep", "followup"):
+        # 仅 deep 模式强制结构化输出；quick/followup 为自由格式对话
+        if self._mode == "deep":
             parts.append(fmt if fmt else OUTPUT_FORMAT_STRUCTURED)
 
         if self._mode == "deep":

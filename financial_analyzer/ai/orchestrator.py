@@ -98,8 +98,8 @@ class AnalysisOrchestrator:
     def _build_system_context(self, intent: str, data: dict | None,
                               report: dict | None, signals: list | None) -> str:
         """构建系统上下文（角色 + 数据 + 框架 + 输出格式），不包含用户问题"""
-        builder = PromptBuilder()
         company_name = report.get("company_snapshot", {}).get("name", "") if report else ""
+        builder = PromptBuilder(company_name)
 
         # 加载当前模板
         template = getattr(self, '_current_template', None)
