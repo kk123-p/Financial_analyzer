@@ -93,16 +93,40 @@ class AnalysisOrchestrator:
         return "quick"
 
     def _stream_chat(self, message, conversation, callback, data=None, stock_code="", company_name="", cancel_event=None):
-        """纯问答模式 — 注入数据摘要 + 用户问题"""
+        """纯问答模式 — 仅在问题涉及当前股票数据时注入摘要"""
         system_prompt = ""
-        if data:
+        user_prompt = message
+
+        if data and self._is_data_question(message, stock_code, company_name):
             from .templates import build_lightweight_summary
             system_prompt = build_lightweight_summary(data, stock_code)
+            if len(message.strip()) < 10:
+                user_prompt = f"请针对以上数据，用专业简洁的中文回答以下问题：{message}"
+        elif data:
+            # 通用问题：不注入数据，只给一个简短角色提示
+            system_prompt = "你是一个专业的财务分析助手。请用简洁、专业的中文回答用户问题。"
+            user_prompt = message
 
-        # 包装短消息，防止 LLM 误解
-        user_prompt = message
-        if len(message.strip()) < 10:
-            user_prompt = f"请针对以上数据，用专业简洁的中文回答以下问题：{message}"
+    @staticmethod
+    def _is_data_question(message: str, stock_code: str, company_name: str) -> bool:
+        """判断用户问题是否需要引用当前股票数据"""
+        msg = message.strip()
+        # 股票引用词：问题明确指向当前分析的股票
+        stock_refs = [stock_code, company_name, "这只", "这个股票", "该公司", "这家", "当前",
+                      "它的", "他的", "它", "他"]
+        if any(r in msg for r in stock_refs if r):
+            return True
+        # 财务指标词：问题涉及具体财务数据
+        finance_terms = [
+            "毛利率", "净利率", "ROE", "ROA", "PE", "PB", "市盈率", "市净率",
+            "营收", "净利润", "利润", "负债", "资产", "现金流", "分红", "股息",
+            "增长率", "同比", "环比", "趋势", "报表", "财报", "财务",
+            "主力", "资金", "融资", "融券", "北向", "股东", "估值",
+            "杜邦", "周转", "杠杆", "偿债", "营运", "盈利", "成本",
+        ]
+        if any(t in msg for t in finance_terms):
+            return True
+        return False
 
         parser = OutputParser()
 
