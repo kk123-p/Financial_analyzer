@@ -24,6 +24,7 @@ class ConversationManager:
     def __init__(self, max_history: int = 50):
         self._messages: list[Message] = []
         self._max_history = max_history
+        self._active_template: dict | None = None
         self._system_message: Message | None = None
 
     def add_message(self, msg: Message):

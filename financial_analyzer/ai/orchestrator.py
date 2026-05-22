@@ -51,12 +51,25 @@ class AnalysisOrchestrator:
 
         if intent == "debate" and self._debate_factory:
             self._stream_debate(data, stock_code, company_name, conversation, callback)
+        elif intent == "template":
+            template = getattr(conversation, '_active_template', None)
+            if template:
+                self._stream_template(template, data, stock_code, company_name,
+                                     conversation, callback)
+            else:
+                if callback:
+                    callback("error", "未选择分析模板", None)
+                    callback("done", "", None)
         else:
-            self._stream_chat(user_message, conversation, callback)
+            self._stream_chat(user_message, conversation, callback, data, stock_code, company_name)
 
     def _identify_intent(self, message: str, conversation: ConversationManager | None = None) -> str:
         """识别用户分析意图"""
         msg_lower = message.strip().lower()
+
+        # Template intent: conversation has active_template set by WebSocket handler
+        if conversation and getattr(conversation, '_active_template', None):
+            return "template"
 
         if msg_lower.startswith("/debate"):
             return "debate"
@@ -78,8 +91,13 @@ class AnalysisOrchestrator:
 
         return "quick"
 
-    def _stream_chat(self, message, conversation, callback):
+    def _stream_chat(self, message, conversation, callback, data=None, stock_code="", company_name=""):
         """纯问答模式 — 用户消息直接发给 LLM，无自动注入"""
+        system_prompt = ""
+        if data:
+            from .templates import build_lightweight_summary
+            system_prompt = build_lightweight_summary(data, stock_code)
+
         parser = OutputParser()
 
         def on_chunk(chunk: str, done: bool):
@@ -104,7 +122,7 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(message, system_prompt="", callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(message, system_prompt=system_prompt, callback=on_chunk)
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
@@ -171,3 +189,123 @@ class AnalysisOrchestrator:
             if callback:
                 callback("error", str(e), None)
                 callback("done", "", None)
+
+    def _stream_template(self, template: dict, data: dict, stock_code: str,
+                         company_name: str, conversation, callback,
+                         extra_question: str = ""):
+        """模板驱动分析 — 按 section 流式输出"""
+        from .templates import get_template_data_summary
+
+        if callback:
+            sections = template.get("analysis_sections", [])
+            callback("meta", "template_start", {
+                "template": template["name"],
+                "sections": len(sections),
+            })
+
+        # 1. 提取并格式化数据
+        data_text = get_template_data_summary(data, stock_code, template)
+
+        # 2. 组装 sections 指引
+        sections_text = "\n".join([
+            f"## {s['title']}\n{s['guidance']}"
+            for s in template.get("analysis_sections", [])
+        ])
+
+        # 3. 组装 prompt
+        system_prompt = template.get("system_role", "")
+        user_prompt = f"""## 分析任务
+对 {company_name} ({stock_code}) 执行「{template["name"]}」分析。
+
+## 分析框架（严格按每个 ## 标题输出）
+{sections_text}
+
+## 当前数据
+{data_text}"""
+
+        if extra_question:
+            user_prompt += f"\n\n## 用户补充问题\n{extra_question}"
+
+        user_prompt += "\n\n请逐段分析，每个 ## 标题作为一个独立的分析段落。"
+
+        # 4. 流式输出并检测 section 边界
+        accumulated = ""
+        current_section_idx = -1
+
+        def on_chunk(chunk: str, done: bool):
+            nonlocal accumulated, current_section_idx
+
+            if chunk:
+                accumulated += chunk
+
+            # 检测 section 边界（## 开头的行）
+            lines = accumulated.split("\n")
+            section_count = sum(1 for l in lines if l.strip().startswith("## "))
+
+            if section_count > current_section_idx + 1:
+                current_section_idx += 1
+                section_content = self._extract_section(accumulated, current_section_idx)
+                if section_content and callback:
+                    sections_list = template.get("analysis_sections", [])
+                    section_title = sections_list[current_section_idx]["title"] \
+                        if current_section_idx < len(sections_list) else ""
+                    callback("template_section", section_content.strip(), {
+                        "section_index": current_section_idx,
+                        "section_title": section_title,
+                    })
+
+            if done:
+                # 发送剩余未检测到的 section
+                total_sections = len(template.get("analysis_sections", []))
+                if current_section_idx < total_sections - 1:
+                    for idx in range(current_section_idx + 1, total_sections):
+                        remaining = self._extract_section(accumulated, idx)
+                        if remaining and remaining.strip():
+                            sections_list = template.get("analysis_sections", [])
+                            section_title = sections_list[idx]["title"] if idx < len(sections_list) else ""
+                            if callback:
+                                callback("template_section", remaining.strip(), {
+                                    "section_index": idx,
+                                    "section_title": section_title,
+                                })
+
+                if callback:
+                    callback("template_done", accumulated, None)
+                    callback("done", "", None)
+
+                conversation.add_message(Message(
+                    role="assistant",
+                    content=accumulated,
+                    msg_type="template",
+                    metadata={"template": template.get("name"), "stock_code": stock_code},
+                ))
+
+        result = self._llm.generate_deep_analysis_stream(
+            user_prompt,
+            system_prompt=system_prompt,
+            callback=on_chunk,
+        )
+
+        if not result.success:
+            if callback:
+                callback("error", result.error or "分析失败", None)
+                callback("done", "", None)
+
+    @staticmethod
+    def _extract_section(text: str, section_idx: int) -> str:
+        """从累加文本中提取指定索引的 section 内容"""
+        lines = text.split("\n")
+        sections = []
+        current = []
+        for line in lines:
+            if line.strip().startswith("## ") and current:
+                sections.append("\n".join(current))
+                current = [line]
+            else:
+                current.append(line)
+        if current:
+            sections.append("\n".join(current))
+
+        if section_idx < len(sections):
+            return sections[section_idx]
+        return ""
