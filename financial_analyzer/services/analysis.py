@@ -3,6 +3,7 @@
 桌面端、Web端、API 均通过此模块调度分析
 """
 import logging
+import numpy as np
 from typing import Any, Callable
 
 from ..analyzers.base import BaseAnalyzer
@@ -374,8 +375,48 @@ def _run_trend_score(data, stock_code, adapter, cache) -> str:
     for name, score in sorted(trend_scores.items(), key=lambda x: x[1], reverse=True):
         bar = "█" * min(10, int(score / 10)) + "░" * max(0, 10 - int(score / 10))
         lines.append(f"  {name:<12s}  {bar}  {score:.1f}")
-    lines.extend(["", "  ≥80 持续改善 | ≥60 总体向好 | ≥40 波动持平 | ≥20 趋势走弱 | <20 持续恶化",
-                  "\n═══════════════════════════════════════════════════"])
+    lines.extend(["", "  ≥80 持续改善 | ≥60 总体向好 | ≥40 波动持平 | ≥20 趋势走弱 | <20 持续恶化"])
+
+    # --- 趋势解读：评分依据 + 分组排名 ---
+    lines.extend(["", "  ═══ 趋势解读 ═══", ""])
+    lines.append("  评分依据: 逐年比较各比率变化方向，当期值 > 上期值(改善)计1分，")
+    lines.append("  标准化为 0-100分。综合趋势评分 = 所有比率趋势评分的平均值。")
+
+    # 分组：>=60 改善显著 | 40-60 相对稳定 | <40 趋势走弱
+    improving, stable, weakening = [], [], []
+    for name, score in sorted(trend_scores.items(), key=lambda x: x[1], reverse=True):
+        first_val = ratios_history[-1].get(name)  # 最早一期
+        last_val = ratios_history[0].get(name)     # 最新一期
+        change_str = ""
+        if (first_val is not None and last_val is not None
+                and not (isinstance(first_val, float) and (np.isnan(first_val) or np.isinf(first_val)))
+                and not (isinstance(last_val, float) and (np.isnan(last_val) or np.isinf(last_val)))):
+            if abs(first_val) > 1e-9:
+                pct = (last_val - first_val) / abs(first_val) * 100
+                if abs(pct) < 10000:
+                    sign = "+" if pct > 0 else ""
+                    change_str = f" ({sign}{pct:.1f}%)"
+            elif abs(last_val - first_val) > 1e-9:
+                change_str = f" ({first_val:.2f}→{last_val:.2f})"
+        entry = f"    {name}: {score:.1f}{change_str}"
+        if score >= 60:
+            improving.append(entry)
+        elif score >= 40:
+            stable.append(entry)
+        else:
+            weakening.append(entry)
+
+    if improving:
+        lines.append(f"\n  改善最显著 ({len(improving)}项) — 趋势持续向好:")
+        lines.extend(improving)
+    if stable:
+        lines.append(f"\n  相对稳定 ({len(stable)}项) — 波动或持平:")
+        lines.extend(stable)
+    if weakening:
+        lines.append(f"\n  趋势走弱 ({len(weakening)}项) — 需关注:")
+        lines.extend(weakening)
+
+    lines.append("\n═══════════════════════════════════════════════════")
     return "\n".join(lines)
 
 

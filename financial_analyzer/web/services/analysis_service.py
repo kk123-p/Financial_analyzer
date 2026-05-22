@@ -42,7 +42,7 @@ def get_pipeline_stages() -> list[dict]:
             ("income_analysis", "利润表分析"),
             ("cashflow_analysis", "现金流量表分析"),
             ("ratio_analysis", "财务比率分析"),
-            ("trend_score", "趋势评分 (Ch6)"),
+            ("trend_score", "趋势评分"),
         ]),
         ("3. 深度诊断", "dupont", [
             ("dupont", "杜邦分析"), ("dupont_roic", "增强杜邦+ROIC (Ch9)"),
@@ -107,7 +107,7 @@ def get_analysis_list() -> list[dict]:
         ]),
         ("教科书算法 (Ch5-Ch13)", [
             ("ratio_analysis", "财务比率分析 (Ch5)"),
-            ("trend_score", "趋势评分 (Ch6)"),
+            ("trend_score", "趋势评分"),
             ("dupont_roic", "增强杜邦+ROIC (Ch9)"),
             ("fraud_ml", "ML舞弊检测 (Ch12-13)"),
         ]),
