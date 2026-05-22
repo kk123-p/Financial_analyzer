@@ -90,6 +90,7 @@ function switchTab(tabName, btn) {
     if (tabName === 'charts') {
         loadChart('candlestick', document.querySelector('.chart-type-btn.active') || document.querySelector('.chart-type-btn'));
     }
+    if (tabName === 'ai') { loadTemplates(); }
 }
 
 // ---- AI 子标签切换 ----
@@ -303,6 +304,7 @@ function sendMessage() {
 
     try {
         chatWs = new WebSocket(wsUrl);
+        window._conversationWs = chatWs;
         let _currentAssistantEl = null;
 
         chatWs.onopen = function() {
@@ -366,6 +368,12 @@ function sendMessage() {
                 chatInProgress = false;
                 document.getElementById('chat-send-btn').style.display = 'inline-block';
                 document.getElementById('chat-stop-btn').style.display = 'none';
+            } else if (msg.type === 'template_start') {
+                appendMeta('🔍 执行模板分析: ' + (msg.meta ? msg.meta.template : '') + ' (' + (msg.meta ? msg.meta.sections : '') + ' 个维度)');
+            } else if (msg.type === 'template_section') {
+                appendSectionCard(msg.content, msg.meta);
+            } else if (msg.type === 'template_done') {
+                appendMeta('✅ 模板分析完成');
             } else if (msg.type === 'error') {
                 const errEl = document.createElement('div');
                 errEl.className = 'chat-bubble chat-bubble--assistant';
@@ -841,6 +849,91 @@ async function onTemplateChange() {
             .catch(() => {});
     }
 })();
+
+// ============================================================================
+// AI 模板
+// ============================================================================
+
+var currentTemplate = null;
+
+function loadTemplates() {
+    fetch('/ai/prompts')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var templates = (data.templates || []).filter(function(t) {
+                return t.mode === 'template';
+            });
+            renderTemplateButtons(templates);
+        })
+        .catch(function(e) {
+            console.error('Failed to load templates:', e);
+        });
+}
+
+function renderTemplateButtons(templates) {
+    var container = document.getElementById('template-buttons');
+    if (!container) return;
+    container.innerHTML = '';
+    templates.forEach(function(t) {
+        var btn = document.createElement('button');
+        btn.className = 'template-quick-btn';
+        btn.textContent = t.name;
+        btn.title = t.description || '';
+        btn.onclick = function() { selectTemplate(t.name); };
+        container.appendChild(btn);
+    });
+}
+
+function selectTemplate(name) {
+    currentTemplate = name;
+    // 高亮选中按钮
+    document.querySelectorAll('.template-quick-btn').forEach(function(b) {
+        b.classList.toggle('active', b.textContent === name);
+    });
+    // 发送模板执行消息
+    if (window._conversationWs && window._conversationWs.readyState === WebSocket.OPEN) {
+        window._conversationWs.send(JSON.stringify({type: 'template', template_name: name, extra_question: ''}));
+    }
+}
+
+function appendMeta(text) {
+    var msgs = document.getElementById('chat-messages');
+    var div = document.createElement('div');
+    div.className = 'chat-meta';
+    div.textContent = text;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendSectionCard(content, meta) {
+    var msgs = document.getElementById('chat-messages');
+    var card = document.createElement('div');
+    card.className = 'template-section-card';
+
+    var title = (meta && meta.section_title) ? meta.section_title : '';
+    var titleHtml = title ? '<div class="section-card-title">▌ ' + escapeHtml(title) + '</div>' : '';
+
+    card.innerHTML = titleHtml + '<div class="section-card-body">' + formatMarkdown(content) + '</div>';
+    msgs.appendChild(card);
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatMarkdown(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+}
 
 // ---- Prompt 编辑器 ----
 

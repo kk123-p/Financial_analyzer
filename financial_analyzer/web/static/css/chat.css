@@ -550,3 +550,25 @@
   display: flex;
   align-items: center;
 }
+
+/* ---- 模板快捷按钮 ---- */
+.template-bar { padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.template-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.template-quick-btn {
+    background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--fg-secondary); padding: 4px 10px; border-radius: 6px;
+    font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.template-quick-btn:hover { border-color: var(--accent); color: var(--fg-primary); }
+.template-quick-btn.active { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+
+/* ---- 模板分析区段卡片 ---- */
+.template-section-card {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin: 10px 16px;
+}
+.section-card-title { color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.section-card-body { color: var(--text-primary); font-size: 13px; line-height: 1.7; }
+
+/* ---- 聊天元信息 ---- */
+.chat-meta { text-align: center; color: var(--fg-muted); font-size: 11px; padding: 6px 0; }
