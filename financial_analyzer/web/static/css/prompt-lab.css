@@ -20,8 +20,7 @@
 
 .prompt-editor {
   width: min(900px, 95vw);
-  max-height: 90vh;
-  min-height: 600px;
+  height: 88vh;
   background: var(--glass-bg-card);
   backdrop-filter: blur(var(--blur-card)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--blur-card)) saturate(140%);
@@ -74,7 +73,6 @@
   flex: 1 1 0;
   overflow-y: auto;
   padding: 16px 20px;
-  min-height: 420px;
 }
 
 .prompt-editor-body::-webkit-scrollbar { width: 4px; }
@@ -227,8 +225,7 @@
 
 .viewer-modal {
   width: min(850px, 95vw);
-  max-height: 90vh;
-  min-height: 500px;
+  height: 88vh;
   background: var(--glass-bg-card);
   backdrop-filter: blur(var(--blur-card)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--blur-card)) saturate(140%);
@@ -261,7 +258,6 @@
   flex: 1 1 0;
   overflow-y: auto;
   padding: 16px 20px;
-  min-height: 350px;
 }
 
 .viewer-body::-webkit-scrollbar { width: 4px; }
