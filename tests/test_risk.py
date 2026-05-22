@@ -30,10 +30,11 @@ class TestInit:
         model = RiskAssessmentModel(industry="未知行业")
         assert model.thresholds == RiskAssessmentModel.INDUSTRY_THRESHOLDS["default"]
 
-    def test_us_market_adjustment(self):
+    def test_us_market_same_thresholds(self):
+        """CN/US 市场使用相同的行业阈值（不做额外放宽）"""
         cn = RiskAssessmentModel(industry="制造业", market="CN")
         us = RiskAssessmentModel(industry="制造业", market="US")
-        assert us.thresholds["debt_ratio_max"] == cn.thresholds["debt_ratio_max"] + 10
+        assert us.thresholds["debt_ratio_max"] == cn.thresholds["debt_ratio_max"]
 
     def test_us_market_cap(self):
         """美股调整后不超过 95"""
