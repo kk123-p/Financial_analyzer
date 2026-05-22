@@ -12,6 +12,7 @@ SYSTEM_TEMPLATES = [
         "name": "盈利能力深度解读",
         "description": "从毛利率、净利率、ROE、盈利质量四个维度深度解读企业盈利能力",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位拥有20年经验的买方财务分析师。你的任务是解读已提供的财务数据，而非计算数据本身。数据中的财务指标是真实准确的，你的工作是：1) 解读数据的含义 2) 判断趋势方向 3) 横向关联不同指标 4) 给出专业、简洁的结论。",
         "data_required": {
             "primary": ["financial", "income"],
@@ -49,6 +50,7 @@ SYSTEM_TEMPLATES = [
         "name": "财务异常信号排查",
         "description": "从资产端、利润端、现金流、勾稽关系四个维度排查财务异常",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位精通财务审计和舞弊检测的专家。你的任务是检查已提供的财务数据中是否存在异常信号，而非计算数据。",
         "data_required": {
             "primary": ["balance", "income", "cashflow"],
@@ -86,6 +88,7 @@ SYSTEM_TEMPLATES = [
         "name": "估值合理性判断",
         "description": "从PE分位、股息率、市净率等角度判断当前估值水平",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位专注估值分析的投资分析师。你的任务是基于提供的估值相关数据，判断当前估值的合理性。",
         "data_required": {
             "primary": ["daily_basic", "financial"],
@@ -118,6 +121,7 @@ SYSTEM_TEMPLATES = [
         "name": "股东结构评估",
         "description": "分析股权集中度、机构持仓和筹码变化趋势",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位专注公司治理和股东分析的专家。你的任务是基于股东数据，解读股权结构的含义。",
         "data_required": {
             "primary": ["top10_holders", "stk_holdernumber"],
@@ -150,6 +154,7 @@ SYSTEM_TEMPLATES = [
         "name": "资金面多空分析",
         "description": "从主力资金、融资融券、北向资金三个维度解读资金面",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位专注资金面分析的量化分析师。你的任务是基于资金流向数据，解读市场多空力量对比。",
         "data_required": {
             "primary": ["moneyflow", "margin"],
@@ -182,6 +187,7 @@ SYSTEM_TEMPLATES = [
         "name": "成长质量检查",
         "description": "从营收成长性、利润成长性和现金流质量三个维度评估成长质量",
         "mode": "template",
+        "output_format": "每个 ## 标题作为一个独立分析段落输出，包含：数据现状 → 趋势判断 → 专业解读。最后一个 ## 核心发现 以要点形式汇总关键结论。",
         "system_role": "你是一位专注成长股分析的投资分析师。你的任务是基于财务数据，评估企业成长的质量和可持续性。",
         "data_required": {
             "primary": ["income", "cashflow", "financial"],
