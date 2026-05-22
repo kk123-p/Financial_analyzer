@@ -14,4 +14,7 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         factory=True,
+        ws="wsproto",
+        ws_ping_interval=60,
+        ws_ping_timeout=60,
     )
