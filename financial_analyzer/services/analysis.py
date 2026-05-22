@@ -508,7 +508,24 @@ def _run_fraud_ml(data, stock_code, adapter, cache) -> str:
         lines.append("\n═══════════════════════════════════════════════════")
         return "\n".join(lines)
     result = pipeline.predict(features)
-    lines.extend([f"  综合欺诈概率: {result.fraud_probability:.2%}", f"  风险等级: {result.fraud_risk_level}", ""])
+    lines.extend([
+        "▌ 模型说明",
+        "  本检测基于机器学习集成模型，综合以下维度进行舞弊风险评估：",
+        "  · 盈利能力异常 (ROE, ROA, 毛利率, 净利率)",
+        "  · 偿债能力异常 (流动比率, 速动比率, 资产负债率)",
+        "  · 营运能力异常 (资产周转率, 存货周转率, 应收账款周转率)",
+        "  · 成长性异常 (营收增长率, 净利润增长率)",
+        "  · 现金流质量异常 (现金流/利润比, 收入现金比)",
+        "  · 特殊指标 (应计利润/总资产, 商誉/净资产)",
+        "",
+        "  采用4个ML模型（决策树、随机森林、GBDT、XGBoost）分别打分，",
+        "  投票集成后综合给出欺诈概率。概率 > 50% 为高风险，",
+        "  25-50% 为中风险，< 25% 为低风险。",
+        "",
+        f"  综合欺诈概率: {result.fraud_probability:.2%}",
+        f"  风险等级: {result.fraud_risk_level}",
+        "",
+    ])
     if result.model_votes:
         lines.append("▌ 模型投票")
         for model, prob in result.model_votes.items():

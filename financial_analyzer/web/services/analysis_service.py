@@ -50,7 +50,7 @@ def get_pipeline_stages() -> list[dict]:
             ("moat", "护城河评估"), ("deep_comprehensive", "综合深度报告"),
         ]),
         ("4. 风险审查", "audit_full", [
-            ("audit_full", "综合审计报告"), ("fraud_ml", "ML舞弊检测 (Ch12-13)"),
+            ("audit_full", "综合审计报告"), ("fraud_ml", "ML舞弊检测"),
             ("audit_asset", "资产端信号"), ("audit_profit", "利润端信号"),
             ("audit_cashflow", "现金流信号"), ("audit_cross", "勾稽关系验证"),
             ("risk", "风险评估"), ("zscore", "Z-score"),
@@ -109,7 +109,7 @@ def get_analysis_list() -> list[dict]:
             ("ratio_analysis", "财务比率分析 (Ch5)"),
             ("trend_score", "趋势评分"),
             ("dupont_roic", "杜邦分析 (Ch9)"),
-            ("fraud_ml", "ML舞弊检测 (Ch12-13)"),
+            ("fraud_ml", "ML舞弊检测"),
         ]),
         ("股东与资金面 (Phase 1)", [
             ("shareholder", "股东结构分析"), ("capital_flow", "资金面分析"),
