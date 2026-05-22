@@ -498,28 +498,25 @@ function resetChat() {
     chatInProgress = false;
 
     const messages = document.getElementById('chat-messages');
-    // Remove all children except chat-empty
     while (messages.firstChild) {
         messages.removeChild(messages.firstChild);
     }
-    // Re-create chat-empty
+    // Re-create chat-empty with template-populated quick-actions
     const emptyEl = document.createElement('div');
     emptyEl.className = 'chat-empty';
     emptyEl.id = 'chat-empty';
     emptyEl.innerHTML = '<div style="font-size:40px;opacity:0.3;margin-bottom:8px;">📊</div>' +
         '<div>AI 财务分析助手</div>' +
-        '<div class="hint">支持快速问答、深度分析（/deep）和三方辩论（/debate）</div>' +
-        '<div class="quick-actions">' +
-        '<button class="quick-action" onclick="sendQuick(\'分析盈利能力\')">分析盈利能力</button>' +
-        '<button class="quick-action" onclick="sendQuick(\'评估财务风险\')">评估财务风险</button>' +
-        '<button class="quick-action" onclick="sendQuick(\'/deep 全面深度分析\')">全面深度分析</button>' +
-        '<button class="quick-action" onclick="sendQuick(\'/debate\')">三方辩论</button>' +
+        '<div class="quick-actions" id="template-quick-actions">' +
+        '<div class="hint" style="margin-bottom:6px;">选择一个模板开始分析，或直接输入问题自由提问</div>' +
         '</div>';
     messages.appendChild(emptyEl);
 
     document.getElementById('chat-send-btn').style.display = 'inline-block';
     document.getElementById('chat-stop-btn').style.display = 'none';
     document.getElementById('chat-input').value = '';
+    // 重新加载模板按钮
+    loadTemplates();
 }
 
 // DEPRECATED: 旧 AI 函数保留以便向后兼容

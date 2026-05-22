@@ -24,8 +24,10 @@ class DeepSeekConfig:
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-chat"
-    max_tokens: int = 4096
+    max_tokens: int = 1024
     temperature: float = 0.3
+    frequency_penalty: float = 0.5
+    presence_penalty: float = 0.3
     timeout: int = 120
 
 
@@ -277,6 +279,8 @@ class DeepSeekClient:
             ],
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
+            "frequency_penalty": self.config.frequency_penalty,
+            "presence_penalty": self.config.presence_penalty,
             "stream": True,
         }
 
@@ -364,6 +368,8 @@ class DeepSeekStreamClient(DeepSeekClient):
             ],
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
+            "frequency_penalty": self.config.frequency_penalty,
+            "presence_penalty": self.config.presence_penalty,
             "stream": True,
         }
 
