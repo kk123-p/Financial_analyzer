@@ -28,6 +28,18 @@ def _save_config(config: dict):
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
+def get_enabled_modules() -> dict:
+    """返回已启用的数据模块配置"""
+    config = _load_config()
+    defaults = {k: True for k in [
+        "moneyflow", "margin", "hk_hold", "block_trade",
+        "stk_holdernumber", "top10_holders", "dividend", "weekly_monthly"
+    ]}
+    saved = config.get("data_modules", {})
+    defaults.update(saved)
+    return defaults
+
+
 def _check_package(pkg_name: str) -> bool:
     """检查 Python 包是否已安装"""
     try:
@@ -52,6 +64,18 @@ async def get_tokens(request: Request):
         "yfinance": "available" if _check_package("yfinance") else "未安装",
     }
 
+    module_labels = {
+        "moneyflow": "资金流向", "margin": "融资融券", "hk_hold": "北向资金",
+        "block_trade": "大宗交易", "stk_holdernumber": "股东人数",
+        "top10_holders": "前十大股东", "dividend": "分红数据",
+        "weekly_monthly": "周线/月线",
+    }
+    default_mods = config.get("data_modules", {})
+    module_html = '<h4 style="color:var(--fg-secondary);font-size:12px;margin:16px 0 4px 0;">数据模块（勾选启用）</h4>'
+    for key, label in module_labels.items():
+        checked = "checked" if default_mods.get(key, True) else ""
+        module_html += f'<div style="font-size:11px;padding:2px 0;"><label><input type="checkbox" name="module_{key}" {checked}> {label}</label></div>'
+
     return HTMLResponse(f"""
     <div id="token-status-content">
         <h3 style="color:var(--accent);margin:0 0 16px 0;">Token 配置</h3>
@@ -74,6 +98,7 @@ async def get_tokens(request: Request):
                     状态: {"已配置" if has_deepseek else "未配置"}
                 </div>
             </div>
+            {module_html}
             <div style="margin-bottom:14px;">
                 <h4 style="color:var(--fg-secondary);font-size:12px;margin:0 0 4px 0;">数据源包状态</h4>
                 {"".join(f'<div style="font-size:11px;padding:1px 0;color:{"var(--success)" if v == "available" else "var(--danger)"}">{"●" if v == "available" else "○"} {k.upper()}: {v}</div>' for k, v in source_status.items())}
@@ -129,11 +154,32 @@ async def save_tokens(
         except Exception:
             pass
 
+    # 保存数据模块配置
+    module_keys = ["moneyflow", "margin", "hk_hold", "block_trade",
+                   "stk_holdernumber", "top10_holders", "dividend", "weekly_monthly"]
+    data_modules = {}
+    form_data = await request.form()
+    for key in module_keys:
+        data_modules[key] = f"module_{key}" in form_data
+    config["data_modules"] = data_modules
+
     _save_config(config)
     msg_html = "<br>".join(messages) if messages else "配置未更改"
 
     has_tushare = bool(config.get("tushare"))
     has_deepseek = bool(config.get("deepseek_api_key"))
+
+    module_labels = {
+        "moneyflow": "资金流向", "margin": "融资融券", "hk_hold": "北向资金",
+        "block_trade": "大宗交易", "stk_holdernumber": "股东人数",
+        "top10_holders": "前十大股东", "dividend": "分红数据",
+        "weekly_monthly": "周线/月线",
+    }
+    default_mods = config.get("data_modules", {})
+    module_html = '<h4 style="color:var(--fg-secondary);font-size:12px;margin:16px 0 4px 0;">数据模块（勾选启用）</h4>'
+    for key, label in module_labels.items():
+        checked = "checked" if default_mods.get(key, True) else ""
+        module_html += f'<div style="font-size:11px;padding:2px 0;"><label><input type="checkbox" name="module_{key}" {checked}> {label}</label></div>'
 
     return HTMLResponse(f"""
     <div id="token-status-content">
@@ -158,6 +204,7 @@ async def save_tokens(
                     状态: {"已配置" if has_deepseek else "未配置"}
                 </div>
             </div>
+            {module_html}
             <div style="display:flex;gap:8px;margin-top:14px;">
                 <button type="submit" class="btn btn-accent">保存 Token</button>
                 <button type="button" class="btn" onclick="closeModal('token-modal')">关闭</button>

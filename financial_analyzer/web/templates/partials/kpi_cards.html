@@ -1,32 +1,135 @@
-<!-- KPI 卡片行 — 精密玻璃 -->
+<!-- KPI 卡片行 — 用户可配置 -->
 <div class="kpi-bar" id="kpi-bar">
-    <div class="kpi-card">
+    <!-- 核心卡片始终显示 -->
+    <div class="kpi-card" data-kpi="stock_name">
         <div class="kpi-label">股票名称</div>
         <div class="kpi-value">{{ kpis.stock_name }}</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" data-kpi="current_price">
         <div class="kpi-label">当前价格</div>
         <div class="kpi-value">{{ kpis.current_price }}</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" data-kpi="price_change">
         <div class="kpi-label">涨跌幅</div>
         <div class="kpi-value" style="color:{% if kpis.price_change_up %}var(--positive){% else %}var(--negative){% endif %}">
             {{ kpis.price_change }}
         </div>
     </div>
-    <div class="kpi-card">
-        <div class="kpi-label">成交量</div>
-        <div class="kpi-value">{{ kpis.volume }}</div>
-    </div>
-    <div class="kpi-card">
+    <div class="kpi-card" data-kpi="pe_ratio">
         <div class="kpi-label">市盈率 (PE)</div>
         <div class="kpi-value">{{ kpis.pe_ratio }}</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" data-kpi="market_cap">
         <div class="kpi-label">总市值</div>
         <div class="kpi-value">{{ kpis.market_cap }}</div>
     </div>
+
+    <!-- 可选卡片 — 数据可用时自动显示 -->
+    <div class="kpi-card optional-kpi" data-kpi="net_mf_amount"
+         style="display:{% if kpis.get('net_mf_amount') and kpis.net_mf_amount != '--' %}block{% else %}none{% endif %}">
+        <div class="kpi-label">主力净流入</div>
+        <div class="kpi-value" style="color:{% if kpis.get('net_mf_positive') %}var(--positive){% else %}var(--negative){% endif %}">
+            {{ kpis.get('net_mf_amount', '--') }}
+        </div>
+    </div>
+    <div class="kpi-card optional-kpi" data-kpi="margin_balance"
+         style="display:{% if kpis.get('margin_balance') and kpis.margin_balance != '--' %}block{% else %}none{% endif %}">
+        <div class="kpi-label">融资余额</div>
+        <div class="kpi-value">{{ kpis.get('margin_balance', '--') }}</div>
+    </div>
+    <div class="kpi-card optional-kpi" data-kpi="hk_hold_ratio"
+         style="display:{% if kpis.get('hk_hold_ratio') and kpis.hk_hold_ratio != '--' %}block{% else %}none{% endif %}">
+        <div class="kpi-label">北向持股</div>
+        <div class="kpi-value">{{ kpis.get('hk_hold_ratio', '--') }}</div>
+    </div>
+    <div class="kpi-card optional-kpi" data-kpi="holder_num"
+         style="display:{% if kpis.get('holder_num') and kpis.holder_num != '--' %}block{% else %}none{% endif %}">
+        <div class="kpi-label">股东人数</div>
+        <div class="kpi-value">{{ kpis.get('holder_num', '--') }}</div>
+    </div>
+    <div class="kpi-card optional-kpi" data-kpi="div_yield"
+         style="display:{% if kpis.get('div_yield') and kpis.div_yield != '--' %}block{% else %}none{% endif %}">
+        <div class="kpi-label">股息率</div>
+        <div class="kpi-value">{{ kpis.get('div_yield', '--') }}</div>
+    </div>
+    <div class="kpi-card optional-kpi" data-kpi="volume">
+        <div class="kpi-label">成交量</div>
+        <div class="kpi-value">{{ kpis.volume }}</div>
+    </div>
 </div>
+
+<!-- KPI 配置按钮 -->
+<div style="text-align:right;margin-top:8px;">
+    <button class="btn btn-sm" onclick="toggleKpiConfig()"
+            style="font-size:10px;padding:2px 8px;background:var(--bg-input);border:1px solid var(--border);color:var(--fg-muted);border-radius:4px;cursor:pointer;">
+        ⚙ 自定义卡片
+    </button>
+</div>
+
+<!-- 卡片配置面板（默认隐藏） -->
+<div id="kpi-config-panel" style="display:none;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;">
+    <div style="color:var(--fg-secondary);font-size:12px;font-weight:600;margin-bottom:8px;">选择要显示的 KPI 卡片</div>
+    <div id="kpi-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px;">
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;">
+        <button onclick="saveKpiConfig()" style="background:var(--accent);color:#fff;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">保存</button>
+        <button onclick="resetKpiConfig()" style="background:transparent;color:var(--fg-muted);border:1px solid var(--border);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;">恢复默认</button>
+    </div>
+</div>
+
+<script>
+// 默认启用的卡片
+const defaultKpis = ['stock_name', 'current_price', 'price_change', 'pe_ratio', 'market_cap', 'volume'];
+
+function toggleKpiConfig() {
+    const panel = document.getElementById('kpi-config-panel');
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible) buildCheckboxes();
+}
+
+function buildCheckboxes() {
+    const container = document.getElementById('kpi-checkboxes');
+    const cards = document.querySelectorAll('.kpi-card[data-kpi]');
+    const saved = JSON.parse(localStorage.getItem('kpi_config') || '[]');
+    const enabled = saved.length ? saved : defaultKpis;
+
+    container.innerHTML = '';
+    cards.forEach(card => {
+        const kpi = card.dataset.kpi;
+        const label = card.querySelector('.kpi-label').textContent;
+        const checked = enabled.includes(kpi);
+        container.innerHTML += '<label style="font-size:11px;cursor:pointer;">' +
+            '<input type="checkbox" value="' + kpi + '" ' + (checked ? 'checked' : '') + '> ' + label +
+            '</label>';
+    });
+}
+
+function saveKpiConfig() {
+    const checked = Array.from(document.querySelectorAll('#kpi-checkboxes input:checked')).map(cb => cb.value);
+    localStorage.setItem('kpi_config', JSON.stringify(checked));
+    applyKpiConfig(checked);
+    document.getElementById('kpi-config-panel').style.display = 'none';
+}
+
+function resetKpiConfig() {
+    localStorage.removeItem('kpi_config');
+    applyKpiConfig(defaultKpis);
+    document.getElementById('kpi-config-panel').style.display = 'none';
+}
+
+function applyKpiConfig(enabled) {
+    document.querySelectorAll('.kpi-card[data-kpi]').forEach(card => {
+        card.style.display = enabled.includes(card.dataset.kpi) ? '' : 'none';
+    });
+}
+
+// 页面加载时应用保存的配置
+(function() {
+    const saved = JSON.parse(localStorage.getItem('kpi_config') || '[]');
+    if (saved.length) applyKpiConfig(saved);
+})();
+</script>
 
 {% if has_data %}
 <div hx-swap-oob="true" id="status-text">数据获取完成 — {{ stock_code }}</div>
@@ -39,12 +142,11 @@
         </span>
 </div>
 
-<!-- 财务数据加载状态 -->
 {% if fin_pending %}
 <div id="fin-status" class="fin-status-loading"
      hx-get="/fetch/financials-status" hx-trigger="every 2s" hx-swap="outerHTML transition:true"
      style="font-size:11px;">
-    ◌ 正在后台加载财务报表数据...
+    ◌ 正在后台加载财务及市场数据...
     (已加载: {{ fin_loaded|join(', ') or '无' }})
 </div>
 {% endif %}
@@ -63,7 +165,7 @@
             {% endfor %}
             {% if fin_pending %}
             <tr><td colspan="3" style="color:var(--warning);text-align:center;">
-                ◌ 另有 {{ fin_pending|length }} 项财务数据正在后台加载中...
+                ◌ 另有 {{ fin_pending|length }} 项数据正在后台加载中...
             </td></tr>
             {% endif %}
         </tbody>
