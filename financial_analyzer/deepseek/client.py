@@ -241,9 +241,13 @@ class DeepSeekClient:
                                      analysis_focus: str = None,
                                      perspective: str = None,
                                      callback=None,
-                                     system_prompt: str = None) -> AnalysisReport:
+                                     system_prompt: str = None,
+                                     cancel_event=None) -> AnalysisReport:
         """
         流式生成深度分析报告
+
+        Args:
+            cancel_event: threading.Event，设置后中止流式读取
         """
         if not self.config.api_key:
             return AnalysisReport(error="API Key 未设置", success=False)
@@ -298,6 +302,11 @@ class DeepSeekClient:
 
             full_content = ""
             for line in resp.iter_lines():
+                if cancel_event and cancel_event.is_set():
+                    resp.close()
+                    if callback:
+                        callback("", True)
+                    break
                 if not line:
                     continue
                 line = line.decode("utf-8")

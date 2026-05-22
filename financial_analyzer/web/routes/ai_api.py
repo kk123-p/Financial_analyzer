@@ -309,6 +309,7 @@ async def ai_conversation(websocket: WebSocket):
     orchestrator = None
     conversation = None
     _current_task: asyncio.Task | None = None
+    _current_cancel = None
 
     try:
         init_data = await websocket.receive_text()
@@ -386,7 +387,9 @@ async def ai_conversation(websocket: WebSocket):
                     continue
 
                 import asyncio as aio
+                import threading as _thr
                 event_queue: aio.Queue = aio.Queue()
+                cancel_event = _thr.Event()
 
                 def analysis_callback(event_type: str, content: str, meta: dict | None):
                     event_queue.put_nowait((event_type, content, meta))
@@ -401,6 +404,7 @@ async def ai_conversation(websocket: WebSocket):
                             stock_code=stock_code,
                             company_name=company_name,
                             callback=analysis_callback,
+                            cancel_event=cancel_event,
                         )
                     except Exception as e:
                         logger.error(f"Analysis error: {e}", exc_info=True)
@@ -409,6 +413,7 @@ async def ai_conversation(websocket: WebSocket):
 
                 task = aio.create_task(run_analysis_async())
                 _current_task = task
+                _current_cancel = cancel_event
 
                 while True:
                     try:
@@ -452,7 +457,9 @@ async def ai_conversation(websocket: WebSocket):
                 conversation._active_template = template
 
                 import asyncio as aio
+                import threading as _thr
                 event_queue = aio.Queue()
+                cancel_event = _thr.Event()
 
                 def template_callback(event_type: str, content: str, meta: dict | None):
                     event_queue.put_nowait((event_type, content, meta))
@@ -468,6 +475,7 @@ async def ai_conversation(websocket: WebSocket):
                             conversation=conversation,
                             callback=template_callback,
                             extra_question=extra_question,
+                            cancel_event=cancel_event,
                         )
                     except Exception as e:
                         logger.error(f"Template analysis error: {e}", exc_info=True)
@@ -476,6 +484,7 @@ async def ai_conversation(websocket: WebSocket):
 
                 task = aio.create_task(run_template_async())
                 _current_task = task
+                _current_cancel = cancel_event
 
                 while True:
                     try:
@@ -497,6 +506,8 @@ async def ai_conversation(websocket: WebSocket):
                         break
 
             elif msg.get("type") == "stop":
+                if _current_cancel:
+                    _current_cancel.set()
                 if _current_task and not _current_task.done():
                     _current_task.cancel()
                 await websocket.send_text(json.dumps({"type": "meta", "content": "stopped"}))

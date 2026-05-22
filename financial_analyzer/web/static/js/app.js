@@ -93,10 +93,6 @@ function switchTab(tabName, btn) {
     if (tabName === 'ai') { loadTemplates(); }
 }
 
-// ---- AI 子标签切换 ----
-// DEPRECATED: 统一对话面板已替代子标签，ai-chat-panel/ai-debate-panel 已移除
-function switchAiTab(tab, btn) { }
-
 // ---- 侧边栏 — 平滑展开/折叠 + 高度动画 ----
 function toggleSection(header) {
     const arrow = header.querySelector('.arrow');
@@ -260,11 +256,6 @@ window.addEventListener('resize', function() {
 
 let chatWs = null;
 let chatInProgress = false;
-
-function sendQuick(question) {
-    document.getElementById('chat-input').value = question;
-    sendMessage();
-}
 
 function sendMessage() {
     const input = document.getElementById('chat-input');
@@ -519,8 +510,6 @@ function resetChat() {
     loadTemplates();
 }
 
-// DEPRECATED: 旧 AI 函数保留以便向后兼容
-function switchAiTab(tab, btn) { /* 统一对话面板已替代子标签 */ }
 function startDebate() {
     // Switch to the debate tab
     const debateBtn = document.querySelector('.tabs > .tab-btn:nth-child(5)'); // 5th tab

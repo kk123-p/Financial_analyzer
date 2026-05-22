@@ -40,6 +40,7 @@ class AnalysisOrchestrator:
         stock_code: str,
         company_name: str = "",
         callback: Callable | None = None,
+        cancel_event=None,
     ):
         """统一分析入口 — 所有模式行为一致，LLM 纯问答"""
         conversation.add_message(Message(role="user", content=user_message, msg_type="text"))
@@ -55,13 +56,13 @@ class AnalysisOrchestrator:
             template = getattr(conversation, '_active_template', None)
             if template:
                 self._stream_template(template, data, stock_code, company_name,
-                                     conversation, callback)
+                                     conversation, callback, cancel_event=cancel_event)
             else:
                 if callback:
                     callback("error", "未选择分析模板", None)
                     callback("done", "", None)
         else:
-            self._stream_chat(user_message, conversation, callback, data, stock_code, company_name)
+            self._stream_chat(user_message, conversation, callback, data, stock_code, company_name, cancel_event=cancel_event)
 
     def _identify_intent(self, message: str, conversation: ConversationManager | None = None) -> str:
         """识别用户分析意图"""
@@ -91,12 +92,17 @@ class AnalysisOrchestrator:
 
         return "quick"
 
-    def _stream_chat(self, message, conversation, callback, data=None, stock_code="", company_name=""):
-        """纯问答模式 — 用户消息直接发给 LLM，无自动注入"""
+    def _stream_chat(self, message, conversation, callback, data=None, stock_code="", company_name="", cancel_event=None):
+        """纯问答模式 — 注入数据摘要 + 用户问题"""
         system_prompt = ""
         if data:
             from .templates import build_lightweight_summary
             system_prompt = build_lightweight_summary(data, stock_code)
+
+        # 包装短消息，防止 LLM 误解
+        user_prompt = message
+        if len(message.strip()) < 10:
+            user_prompt = f"请针对以上数据，用专业简洁的中文回答以下问题：{message}"
 
         parser = OutputParser()
 
@@ -122,7 +128,10 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(message, system_prompt=system_prompt, callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(
+            user_prompt, system_prompt=system_prompt, callback=on_chunk,
+            cancel_event=cancel_event,
+        )
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
@@ -192,7 +201,7 @@ class AnalysisOrchestrator:
 
     def _stream_template(self, template: dict, data: dict, stock_code: str,
                          company_name: str, conversation, callback,
-                         extra_question: str = ""):
+                         extra_question: str = "", cancel_event=None):
         """模板驱动分析 — 按 section 流式输出"""
         from .templates import get_template_data_summary
 
@@ -284,6 +293,7 @@ class AnalysisOrchestrator:
             user_prompt,
             system_prompt=system_prompt,
             callback=on_chunk,
+            cancel_event=cancel_event,
         )
 
         if not result.success:
