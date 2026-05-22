@@ -103,30 +103,8 @@ class AnalysisOrchestrator:
             if len(message.strip()) < 10:
                 user_prompt = f"请针对以上数据，用专业简洁的中文回答以下问题：{message}"
         elif data:
-            # 通用问题：不注入数据，只给一个简短角色提示
             system_prompt = "你是一个专业的财务分析助手。请用简洁、专业的中文回答用户问题。"
             user_prompt = message
-
-    @staticmethod
-    def _is_data_question(message: str, stock_code: str, company_name: str) -> bool:
-        """判断用户问题是否需要引用当前股票数据"""
-        msg = message.strip()
-        # 股票引用词：问题明确指向当前分析的股票
-        stock_refs = [stock_code, company_name, "这只", "这个股票", "该公司", "这家", "当前",
-                      "它的", "他的", "它", "他"]
-        if any(r in msg for r in stock_refs if r):
-            return True
-        # 财务指标词：问题涉及具体财务数据
-        finance_terms = [
-            "毛利率", "净利率", "ROE", "ROA", "PE", "PB", "市盈率", "市净率",
-            "营收", "净利润", "利润", "负债", "资产", "现金流", "分红", "股息",
-            "增长率", "同比", "环比", "趋势", "报表", "财报", "财务",
-            "主力", "资金", "融资", "融券", "北向", "股东", "估值",
-            "杜邦", "周转", "杠杆", "偿债", "营运", "盈利", "成本",
-        ]
-        if any(t in msg for t in finance_terms):
-            return True
-        return False
 
         parser = OutputParser()
 
@@ -160,6 +138,25 @@ class AnalysisOrchestrator:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
                 callback("done", "", None)
+
+    @staticmethod
+    def _is_data_question(message: str, stock_code: str, company_name: str) -> bool:
+        """判断用户问题是否需要引用当前股票数据"""
+        msg = message.strip()
+        stock_refs = [stock_code, company_name, "这只", "这个股票", "该公司", "这家", "当前",
+                      "它的", "他的", "它", "他"]
+        if any(r in msg for r in stock_refs if r):
+            return True
+        finance_terms = [
+            "毛利率", "净利率", "ROE", "ROA", "PE", "PB", "市盈率", "市净率",
+            "营收", "净利润", "利润", "负债", "资产", "现金流", "分红", "股息",
+            "增长率", "同比", "环比", "趋势", "报表", "财报", "财务",
+            "主力", "资金", "融资", "融券", "北向", "股东", "估值",
+            "杜邦", "周转", "杠杆", "偿债", "营运", "盈利", "成本",
+        ]
+        if any(t in msg for t in finance_terms):
+            return True
+        return False
 
     def _stream_debate(self, data, stock_code, company_name, conversation, callback):
         """辩论模式：委托 DebateEngine"""
@@ -271,11 +268,13 @@ class AnalysisOrchestrator:
             if chunk:
                 accumulated += chunk
 
-            # 检测 section 边界（## 开头的行）
+            # 仅在下一个 ## 标题出现时，才发送上一个 section（保证内容完整）
             lines = accumulated.split("\n")
             section_count = sum(1 for l in lines if l.strip().startswith("## "))
 
-            if section_count > current_section_idx + 1:
+            # section_count=1 → 第一个标题刚出现，不发送（内容还没写完）
+            # section_count=2 → section 0 完成，发送它
+            while section_count > current_section_idx + 2:
                 current_section_idx += 1
                 section_content = self._extract_section(accumulated, current_section_idx)
                 if section_content and callback:
@@ -288,19 +287,18 @@ class AnalysisOrchestrator:
                     })
 
             if done:
-                # 发送剩余未检测到的 section
+                # 发送所有剩余 section
                 total_sections = len(template.get("analysis_sections", []))
-                if current_section_idx < total_sections - 1:
-                    for idx in range(current_section_idx + 1, total_sections):
-                        remaining = self._extract_section(accumulated, idx)
-                        if remaining and remaining.strip():
-                            sections_list = template.get("analysis_sections", [])
-                            section_title = sections_list[idx]["title"] if idx < len(sections_list) else ""
-                            if callback:
-                                callback("template_section", remaining.strip(), {
-                                    "section_index": idx,
-                                    "section_title": section_title,
-                                })
+                for idx in range(current_section_idx + 1, total_sections):
+                    remaining = self._extract_section(accumulated, idx)
+                    if remaining and remaining.strip():
+                        sections_list = template.get("analysis_sections", [])
+                        section_title = sections_list[idx]["title"] if idx < len(sections_list) else ""
+                        if callback:
+                            callback("template_section", remaining.strip(), {
+                                "section_index": idx,
+                                "section_title": section_title,
+                            })
 
                 if callback:
                     callback("template_done", accumulated, None)
