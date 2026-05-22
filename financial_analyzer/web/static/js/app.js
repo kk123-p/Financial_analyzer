@@ -256,6 +256,121 @@ window.addEventListener('resize', function() {
 
 let chatWs = null;
 let chatInProgress = false;
+let _wsOnReady = null;  // callback fired after WebSocket onopen
+
+function _openConversationWs(stockCode, onReady) {
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+        if (onReady) onReady();
+        return;
+    }
+    var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var wsUrl = protocol + '//' + location.host + '/ai/conversation';
+    _wsOnReady = onReady;
+
+    chatWs = new WebSocket(wsUrl);
+    window._conversationWs = chatWs;
+    var messages = document.getElementById('chat-messages');
+    var _currentAssistantEl = null;
+
+    chatWs.onopen = function() {
+        chatWs.send(JSON.stringify({ stock_code: stockCode }));
+        if (_wsOnReady) {
+            _wsOnReady();
+            _wsOnReady = null;
+        }
+    };
+
+    chatWs.onmessage = function(event) {
+        var msg = JSON.parse(event.data);
+
+        if (msg.type === 'meta') {
+            if (msg.content === 'ready') return;
+
+            if (msg.content.startsWith('intent:')) {
+                var intent = msg.content.replace('intent:', '');
+                var sysEl = document.createElement('div');
+                sysEl.className = 'chat-system';
+                var intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
+                sysEl.textContent = intentLabels[intent] || intent;
+                var userBubbles = messages.querySelectorAll('.chat-bubble--user');
+                if (userBubbles.length > 0) {
+                    userBubbles[userBubbles.length - 1].insertAdjacentElement('afterend', sysEl);
+                } else {
+                    messages.appendChild(sysEl);
+                }
+                messages.scrollTop = messages.scrollHeight;
+            } else if (msg.content === 'debate_start') {
+                var header = document.createElement('div');
+                header.className = 'debate-round-header';
+                header.textContent = '三方辩论开始';
+                messages.appendChild(header);
+                messages.scrollTop = messages.scrollHeight;
+            } else if (msg.content.startsWith('section:')) {
+                _currentAssistantEl = null;
+            }
+        } else if (msg.type === 'chunk') {
+            if (!_currentAssistantEl) {
+                _currentAssistantEl = document.createElement('div');
+                _currentAssistantEl.className = 'chat-bubble chat-bubble--assistant';
+                messages.appendChild(_currentAssistantEl);
+            }
+            _currentAssistantEl.textContent += msg.content;
+            messages.scrollTop = messages.scrollHeight;
+        } else if (msg.type === 'structured') {
+            var card = buildStructuredCard(msg.content, msg.meta || {});
+            messages.appendChild(card);
+            _currentAssistantEl = null;
+            messages.scrollTop = messages.scrollHeight;
+        } else if (msg.type === 'done') {
+            _currentAssistantEl = null;
+            chatInProgress = false;
+            document.getElementById('chat-send-btn').style.display = 'inline-block';
+            document.getElementById('chat-stop-btn').style.display = 'none';
+        } else if (msg.type === 'template_start') {
+            appendMeta('🔍 执行模板分析: ' + (msg.meta ? msg.meta.template : '') + ' (' + (msg.meta ? msg.meta.sections : '') + ' 个维度)');
+        } else if (msg.type === 'template_section') {
+            appendSectionCard(msg.content, msg.meta);
+        } else if (msg.type === 'template_done') {
+            appendMeta('✅ 模板分析完成');
+        } else if (msg.type === 'error') {
+            var errEl = document.createElement('div');
+            errEl.className = 'chat-bubble chat-bubble--assistant';
+            errEl.style.color = 'var(--negative)';
+            errEl.textContent = '⚠️ ' + msg.content;
+            messages.appendChild(errEl);
+            var retryEl = document.createElement('div');
+            retryEl.style.cssText = 'text-align:center;margin-top:4px;';
+            retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
+            messages.appendChild(retryEl);
+            messages.scrollTop = messages.scrollHeight;
+            chatInProgress = false;
+            document.getElementById('chat-send-btn').style.display = 'inline-block';
+            document.getElementById('chat-stop-btn').style.display = 'none';
+        }
+    };
+
+    chatWs.onerror = function() {
+        var errEl = document.createElement('div');
+        errEl.className = 'chat-bubble chat-bubble--assistant';
+        errEl.style.color = 'var(--negative)';
+        errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
+        messages.appendChild(errEl);
+        var retryEl = document.createElement('div');
+        retryEl.style.cssText = 'text-align:center;margin-top:4px;';
+        retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
+        messages.appendChild(retryEl);
+        chatInProgress = false;
+        document.getElementById('chat-send-btn').style.display = 'inline-block';
+        document.getElementById('chat-stop-btn').style.display = 'none';
+    };
+
+    chatWs.onclose = function() {
+        chatWs = null;
+        chatInProgress = false;
+        document.getElementById('chat-send-btn').style.display = 'inline-block';
+        document.getElementById('chat-stop-btn').style.display = 'none';
+    };
+}
 
 function sendMessage() {
     const input = document.getElementById('chat-input');
@@ -290,136 +405,13 @@ function sendMessage() {
         return;
     }
 
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = protocol + '//' + location.host + '/ai/conversation';
-
-    try {
-        chatWs = new WebSocket(wsUrl);
-        window._conversationWs = chatWs;
-        let _currentAssistantEl = null;
-
-        chatWs.onopen = function() {
-            chatWs.send(JSON.stringify({
-                stock_code: stockCode,
-                template_name: currentTemplateName || '',
-                template: currentTemplateData || null,
-            }));
-            setTimeout(function() {
-                if (chatWs.readyState === WebSocket.OPEN) {
-                    chatWs.send(JSON.stringify({ type: 'message', content: message }));
-                }
-            }, 200);
-        };
-
-        chatWs.onmessage = function(event) {
-            const msg = JSON.parse(event.data);
-
-            if (msg.type === 'meta') {
-                if (msg.content === 'ready') return;
-
-                if (msg.content.startsWith('intent:')) {
-                    const intent = msg.content.replace('intent:', '');
-                    const sysEl = document.createElement('div');
-                    sysEl.className = 'chat-system';
-                    const intentLabels = { quick: '快速问答', deep: '深度分析', debate: '三方辩论', followup: '追问' };
-                    sysEl.textContent = intentLabels[intent] || intent;
-                    // Insert AFTER the last user bubble (so it appears between user question and AI response)
-                    const userBubbles = messages.querySelectorAll('.chat-bubble--user');
-                    if (userBubbles.length > 0) {
-                        const lastUserBubble = userBubbles[userBubbles.length - 1];
-                        lastUserBubble.insertAdjacentElement('afterend', sysEl);
-                    } else {
-                        messages.appendChild(sysEl);
-                    }
-                    messages.scrollTop = messages.scrollHeight;
-                } else if (msg.content === 'debate_start') {
-                    const header = document.createElement('div');
-                    header.className = 'debate-round-header';
-                    header.textContent = '三方辩论开始';
-                    messages.appendChild(header);
-                    messages.scrollTop = messages.scrollHeight;
-                } else if (msg.content.startsWith('section:')) {
-                    _currentAssistantEl = null;
-                }
-            } else if (msg.type === 'chunk') {
-                if (!_currentAssistantEl) {
-                    _currentAssistantEl = document.createElement('div');
-                    _currentAssistantEl.className = 'chat-bubble chat-bubble--assistant';
-                    messages.appendChild(_currentAssistantEl);
-                }
-                _currentAssistantEl.textContent += msg.content;
-                messages.scrollTop = messages.scrollHeight;
-            } else if (msg.type === 'structured') {
-                const card = buildStructuredCard(msg.content, msg.meta || {});
-                messages.appendChild(card);
-                _currentAssistantEl = null;
-                messages.scrollTop = messages.scrollHeight;
-            } else if (msg.type === 'done') {
-                _currentAssistantEl = null;
-                chatInProgress = false;
-                document.getElementById('chat-send-btn').style.display = 'inline-block';
-                document.getElementById('chat-stop-btn').style.display = 'none';
-            } else if (msg.type === 'template_start') {
-                appendMeta('🔍 执行模板分析: ' + (msg.meta ? msg.meta.template : '') + ' (' + (msg.meta ? msg.meta.sections : '') + ' 个维度)');
-            } else if (msg.type === 'template_section') {
-                appendSectionCard(msg.content, msg.meta);
-            } else if (msg.type === 'template_done') {
-                appendMeta('✅ 模板分析完成');
-            } else if (msg.type === 'error') {
-                const errEl = document.createElement('div');
-                errEl.className = 'chat-bubble chat-bubble--assistant';
-                errEl.style.color = 'var(--negative)';
-                errEl.textContent = '⚠️ ' + msg.content;
-                messages.appendChild(errEl);
-                // Add retry hint
-                const retryEl = document.createElement('div');
-                retryEl.style.cssText = 'text-align:center;margin-top:4px;';
-                retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
-                messages.appendChild(retryEl);
-                messages.scrollTop = messages.scrollHeight;
-                chatInProgress = false;
-                document.getElementById('chat-send-btn').style.display = 'inline-block';
-                document.getElementById('chat-stop-btn').style.display = 'none';
+    _openConversationWs(stockCode, function() {
+        setTimeout(function() {
+            if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+                chatWs.send(JSON.stringify({ type: 'message', content: message }));
             }
-        };
-
-        chatWs.onerror = function() {
-            const errEl = document.createElement('div');
-            errEl.className = 'chat-bubble chat-bubble--assistant';
-            errEl.style.color = 'var(--negative)';
-            errEl.textContent = '⚠️ 连接失败，请检查 API Key 配置';
-            messages.appendChild(errEl);
-            // Add retry hint
-            const retryEl = document.createElement('div');
-            retryEl.style.cssText = 'text-align:center;margin-top:4px;';
-            retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
-            messages.appendChild(retryEl);
-            chatInProgress = false;
-            document.getElementById('chat-send-btn').style.display = 'inline-block';
-            document.getElementById('chat-stop-btn').style.display = 'none';
-        };
-
-        chatWs.onclose = function() {
-            chatWs = null;
-            chatInProgress = false;
-            document.getElementById('chat-send-btn').style.display = 'inline-block';
-            document.getElementById('chat-stop-btn').style.display = 'none';
-        };
-    } catch (e) {
-        const errEl = document.createElement('div');
-        errEl.className = 'chat-bubble chat-bubble--assistant';
-        errEl.style.color = 'var(--negative)';
-        errEl.textContent = '⚠️ 连接失败: ' + e.message;
-        messages.appendChild(errEl);
-        // Add retry hint
-        const retryEl = document.createElement('div');
-        retryEl.style.cssText = 'text-align:center;margin-top:4px;';
-        retryEl.innerHTML = '<span onclick="resetChat()" style="color:var(--accent-primary);cursor:pointer;font-size:var(--text-xs);">↺ 开始新对话</span>';
-        messages.appendChild(retryEl);
-        chatInProgress = false;
-        document.getElementById('chat-send-btn').style.display = 'inline-block';
-        document.getElementById('chat-stop-btn').style.display = 'none';
-    }
+        }, 200);
+    });
 }
 
 function stopAnalysis() {
@@ -884,7 +876,6 @@ function renderTemplateButtons(templates) {
 
 function selectTemplate(name) {
     currentTemplate = name;
-    // 高亮选中按钮
     document.querySelectorAll('.template-quick-btn, .quick-action').forEach(function(b) {
         b.classList.toggle('active', b.textContent === name);
     });
@@ -898,100 +889,22 @@ function selectTemplate(name) {
     var emptyEl = document.getElementById('chat-empty');
     if (emptyEl) emptyEl.style.display = 'none';
 
-    // WebSocket 已打开，直接发送
     if (chatWs && chatWs.readyState === WebSocket.OPEN) {
         chatWs.send(JSON.stringify({type: 'template', template_name: name, extra_question: ''}));
         return;
     }
 
-    // 打开新 WebSocket
     chatInProgress = true;
     document.getElementById('chat-send-btn').style.display = 'none';
     document.getElementById('chat-stop-btn').style.display = 'inline-block';
 
-    var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var wsUrl = protocol + '//' + location.host + '/ai/conversation';
-
-    try {
-        chatWs = new WebSocket(wsUrl);
-        window._conversationWs = chatWs;
-        var _templateName = name;
-
-        chatWs.onopen = function() {
-            chatWs.send(JSON.stringify({ stock_code: stockCode }));
-            setTimeout(function() {
-                if (chatWs.readyState === WebSocket.OPEN) {
-                    chatWs.send(JSON.stringify({type: 'template', template_name: _templateName, extra_question: ''}));
-                }
-            }, 200);
-        };
-
-        chatWs.onmessage = function(event) {
-            var msg = JSON.parse(event.data);
-
-            if (msg.type === 'meta') {
-                if (msg.content === 'ready') return;
-                appendMeta(msg.content);
-                return;
+    _openConversationWs(stockCode, function() {
+        setTimeout(function() {
+            if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+                chatWs.send(JSON.stringify({type: 'template', template_name: name, extra_question: ''}));
             }
-
-            if (msg.type === 'template_start') {
-                appendMeta('🔍 执行模板分析: ' + (msg.meta ? msg.meta.template : '') + ' (' + (msg.meta ? msg.meta.sections : '') + ' 个维度)');
-                return;
-            }
-
-            if (msg.type === 'template_section') {
-                appendSectionCard(msg.content, msg.meta);
-                return;
-            }
-
-            if (msg.type === 'template_done') {
-                appendMeta('✅ 模板分析完成');
-                return;
-            }
-
-            if (msg.type === 'chunk') {
-                var el = document.getElementById('chat-streaming');
-                if (!el) {
-                    el = document.createElement('div');
-                    el.id = 'chat-streaming';
-                    el.className = 'chat-bubble chat-bubble--assistant';
-                    document.getElementById('chat-messages').appendChild(el);
-                }
-                if (msg.content) el.innerHTML += msg.content.replace(/\n/g, '<br>');
-                document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
-                return;
-            }
-
-            if (msg.type === 'done') {
-                chatInProgress = false;
-                document.getElementById('chat-send-btn').style.display = 'inline-block';
-                document.getElementById('chat-stop-btn').style.display = 'none';
-                var streamingEl = document.getElementById('chat-streaming');
-                if (streamingEl) streamingEl.id = '';
-                return;
-            }
-
-            if (msg.type === 'error') {
-                appendMeta('⚠️ ' + msg.content);
-                chatInProgress = false;
-                document.getElementById('chat-send-btn').style.display = 'inline-block';
-                document.getElementById('chat-stop-btn').style.display = 'none';
-                return;
-            }
-        };
-
-        chatWs.onerror = function() {
-            appendMeta('⚠️ 连接失败');
-            chatInProgress = false;
-            document.getElementById('chat-send-btn').style.display = 'inline-block';
-            document.getElementById('chat-stop-btn').style.display = 'none';
-        };
-
-    } catch (e) {
-        console.error('WebSocket error:', e);
-        chatInProgress = false;
-    }
+        }, 200);
+    });
 }
 
 function appendMeta(text) {

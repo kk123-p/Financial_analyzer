@@ -505,11 +505,16 @@ async def ai_conversation(websocket: WebSocket):
                     except Exception:
                         break
 
+                # 模板分析完成后清除，避免后续自由提问被错误路由
+                conversation._active_template = None
+
             elif msg.get("type") == "stop":
                 if _current_cancel:
                     _current_cancel.set()
                 if _current_task and not _current_task.done():
                     _current_task.cancel()
+                # stop 时也清除模板
+                conversation._active_template = None
                 await websocket.send_text(json.dumps({"type": "meta", "content": "stopped"}))
                 break
 
