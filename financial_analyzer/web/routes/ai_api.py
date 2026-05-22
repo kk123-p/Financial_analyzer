@@ -429,6 +429,73 @@ async def ai_conversation(websocket: WebSocket):
                     except Exception:
                         break
 
+            elif msg.get("type") == "template":
+                template_name = msg.get("template_name", "")
+                extra_question = msg.get("extra_question", "")
+
+                if not template_name:
+                    await websocket.send_text(json.dumps({
+                        "type": "error", "content": "缺少模板名称"
+                    }))
+                    continue
+
+                from financial_analyzer.ai.prompt_store import PromptsStore
+                store = PromptsStore()
+                template = store.get_template(template_name)
+                if template is None:
+                    await websocket.send_text(json.dumps({
+                        "type": "error", "content": f"模板不存在: {template_name}"
+                    }))
+                    continue
+
+                # Set active template on conversation so orchestrator routes correctly
+                conversation._active_template = template
+
+                import asyncio as aio
+                event_queue = aio.Queue()
+
+                def template_callback(event_type: str, content: str, meta: dict | None):
+                    event_queue.put_nowait((event_type, content, meta))
+
+                async def run_template_async():
+                    try:
+                        await aio.to_thread(
+                            orchestrator._stream_template,
+                            template=template,
+                            data=data,
+                            stock_code=stock_code,
+                            company_name=company_name,
+                            conversation=conversation,
+                            callback=template_callback,
+                            extra_question=extra_question,
+                        )
+                    except Exception as e:
+                        logger.error(f"Template analysis error: {e}", exc_info=True)
+                        await event_queue.put(("error", str(e), None))
+                        await event_queue.put(("done", "", None))
+
+                task = aio.create_task(run_template_async())
+                _current_task = task
+
+                while True:
+                    try:
+                        item = await event_queue.get()
+                    except asyncio.CancelledError:
+                        break
+                    event_type, content, meta = item
+
+                    if event_type == "done":
+                        await websocket.send_text(json.dumps({"type": "done", "content": ""}))
+                        break
+
+                    payload = {"type": event_type, "content": content}
+                    if meta:
+                        payload["meta"] = meta
+                    try:
+                        await websocket.send_text(json.dumps(payload))
+                    except Exception:
+                        break
+
             elif msg.get("type") == "stop":
                 if _current_task and not _current_task.done():
                     _current_task.cancel()
