@@ -46,7 +46,7 @@ def get_pipeline_stages() -> list[dict]:
         ]),
         ("3. 深度诊断", "dupont", [
             ("dupont", "杜邦分析（含ROIC）"),
-            ("fcf", "自由现金流"), ("quadrant", "现金流象限"),
+            ("fcf", "现金流分析"),
             ("moat", "护城河评估"), ("deep_comprehensive", "综合深度报告"),
         ]),
         ("4. 风险审查", "audit_full", [
@@ -94,7 +94,7 @@ def get_analysis_list() -> list[dict]:
         ("深度分析", [
             ("dupont", "杜邦分析"), ("zscore", "Z-score"),
             ("fscore", "F-score"), ("mscore", "M-score"),
-            ("fcf", "自由现金流"), ("quadrant", "现金流象限"),
+            ("fcf", "现金流分析"),
             ("moat", "护城河评估"), ("deep_comprehensive", "综合深度报告"),
         ]),
         ("估值与质量", [

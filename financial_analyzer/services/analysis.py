@@ -573,6 +573,26 @@ def _estimate_goodwill_ratio(balance_df) -> float:
     return round(gw / eq * 100, 2) if gw and eq and eq > 0 else 0
 
 
+def _run_cashflow_combined(data, stock_code, adapter, cache) -> str:
+    """现金流综合分析：自由现金流 + 现金流5型画像"""
+    da = DeepAnalyzer(data, stock_code, adapter, cache)
+    fcf_result = da.analyze_free_cashflow()
+    portrait_result = da.analyze_cashflow_quadrant()
+
+    lines = [
+        "═══════════ 现金流综合分析 ═══════════",
+        "",
+        fcf_result,
+        "",
+        "─" * 55,
+        "",
+        portrait_result,
+        "",
+        "═══════════════════════════════════════════════════",
+    ]
+    return "\n".join(lines)
+
+
 # ============================================================================
 # 规范分析调度表（单一起源）
 # ============================================================================
@@ -601,8 +621,8 @@ ANALYSIS_MAP: dict[str, Callable] = {
     "zscore": _make_analyzer(DeepAnalyzer, "analyze_zscore"),
     "fscore": _make_analyzer(DeepAnalyzer, "analyze_fscore"),
     "mscore": _make_analyzer(DeepAnalyzer, "analyze_mscore"),
-    "fcf": _make_analyzer(DeepAnalyzer, "analyze_free_cashflow"),
-    "quadrant": _make_analyzer(DeepAnalyzer, "analyze_cashflow_quadrant"),
+    "fcf": _run_cashflow_combined,
+    "quadrant": _run_cashflow_combined,  # alias
     "moat": _make_analyzer(DeepAnalyzer, "analyze_moat"),
     "deep_comprehensive": _make_analyzer(DeepAnalyzer, "generate_comprehensive_report"),
     # 估值与质量
