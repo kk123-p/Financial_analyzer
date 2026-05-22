@@ -664,13 +664,17 @@ class Phase2Analyzer:
     def pe_percentile_analysis(self) -> str:
         basic = self._get_price_data()
         income = self._get_multi_year("income", 5)
-        if basic is None or income.empty or len(basic) < 10:
+        if basic is None or income.empty or len(basic) < 5:
             return "⚠️ 数据不足（需要足够的历史数据）"
         try:
-            pe_list = []
-            np_ = self._val(income.iloc[0], ["net_profit"])
+            # 按日期升序排列，使最新数据在末尾，pe_list[-1] 即为当前PE
+            if "trade_date" in basic.columns:
+                basic = basic.sort_values("trade_date").reset_index(drop=True)
+            # 取最新年度净利润（_get_multi_year 返回升序，iloc[-1] 为最新）
+            np_ = self._val(income.iloc[-1], ["net_profit"])
             if not (np_ and np_ > 0):
                 return "⚠️ 净利润数据不足"
+            pe_list = []
             for i in range(len(basic)):
                 c = self._val(basic.iloc[i], ["close"])
                 s = self._val(basic.iloc[i], ["total_share"])
