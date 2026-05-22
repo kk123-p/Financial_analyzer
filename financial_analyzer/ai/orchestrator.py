@@ -106,8 +106,9 @@ class AnalysisOrchestrator:
 
         if intent == "quick":
             builder.with_mode("quick")
+            # quick 模式仅需要公司快照，不需要完整数据
             if report:
-                builder.with_data(report)
+                builder.with_data({"company_snapshot": report.get("company_snapshot", {})})
             elif data:
                 builder.with_data(data)
             if template:

@@ -210,15 +210,18 @@ class PromptBuilder:
         return template if template else None
 
     def build(self) -> str:
-        """构建系统上下文 (角色 + 数据 + 框架 + 格式)，不含用户问题"""
+        """构建系统上下文 — 不含用户问题，无强制输出格式限制"""
         parts = []
         parts.append(self._build_role())
 
-        if self._data:
+        # 仅 deep/debate 模式注入完整数据；quick 模式只放公司快照
+        if self._mode in ("deep", "debate") and self._data:
             parts.append(self._format_data(self._data))
+        elif self._mode == "quick" and self._data:
+            snap = self._data.get("company_snapshot", {})
+            if snap:
+                parts.append(self._format_snapshot(snap))
 
-        # 用户问题不再嵌入 prompt，由调用方作为 user message 单独传入 LLM
-        # 但 followup 上下文需要保留
         if self._mode == "followup" and self._context:
             parts.append(f"## 之前的分析\n{self._context}")
 
@@ -231,37 +234,37 @@ class PromptBuilder:
         if self._signals and self._mode in ("deep", "debate"):
             parts.append(self._format_signals(self._signals))
 
-        fmt = None
-        if self._template and self._template.get("output_format"):
-            fmt = self._template["output_format"]
-        # 仅 deep 模式强制结构化输出；quick/followup 为自由格式对话
+        # 无输出格式限制 — LLM 自由回复
         if self._mode == "deep":
-            parts.append(fmt if fmt else OUTPUT_FORMAT_STRUCTURED)
-
-        if self._mode == "deep":
-            parts.append("\n请基于以上框架和数据进行全面深度分析。")
+            parts.append("\n请进行深度分析，用自然的中文段落回复。")
         elif self._mode == "quick":
-            parts.append("\n请基于数据给出简洁、专业的回答。")
+            parts.append("\n请用简洁的中文直接回答用户的问题。")
 
         return "\n\n".join(parts)
 
+    def _format_snapshot(self, snap: dict) -> str:
+        """仅格式化公司快照（轻量）"""
+        name = snap.get("name", snap.get("stock_code", ""))
+        price = snap.get("price", "N/A")
+        pe = snap.get("pe", "N/A")
+        pb = snap.get("pb", "N/A")
+        mcap = snap.get("market_cap_yi", "N/A")
+        return f"## 公司信息\n{name} | 股价: {price} | PE: {pe} | PB: {pb} | 市值: {mcap}亿"
+
     def _build_role(self) -> str:
-        # 优先使用模板中的 system_role
         if self._template and self._template.get("system_role"):
             role = self._template["system_role"]
         else:
             mode_roles = {
-                "quick": "你是一位专业的财务分析师，请基于提供的财务数据，用简洁、专业的中文回答问题。",
-                "deep": "你是一位拥有20年经验的高级财务分析师，精通A股、港股和美股市场。你的分析以严谨、深刻和富有洞察力著称。请基于提供的财务数据和分析框架，进行深入、系统的分析。",
-                "debate": "你将同时扮演三位不同视角的资深分析师（格雷厄姆式价值分析师、费雪式成长分析师、塔勒布式风控师），对以下公司进行多维度辩论分析。",
-                "followup": "你是一位专业的财务分析师，请基于之前的分析上下文和数据，回答用户的追问。",
+                "quick": "你是一位专业财务分析师。用简洁的中文回答用户的问题。",
+                "deep": "你是一位资深财务分析师，精通A股、港股和美股。请基于提供的财务数据和分析框架进行深入分析。",
+                "debate": "你将扮演三位分析师（价值派/成长派/风控派）进行多维度辩论分析。",
+                "followup": "你是一位专业财务分析师。请基于之前的分析上下文回答用户的追问。",
             }
             role = mode_roles.get(self._mode, mode_roles["quick"])
 
-        if self._mode == "quick" and self._company_name:
-            return f"{role}\n\n**分析对象：{self._company_name}**\n\n请给出快速分析："
         if self._company_name:
-            return f"{role}\n\n**分析对象：{self._company_name}**"
+            return f"{role}\n\n分析对象：{self._company_name}"
         return role
 
     def _format_data(self, report: dict) -> str:

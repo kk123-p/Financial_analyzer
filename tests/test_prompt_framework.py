@@ -16,7 +16,7 @@ class TestPromptBuilderQuickMode:
         prompt = builder.build()
 
         assert "测试公司" in prompt
-        assert "快速分析" in prompt
+        assert "简洁" in prompt
 
 
 class TestPromptBuilderDeepMode:
@@ -120,9 +120,7 @@ class TestPromptBuilderDeepMode:
         assert "三表联动验证" in prompt
         assert "生命周期" in prompt
         assert "利润质量恶化预警" in prompt
-        assert "数据依据" in prompt
-        assert "推理过程" in prompt
-        assert "综合结论" in prompt
+        # 不再强制 OUTPUT_FORMAT_STRUCTURED，LLM 自由回复
 
     def test_build_with_signals_injection(self):
         """注入矛盾信号到提示词"""
@@ -181,7 +179,7 @@ class TestPromptBuilderFollowupMode:
         prompt = builder.build()
 
         assert "测试公司" in prompt
-        assert len(prompt) > 50
+        assert len(prompt) > 30
 
 
 class TestPromptBuilderEdgeCases:
@@ -196,8 +194,8 @@ class TestPromptBuilderEdgeCases:
 
         assert "哈佛分析框架" not in prompt
 
-    def test_explicit_output_format_overrides_deep_default(self):
-        """显式设置 output_format 覆盖深度模式的默认结构化"""
+    def test_deep_mode_includes_frameworks_without_forced_output_format(self):
+        """深度模式包含框架但不强制输出格式"""
         report = {"company_snapshot": {"name": "测试公司"}, "financial_health": {}}
         builder = PromptBuilder("测试公司")
         builder.with_data(report)
@@ -205,8 +203,9 @@ class TestPromptBuilderEdgeCases:
         builder.with_output_format("structured")
         prompt = builder.build()
 
-        assert "数据依据" in prompt
-        assert "推理过程" in prompt
+        assert "测试公司" in prompt
+        assert "请进行深度分析" in prompt
+        # 不再强制注入 OUTPUT_FORMAT_STRUCTURED
 
     def test_unknown_framework_key_silently_ignored(self):
         """未知框架键不报错，静默忽略"""
