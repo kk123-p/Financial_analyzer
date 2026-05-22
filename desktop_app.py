@@ -1,6 +1,5 @@
 """Desktop app launcher using pywebview."""
 import sys
-import subprocess
 import time
 import threading
 import webview
