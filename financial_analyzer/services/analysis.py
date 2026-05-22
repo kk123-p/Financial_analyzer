@@ -38,6 +38,36 @@ from ..pipeline.textbook.ch12_13_fraud_ml import FraudDetectionPipeline, SKLEARN
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# 财务比率参考值（行业通用基准）
+# ============================================================================
+
+RATIO_REFERENCES = {
+    "毛利率": "参考: >40%优秀, 20-40%正常, <20%偏低",
+    "净利率": "参考: >20%优秀, 5-20%正常, <5%偏低",
+    "净利润率": "参考: >20%优秀, 5-20%正常, <5%偏低",
+    "营业利润率": "参考: >25%优秀, 10-25%正常, <10%偏低",
+    "ROE": "参考: >20%优秀, 8-20%正常, <8%偏低",
+    "ROA": "参考: >10%优秀, 5-10%正常, <5%偏低",
+    "流动比率": "参考: >2健康, 1-2可接受, <1有风险",
+    "速动比率": "参考: >1健康, 0.5-1可接受, <0.5有风险",
+    "资产负债率": "参考: 40-60%合理, >70%高风险, <30%偏保守",
+    "存货周转率": "参考: 行业差异大, >5较好",
+    "总资产周转率": "参考: >0.8良好, <0.5偏低",
+    "应收账款周转率": "参考: >6良好",
+    "利息保障倍数": "参考: >3安全, 1.5-3一般, <1.5有风险",
+    "营收增长率": "参考: >20%高成长, 10-20%中等, <10%低增长",
+    "营业利润增长率": "参考: >20%高成长, 10-20%中等, <10%低增长",
+    "净利润增长率": "参考: >20%高成长, 10-20%中等, <10%低增长",
+    "总资产增长率": "参考: >20%高速扩张, 10-20%稳健, <10%缓慢",
+    "营收三年CAGR": "参考: >20%高成长, 10-20%中等, <10%低增长",
+    "现金流利润比": "参考: >1良好, <1需关注",
+    "收入现金比": "参考: >1良好, <1需关注",
+    "现金充足率": "参考: >0.5充裕, <0.2紧张",
+    "产权比率": "参考: <1较为稳健, >2较高杠杆",
+}
+
+
+# ============================================================================
 # Runner 工厂函数
 # ============================================================================
 
@@ -91,9 +121,18 @@ def _run_ratio_analyzer(data: dict, stock_code: str, adapter, cache) -> str:
                 lines.append(f"{prefix}▸ {k}:")
                 _flatten_sub_items(v, indent + 1)
             elif isinstance(v, (int, float)):
-                lines.append(f"{prefix}{k}: {v:.2f}" if isinstance(v, float) and v == int(v) is False else f"{prefix}{k}: {v}")
+                val = f"{v:.2f}" if isinstance(v, float) and v == int(v) is False else f"{v}"
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"{prefix}{k}: {val}  ({ref})")
+                else:
+                    lines.append(f"{prefix}{k}: {val}")
             else:
-                lines.append(f"{prefix}{k}: {v}")
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"{prefix}{k}: {v}  ({ref})")
+                else:
+                    lines.append(f"{prefix}{k}: {v}")
 
     def _flatten_sub_items(d: dict, indent: int) -> None:
         prefix = "  " * indent + "    "
@@ -104,13 +143,22 @@ def _run_ratio_analyzer(data: dict, stock_code: str, adapter, cache) -> str:
                 _flatten_sub_items(v, indent)
             elif isinstance(v, float):
                 if abs(v) < 0.01:
-                    lines.append(f"{prefix}{k}: {v:.4f}")
+                    val = f"{v:.4f}"
                 elif abs(v) < 1:
-                    lines.append(f"{prefix}{k}: {v:.3f}")
+                    val = f"{v:.3f}"
                 else:
-                    lines.append(f"{prefix}{k}: {v:.2f}")
+                    val = f"{v:.2f}"
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"{prefix}{k}: {val}  ({ref})")
+                else:
+                    lines.append(f"{prefix}{k}: {val}")
             else:
-                lines.append(f"{prefix}{k}: {v}")
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"{prefix}{k}: {v}  ({ref})")
+                else:
+                    lines.append(f"{prefix}{k}: {v}")
 
     for category, ratios in result.items():
         if category == "综合评分":
@@ -210,12 +258,21 @@ def _textbook_ratios_lines(data) -> list[str]:
         lines.append(f"  ▸ {group}")
         for k in keys:
             if k in ratios:
-                lines.append(f"    {k}: {ratios[k]:.2f}{'%' if '率' in k or 'ROE' in k or '增长' in k else ' 次'}")
+                unit = '%' if '率' in k or 'ROE' in k or '增长' in k else ' 次'
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"    {k}: {ratios[k]:.2f}{unit}  ({ref})")
+                else:
+                    lines.append(f"    {k}: {ratios[k]:.2f}{unit}")
     if cf_metrics:
         lines.append("  ▸ 现金流质量")
         for k in ["现金流利润比", "收入现金比", "现金充足率"]:
             if k in cf_metrics:
-                lines.append(f"    {k}: {cf_metrics[k]:.2f}")
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"    {k}: {cf_metrics[k]:.2f}  ({ref})")
+                else:
+                    lines.append(f"    {k}: {cf_metrics[k]:.2f}")
         fcf = cf_metrics.get("自由现金流(亿元)")
         if fcf is not None:
             lines.append(f"    自由现金流: {fcf} 亿")
@@ -237,12 +294,21 @@ def _run_textbook_ratios(data, stock_code, adapter, cache) -> str:
         lines.append(f"▌ {group}")
         for k in keys:
             if k in ratios:
-                lines.append(f"  {k}: {ratios[k]:.2f}{'%' if '率' in k or 'ROE' in k or '增长' in k else ' 次'}")
+                unit = '%' if '率' in k or 'ROE' in k or '增长' in k else ' 次'
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"  {k}: {ratios[k]:.2f}{unit}  ({ref})")
+                else:
+                    lines.append(f"  {k}: {ratios[k]:.2f}{unit}")
     if cf_metrics:
         lines.append("\n▌ 现金流质量 (Ch8)")
         for k in ["现金流利润比", "收入现金比", "现金充足率"]:
             if k in cf_metrics:
-                lines.append(f"  {k}: {cf_metrics[k]:.2f}")
+                ref = RATIO_REFERENCES.get(k, "")
+                if ref:
+                    lines.append(f"  {k}: {cf_metrics[k]:.2f}  ({ref})")
+                else:
+                    lines.append(f"  {k}: {cf_metrics[k]:.2f}")
         fcf = cf_metrics.get("自由现金流(亿元)")
         if fcf is not None:
             lines.append(f"  自由现金流: {fcf} 亿")

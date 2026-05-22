@@ -41,7 +41,7 @@ def get_pipeline_stages() -> list[dict]:
             ("balance_sheet_analysis", "资产负债表分析"),
             ("income_analysis", "利润表分析"),
             ("cashflow_analysis", "现金流量表分析"),
-            ("ratio_analysis", "财务比率分析(含13项核心比率)"),
+            ("ratio_analysis", "财务比率分析"),
             ("trend_score", "趋势评分 (Ch6)"),
         ]),
         ("3. 深度诊断", "dupont", [
@@ -84,7 +84,7 @@ def get_analysis_list() -> list[dict]:
             ("combined", "量价结合"), ("risk", "风险评估"),
         ]),
         ("财务比率", [
-            ("ratio_analysis", "财务比率分析(含13项核心比率)"),
+            ("ratio_analysis", "财务比率分析"),
         ]),
         ("财务审计", [
             ("audit_asset", "资产端信号"), ("audit_profit", "利润端信号"),
@@ -106,7 +106,7 @@ def get_analysis_list() -> list[dict]:
             ("comprehensive", "综合投资评级"),
         ]),
         ("教科书算法 (Ch5-Ch13)", [
-            ("ratio_analysis", "13项核心比率 (Ch5)"),
+            ("ratio_analysis", "财务比率分析 (Ch5)"),
             ("trend_score", "趋势评分 (Ch6)"),
             ("dupont_roic", "增强杜邦+ROIC (Ch9)"),
             ("fraud_ml", "ML舞弊检测 (Ch12-13)"),
