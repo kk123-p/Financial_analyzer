@@ -314,6 +314,56 @@ class DataNormalizer:
         logger.info(f"[{source}] 现金流量表标准化完成")
         return df
 
+    @staticmethod
+    def normalize_market(df: pd.DataFrame, data_type: str) -> pd.DataFrame:
+        """标准化市场数据（moneyflow/margin/dividend/top10_holders 等新增类型）
+
+        对 Tushare 返回的各类市场数据进行通用标准化：
+        - 统一日期列格式为 YYYYMMDD
+        - 数值列转数字类型
+        - 按日期降序排列
+        """
+        if df is None or df.empty:
+            return df
+
+        df = df.copy()
+
+        # 查找日期列并标准化
+        date_candidates = ["trade_date", "end_date", "ann_date", "div_progress",
+                          "report_date", "record_date", "ex_date", "pay_date",
+                          "plan_ann_date", "margin_date", "detail_date", "s_end_date"]
+        for dc in date_candidates:
+            if dc in df.columns:
+                try:
+                    df[dc] = pd.to_datetime(df[dc], errors="coerce").dt.strftime("%Y%m%d")
+                except Exception:
+                    pass
+
+        # 尝试将所有可能为数值的列转为数字类型
+        skip_cols = ["ts_code", "name", "holder_name", "index_code", "industry",
+                    "market", "list_date", "ann_date", "trade_date", "end_date",
+                    "report_date", "record_date", "ex_date", "pay_date", "div_progress",
+                    "plan_ann_date", "margin_date", "detail_date", "s_end_date",
+                    "holder_type", "currency", "exchange"]
+        for col in df.columns:
+            if col not in skip_cols and df[col].dtype == "object":
+                try:
+                    df[col] = pd.to_numeric(df[col], errors="ignore")
+                except Exception:
+                    pass
+
+        # 按日期列降序排列
+        sort_col = None
+        for dc in date_candidates:
+            if dc in df.columns:
+                sort_col = dc
+                break
+        if sort_col:
+            df = df.sort_values(sort_col, ascending=False).reset_index(drop=True)
+
+        logger.info(f"市场数据标准化完成 [{data_type}]：{len(df)} 行, 列={list(df.columns)[:8]}")
+        return df
+
     # ======================== 内部方法 ========================
 
     # ======================== Akshare 三大报表标准化 ========================

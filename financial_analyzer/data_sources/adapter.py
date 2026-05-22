@@ -197,6 +197,11 @@ class DataSourceAdapter:
             df = DataNormalizer.normalize_balance(df, source)
         elif data_type == "cashflow":
             df = DataNormalizer.normalize_cashflow(df, source)
+        elif data_type in ("moneyflow", "margin", "margin_detail", "hk_hold",
+                           "block_trade", "weekly", "monthly", "stk_holdernumber",
+                           "dividend", "top10_holders", "top10_floatholders",
+                           "fina_audit", "fina_mainbz"):
+            df = DataNormalizer.normalize_market(df, data_type)
 
         # 统一排序：财务报表类按 end_date 降序，行情类已在 normalizer 中排序
         if df is not None and not df.empty:
@@ -231,6 +236,35 @@ class DataSourceAdapter:
                 return self.tushare_pro.balancesheet(ts_code=symbol, start_date=start_date, end_date=end_date)
             elif data_type == "cashflow":
                 return self.tushare_pro.cashflow(ts_code=symbol, start_date=start_date, end_date=end_date)
+            # ---- NEW: Market data (Phase 1) ----
+            elif data_type == "moneyflow":
+                return self.tushare_pro.moneyflow(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "margin":
+                return self.tushare_pro.margin(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "margin_detail":
+                return self.tushare_pro.margin_detail(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "hk_hold":
+                return self.tushare_pro.hk_hold(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "block_trade":
+                return self.tushare_pro.block_trade(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "weekly":
+                return self.tushare_pro.weekly(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "monthly":
+                return self.tushare_pro.monthly(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "stk_holdernumber":
+                return self.tushare_pro.stk_holdernumber(ts_code=symbol, start_date=start_date, end_date=end_date)
+            # ---- NEW: Financial data ----
+            elif data_type == "dividend":
+                return self.tushare_pro.dividend(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "top10_holders":
+                return self.tushare_pro.top10_holders(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "top10_floatholders":
+                return self.tushare_pro.top10_floatholders(ts_code=symbol, start_date=start_date, end_date=end_date)
+            # ---- FIX: pre-existing types missing Tushare handler ----
+            elif data_type == "fina_audit":
+                return self.tushare_pro.fina_audit(ts_code=symbol, start_date=start_date, end_date=end_date)
+            elif data_type == "fina_mainbz":
+                return self.tushare_pro.fina_mainbz(ts_code=symbol, start_date=start_date, end_date=end_date, type='P')
             return None
         except Exception as e:
             logger.error(f"Tushare 数据获取失败: {e}")
