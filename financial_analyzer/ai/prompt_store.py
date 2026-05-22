@@ -66,6 +66,16 @@ class PromptsStore:
                 data["updated_at"] = data["created_at"]
                 with open(fpath, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
+        self._ensure_template_defaults()
+
+    def _ensure_template_defaults(self):
+        """确保 6 个分析模板 JSON 文件存在"""
+        from .templates import SYSTEM_TEMPLATES
+        for tmpl in SYSTEM_TEMPLATES:
+            fpath = self._dir / f"{tmpl['name']}.json"
+            if not fpath.exists():
+                with open(fpath, "w", encoding="utf-8") as f:
+                    json.dump(tmpl, f, ensure_ascii=False, indent=2)
 
     def _is_default(self, name: str) -> bool:
         """系统预置模板不可删除/覆盖"""
@@ -91,6 +101,23 @@ class PromptsStore:
             except Exception:
                 pass
         return result
+
+    def list_templates_by_mode(self, mode: str = "template") -> list[dict]:
+        """列出指定模式的所有模板（仅返回名称和描述，不含完整定义）"""
+        templates = []
+        for fpath in sorted(self._dir.glob("*.json")):
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("mode") == mode:
+                    templates.append({
+                        "name": data.get("name", fpath.stem),
+                        "description": data.get("description", ""),
+                        "mode": mode,
+                    })
+            except Exception:
+                pass
+        return templates
 
     def get_template(self, name: str) -> dict | None:
         """获取单个模板完整内容"""
