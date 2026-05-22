@@ -21,6 +21,7 @@ async def export_data(
     request: Request,
     format: str,
     stock_code: str = Query(""),
+    categories: str = Query(""),
 ):
     session = _get_session(request)
     data_raw = session.get("data", {})
@@ -29,6 +30,15 @@ async def export_data(
     if not data_raw or not sc:
         from fastapi.responses import HTMLResponse
         return HTMLResponse("<p>无可导出数据</p>", status_code=400)
+
+    # 如果指定了 categories，只导出选中的类别
+    if categories:
+        selected = [c.strip() for c in categories.split(",") if c.strip()]
+        data_raw = {k: v for k, v in data_raw.items() if k in selected}
+
+    if not data_raw:
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse("<p>未选择导出内容</p>", status_code=400)
 
     data = {k: pd.DataFrame(v) for k, v in data_raw.items()}
 

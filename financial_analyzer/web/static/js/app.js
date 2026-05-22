@@ -1131,3 +1131,58 @@ function copyResult(btn) {
         setTimeout(function() { btn.textContent = '📋'; }, 1500);
     });
 }
+
+// ============================================================================
+// 数据导出弹窗
+// ============================================================================
+
+function openExportModal() {
+    var container = document.getElementById('export-categories');
+    container.innerHTML = '';
+
+    // 预设数据类型 — 对应 Tushare 导入的数据类别
+    var categories = [
+        { key: 'income', label: '利润表' },
+        { key: 'balance', label: '资产负债表' },
+        { key: 'cashflow', label: '现金流量表' },
+        { key: 'basic', label: '行情数据(日线)' },
+    ];
+
+    categories.forEach(function(cat) {
+        var label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;color:var(--text-primary);cursor:pointer;';
+        label.innerHTML = '<input type="checkbox" name="export-cat" value="' + cat.key + '" checked> ' + cat.label;
+        container.appendChild(label);
+    });
+
+    document.getElementById('export-modal-overlay').style.display = 'flex';
+    requestAnimationFrame(function() {
+        document.getElementById('export-modal-overlay').classList.add('modal--visible');
+    });
+}
+
+function closeExportModal() {
+    var overlay = document.getElementById('export-modal-overlay');
+    overlay.classList.remove('modal--visible');
+    overlay.addEventListener('transitionend', function h() {
+        overlay.removeEventListener('transitionend', h);
+        overlay.style.display = 'none';
+    });
+}
+
+function doExport() {
+    var cats = [];
+    document.querySelectorAll('input[name="export-cat"]:checked').forEach(function(cb) {
+        cats.push(cb.value);
+    });
+    var fmt = document.querySelector('input[name="export-fmt"]:checked');
+    var format = fmt ? fmt.value : 'xlsx';
+    var stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
+
+    var url = '/export/' + format + '?stock_code=' + encodeURIComponent(stockCode);
+    if (cats.length > 0) {
+        url += '&categories=' + cats.join(',');
+    }
+    window.open(url, '_blank');
+    closeExportModal();
+}

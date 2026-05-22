@@ -94,9 +94,7 @@
                 <div class="spacer"></div>
                 <div class="btn-group">
                     <button type="submit" class="btn btn-accent">获取数据</button>
-                    <button type="button" class="btn" onclick="exportData('xlsx')" title="导出 Excel">Excel</button>
-                    <button type="button" class="btn" onclick="exportData('csv')" title="导出 CSV">CSV</button>
-                    <button type="button" class="btn" onclick="exportData('json')" title="导出 JSON">JSON</button>
+                    <button type="button" class="btn" onclick="openExportModal()">数据导出</button>
                     <button type="button" class="btn" onclick="location.reload()">清空</button>
                 </div>
             </form>
@@ -358,6 +356,40 @@
             </div>
             <div id="modal-body" class="modal-body">
                 <div class="result-empty">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据导出弹窗 -->
+    <div class="viewer-overlay" id="export-modal-overlay">
+        <div class="viewer-modal" style="width:min(480px,95vw);">
+            <div class="viewer-header">
+                <h3>导出数据</h3>
+                <button class="prompt-editor-close" onclick="closeExportModal()">&times;</button>
+            </div>
+            <div class="viewer-body">
+                <div class="viewer-section">
+                    <h4>导出内容</h4>
+                    <div id="export-categories"></div>
+                </div>
+                <div class="viewer-section">
+                    <h4>导出格式</h4>
+                    <div style="display:flex;gap:16px;padding:8px 0;">
+                        <label style="color:var(--text-primary);cursor:pointer;">
+                            <input type="radio" name="export-fmt" value="xlsx" checked> Excel (.xlsx)
+                        </label>
+                        <label style="color:var(--text-primary);cursor:pointer;">
+                            <input type="radio" name="export-fmt" value="csv"> CSV (.csv)
+                        </label>
+                        <label style="color:var(--text-primary);cursor:pointer;">
+                            <input type="radio" name="export-fmt" value="json"> JSON (.json)
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="viewer-footer">
+                <button class="pe-btn-cancel" onclick="closeExportModal()">取消</button>
+                <button class="pe-btn-save" onclick="doExport()">导出</button>
             </div>
         </div>
     </div>
