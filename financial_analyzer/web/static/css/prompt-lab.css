@@ -73,7 +73,7 @@
   flex: 1 1 0;
   overflow-y: auto;
   padding: 16px 20px;
-  min-height: 58vh;
+  min-height: 360px;
 }
 
 .prompt-editor-body::-webkit-scrollbar { width: 4px; }
@@ -259,7 +259,7 @@
   flex: 1 1 0;
   overflow-y: auto;
   padding: 16px 20px;
-  min-height: 52vh;
+  min-height: 300px;
 }
 
 .viewer-body::-webkit-scrollbar { width: 4px; }
