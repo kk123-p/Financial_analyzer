@@ -119,15 +119,15 @@ class ResultFormatter:
                 result.append('<hr class="r-divider">')
 
             elif kind == 'title':
-                result.append(f'<h1 class="r-title">{escape(g["text"])}</h1>')
+                result.append(f'<div class="r-title-header"><h1 class="r-title">{escape(g["text"])}</h1><button class="copy-btn" onclick="copyResult(this)" title="复制到剪贴板">📋</button></div>')
 
             elif kind == 'section':
                 m = cls._SECTION_PAT.match(g['text'])
-                result.append(f'<h2 class="r-section">{escape(m.group(1))}</h2>')
+                result.append(f'<div class="r-section-header"><h2 class="r-section">{escape(m.group(1))}</h2><button class="copy-btn" onclick="copyResult(this)" title="复制到剪贴板">📋</button></div>')
 
             elif kind == 'subheading':
                 m = cls._SUB_HEADING.match(g['text'])
-                result.append(f'<h3 class="r-subheading">{escape(m.group(1))}</h3>')
+                result.append(f'<div class="r-subheading-header"><h3 class="r-subheading">{escape(m.group(1))}</h3><button class="copy-btn" onclick="copyResult(this)" title="复制到剪贴板">📋</button></div>')
 
             elif kind == 'bullet_heading':
                 m = cls._BULLET_HEADING.match(g['text'])

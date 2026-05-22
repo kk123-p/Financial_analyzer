@@ -1104,3 +1104,30 @@ function closePromptPreview() {
         overlay.style.display = 'none';
     });
 }
+
+// ============================================================================
+// 分析结果复制按钮
+// ============================================================================
+
+function copyResult(btn) {
+    var header = btn.closest('.r-section-header, .r-subheading-header, .r-title-header');
+    var container = header ? header.parentElement : btn.closest('.result-container, #result-content');
+    if (!container) return;
+    var text = container.innerText.trim();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function() {
+        var orig = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(function() { btn.textContent = orig; }, 1500);
+    }).catch(function() {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = '✓';
+        setTimeout(function() { btn.textContent = '📋'; }, 1500);
+    });
+}
