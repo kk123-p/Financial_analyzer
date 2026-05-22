@@ -597,7 +597,7 @@ ANALYSIS_MAP: dict[str, Callable] = {
     "audit_cross": _make_audit_runner(["cross"]),
     "audit_full": _make_audit_runner(),
     # 深度分析
-    "dupont": _make_analyzer(DeepAnalyzer, "analyze_dupont"),
+    "dupont": _run_dupont_roic,
     "zscore": _make_analyzer(DeepAnalyzer, "analyze_zscore"),
     "fscore": _make_analyzer(DeepAnalyzer, "analyze_fscore"),
     "mscore": _make_analyzer(DeepAnalyzer, "analyze_mscore"),
