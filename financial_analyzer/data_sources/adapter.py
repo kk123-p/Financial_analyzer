@@ -205,7 +205,7 @@ class DataSourceAdapter:
 
         # 统一排序：财务报表类按 end_date 降序，行情类已在 normalizer 中排序
         if df is not None and not df.empty:
-            if data_type in ("income", "balance", "cashflow", "financial", "fina_audit", "mainbz"):
+            if data_type in ("income", "balance", "cashflow", "financial"):
                 date_col = "end_date" if "end_date" in df.columns else (
                     "f_ann_date" if "f_ann_date" in df.columns else None)
                 if date_col:
