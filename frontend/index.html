@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Analyzer Pro</title>
+  <link rel="stylesheet" href="/static/frontend/css/tokens.css">
+  <link rel="stylesheet" href="/static/frontend/css/base.css">
+  <link rel="stylesheet" href="/static/frontend/css/layout.css">
+  <link rel="stylesheet" href="/static/frontend/css/dashboard.css">
+  <link rel="stylesheet" href="/static/frontend/css/analysis.css">
+  <link rel="stylesheet" href="/static/frontend/css/chat.css">
+  <link rel="stylesheet" href="/static/frontend/css/data.css">
+  <link rel="stylesheet" href="/static/frontend/css/overlays.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <nav id="top-nav">
+      <div class="nav-brand">
+        <div class="nav-logo">FA</div>
+        <span class="nav-title">Financial Analyzer Pro</span>
+      </div>
+      <div class="nav-tabs" id="nav-tabs">
+        <button class="nav-tab active" data-route="/dashboard">仪表盘</button>
+        <button class="nav-tab" data-route="/analysis">分析中心</button>
+        <button class="nav-tab" data-route="/ai">AI 投研</button>
+        <button class="nav-tab" data-route="/data">数据浏览</button>
+      </div>
+      <div class="nav-center">
+        <div class="stock-search" id="stock-search">
+          <input type="text" id="stock-input"
+                 placeholder="输入股票代码或名称，如 600519..."
+                 autocomplete="off">
+          <div class="search-status" id="search-status"></div>
+          <div class="search-dropdown" id="search-dropdown"></div>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <kbd class="nav-kbd">Ctrl+K</kbd>
+        <button class="nav-btn" id="btn-settings" title="设置">&#9881;</button>
+      </div>
+    </nav>
+
+    <main id="main-content">
+      <div id="view-dashboard" class="view active">
+        <div id="dashboard-empty" class="dashboard-empty">
+          <div class="search-hero">
+            <h1 class="search-hero-title">开始分析</h1>
+            <p class="search-hero-subtitle">输入股票代码或名称，获取完整财务分析报告</p>
+            <div class="search-hero-input-wrapper">
+              <input type="text" id="hero-search-input"
+                     class="search-hero-input"
+                     placeholder="输入股票代码，如 600519、000001..."
+                     autofocus>
+            </div>
+          </div>
+          <div class="search-hero-sidebar" id="recent-panel"></div>
+        </div>
+        <div id="dashboard-data" class="dashboard-data" style="display:none;">
+          <div class="kpi-strip" id="kpi-strip"></div>
+          <div class="dashboard-grid">
+            <div class="dashboard-chart-panel" id="chart-panel">
+              <div class="panel-header">
+                <span class="panel-title">K线走势</span>
+                <div class="panel-tabs">
+                  <button class="chart-tab active" data-period="D">日K</button>
+                  <button class="chart-tab" data-period="W">周K</button>
+                  <button class="chart-tab" data-period="M">月K</button>
+                </div>
+              </div>
+              <canvas id="dashboard-chart"></canvas>
+            </div>
+            <div class="dashboard-sidebar">
+              <div class="ai-summary-card" id="ai-summary">
+                <div class="panel-header">
+                  <span class="panel-title">AI 快评</span>
+                  <button class="panel-action" id="btn-ai-expand">展开深度分析 →</button>
+                </div>
+                <div class="ai-summary-body" id="ai-summary-body">
+                  <p class="text-muted">分析中...</p>
+                </div>
+              </div>
+              <button class="cta-button" id="btn-start-ai">开始 AI 分析对话</button>
+            </div>
+          </div>
+          <div class="recent-analyses" id="recent-analyses"></div>
+        </div>
+      </div>
+
+      <div id="view-analysis" class="view">
+        <div class="analysis-center" id="analysis-center">
+          <div class="analysis-categories" id="analysis-categories"></div>
+          <div class="analysis-modules" id="analysis-modules"></div>
+        </div>
+        <div class="analysis-result" id="analysis-result" style="display:none;">
+          <div class="result-breadcrumb"></div>
+          <div class="result-body">
+            <div class="result-text"></div>
+            <div class="result-chart-panel"></div>
+          </div>
+          <div class="result-actions">
+            <button class="result-action-btn">📋 复制报告</button>
+            <button class="result-action-btn">📥 导出</button>
+            <div class="result-recommendations"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-ai" class="view">
+        <div class="ai-workspace" id="ai-workspace">
+          <div class="ai-subtabs" id="ai-subtabs">
+            <button class="ai-subtab active" data-mode="chat">自由对话</button>
+            <button class="ai-subtab" data-mode="template">模板分析</button>
+            <button class="ai-subtab" data-mode="debate">三方辩论</button>
+          </div>
+          <div class="ai-main" id="ai-main">
+            <div class="ai-chat-area" id="ai-chat-area">
+              <div class="chat-messages" id="chat-messages"></div>
+              <div class="chat-input-area" id="chat-input-area">
+                <div class="template-chips" id="template-chips"></div>
+                <div class="chat-input-row">
+                  <input type="text" id="chat-input" class="chat-input"
+                         placeholder="输入问题，或选择上方模板..." autocomplete="off">
+                  <button class="chat-send-btn" id="btn-chat-send">&#8593;</button>
+                  <button class="chat-stop-btn" id="btn-chat-stop" style="display:none;">&#9632;</button>
+                </div>
+              </div>
+            </div>
+            <div class="ai-context-panel" id="ai-context-panel"></div>
+          </div>
+          <div class="ai-debate" id="ai-debate" style="display:none;">
+            <div class="debate-columns" id="debate-columns"></div>
+            <div class="debate-consensus" id="debate-consensus"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-data" class="view">
+        <div class="data-browser" id="data-browser">
+          <div class="data-controls" id="data-controls">
+            <select id="data-type-select" class="data-select">
+              <option value="">选择数据类型...</option>
+            </select>
+            <input type="text" id="data-filter" class="data-filter" placeholder="筛选..." autocomplete="off">
+            <button class="btn-ghost" id="btn-export-data">导出 CSV</button>
+          </div>
+          <div class="data-table-wrapper" id="data-table-wrapper">
+            <table class="data-table" id="data-table">
+              <thead id="data-table-head"></thead>
+              <tbody id="data-table-body"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+
+      <div id="view-settings" class="view" style="display:none;">
+        <div class="settings-page" id="settings-page"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="command-palette" class="command-palette" style="display:none;">
+    <div class="cp-header">
+      <input type="text" id="cp-input" class="cp-input"
+             placeholder="搜索分析模块..." autocomplete="off">
+      <span class="cp-hint">esc 关闭</span>
+    </div>
+    <div class="cp-results" id="cp-results"></div>
+  </div>
+
+  <div id="ai-panel" class="ai-panel" style="display:none;">
+    <div class="ai-panel-header">
+      <span class="ai-panel-title">AI 助手</span>
+      <button class="ai-panel-close" id="btn-ai-panel-close">&times;</button>
+    </div>
+    <div class="ai-panel-context" id="ai-panel-context"></div>
+    <div class="ai-panel-messages" id="ai-panel-messages"></div>
+    <div class="ai-panel-input-row">
+      <input type="text" id="ai-panel-input" class="ai-panel-input"
+             placeholder="追问..." autocomplete="off">
+      <button class="ai-panel-send" id="btn-ai-panel-send">&#8593;</button>
+    </div>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay" style="display:none;">
+    <div class="modal" id="modal-content"></div>
+  </div>
+  <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
+
+  <script type="module" src="/static/frontend/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+/* === DESIGN TOKENS === */
+:root {
+  /* Surfaces */
+  --surface-base: #06080F;
+  --surface-elevated: #0C0E18;
+  --surface-glass: rgba(255, 255, 255, 0.03);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+
+  /* Borders */
+  --border-default: #1A1D2E;
+  --border-light: rgba(255, 255, 255, 0.06);
+  --border-accent: rgba(108, 92, 231, 0.3);
+  --border-focus: rgba(108, 92, 231, 0.5);
+
+  /* Accent */
+  --accent: #6C5CE7;
+  --accent-hover: #7C6FF7;
+  --accent-soft: #A78BFA;
+  --accent-bg: rgba(108, 92, 231, 0.12);
+  --accent-bg-hover: rgba(108, 92, 231, 0.18);
+  --accent-gradient: linear-gradient(135deg, #6C5CE7, #A78BFA);
+
+  /* Semantic */
+  --success: #10B981;
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --danger: #EF4444;
+  --danger-bg: rgba(239, 68, 68, 0.1);
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --info: #3B82F6;
+  --info-bg: rgba(59, 130, 246, 0.1);
+
+  /* Text */
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-disabled: #334155;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(108, 92, 231, 0.15);
+
+  /* Typography */
+  --font-display: 'Satoshi', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+  --font-body: 'Geist Sans', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+
+  /* Type Scale */
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 250ms ease-out;
+
+  /* Layout */
+  --topnav-height: 44px;
+  --sidebar-width: 360px;
+}
