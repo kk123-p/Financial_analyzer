@@ -104,7 +104,7 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(message, callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(message, system_prompt="", callback=on_chunk)
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
