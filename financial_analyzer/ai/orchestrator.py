@@ -95,9 +95,9 @@ class AnalysisOrchestrator:
 
         return "quick"
 
-    def _build_prompt(self, intent: str, message: str, data: dict | None,
-                      report: dict | None, signals: list | None) -> str:
-        """构建提示词"""
+    def _build_system_context(self, intent: str, data: dict | None,
+                              report: dict | None, signals: list | None) -> str:
+        """构建系统上下文（角色 + 数据 + 框架 + 输出格式），不包含用户问题"""
         builder = PromptBuilder()
         company_name = report.get("company_snapshot", {}).get("name", "") if report else ""
 
@@ -106,7 +106,6 @@ class AnalysisOrchestrator:
 
         if intent == "quick":
             builder.with_mode("quick")
-            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
@@ -115,7 +114,6 @@ class AnalysisOrchestrator:
                 builder.with_template(template)
         elif intent == "deep":
             builder.with_mode("deep")
-            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
@@ -123,7 +121,6 @@ class AnalysisOrchestrator:
             if template:
                 builder.with_template(template)
             else:
-                # fallback：没有模板时使用硬编码框架
                 builder.with_framework("harvard")
                 builder.with_framework("crosscheck")
                 builder.with_framework("lifecycle")
@@ -133,7 +130,6 @@ class AnalysisOrchestrator:
                 builder.with_signals(signals)
         elif intent == "followup":
             builder.with_mode("followup")
-            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
@@ -142,7 +138,6 @@ class AnalysisOrchestrator:
                 builder.with_template(template)
         elif intent == "debate":
             builder.with_mode("debate")
-            builder.with_question(message)
             if report:
                 builder.with_data(report)
             elif data:
@@ -157,8 +152,8 @@ class AnalysisOrchestrator:
     # ========================================================================
 
     def _stream_quick(self, data, report, message, conversation, callback):
-        """快速模式：简单问答"""
-        prompt = self._build_prompt("quick", message, data, report, None)
+        """快速模式：简单问答 — 数据作为上下文，问题单独发送"""
+        system_context = self._build_system_context("quick", data, report, None)
         parser = OutputParser()
 
         def on_chunk(chunk: str, done: bool):
@@ -183,7 +178,9 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(prompt, callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(
+            message, system_prompt=system_context, callback=on_chunk
+        )
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
@@ -191,7 +188,7 @@ class AnalysisOrchestrator:
 
     def _stream_deep(self, data, report, signals, message, conversation, callback):
         """深度模式：完整框架 + 结构化输出"""
-        prompt = self._build_prompt("deep", message, data, report, signals)
+        system_context = self._build_system_context("deep", data, report, signals)
         parser = OutputParser()
 
         def on_chunk(chunk: str, done: bool):
@@ -216,7 +213,9 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(prompt, callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(
+            message, system_prompt=system_context, callback=on_chunk
+        )
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)
@@ -225,10 +224,10 @@ class AnalysisOrchestrator:
     def _stream_followup(self, data, report, signals, message, conversation, callback):
         """追问模式：注入历史上下文"""
         context = conversation.get_all_assistant_content()
-        prompt = self._build_prompt("followup", message, data, report, signals)
+        system_context = self._build_system_context("followup", data, report, signals)
 
         if context:
-            prompt = f"## 之前的分析上下文\n{context[:3000]}\n\n---\n\n{prompt}"
+            system_context = f"{system_context}\n\n## 之前的分析上下文\n{context[:3000]}"
 
         parser = OutputParser()
 
@@ -249,7 +248,9 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(prompt, callback=on_chunk)
+        result = self._llm.generate_deep_analysis_stream(
+            message, system_prompt=system_context, callback=on_chunk
+        )
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)

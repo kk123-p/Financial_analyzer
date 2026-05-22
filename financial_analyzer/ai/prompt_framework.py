@@ -210,18 +210,17 @@ class PromptBuilder:
         return template if template else None
 
     def build(self) -> str:
+        """构建系统上下文 (角色 + 数据 + 框架 + 格式)，不含用户问题"""
         parts = []
         parts.append(self._build_role())
 
         if self._data:
             parts.append(self._format_data(self._data))
 
-        if self._question and self._mode != "quick":
-            parts.append(f"## 用户问题\n{self._question}")
-
+        # 用户问题不再嵌入 prompt，由调用方作为 user message 单独传入 LLM
+        # 但 followup 上下文需要保留
         if self._mode == "followup" and self._context:
             parts.append(f"## 之前的分析\n{self._context}")
-            parts.append("请基于上述分析，回答以下追问：")
 
         if self._mode in ("deep", "debate"):
             for fw_key in self._frameworks:
@@ -238,13 +237,9 @@ class PromptBuilder:
         if self._mode in ("quick", "deep", "followup"):
             parts.append(fmt if fmt else OUTPUT_FORMAT_STRUCTURED)
 
-        if self._mode == "debate":
-            parts.append("\n请启动三视角辩论流程。")
-        elif self._mode == "deep":
+        if self._mode == "deep":
             parts.append("\n请基于以上框架和数据进行全面深度分析。")
         elif self._mode == "quick":
-            if self._question:
-                parts.append(f"\n## 用户问题\n{self._question}")
             parts.append("\n请基于数据给出简洁、专业的回答。")
 
         return "\n\n".join(parts)

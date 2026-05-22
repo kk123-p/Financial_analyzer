@@ -73,14 +73,15 @@ class TestAnalysisOrchestratorIntent:
 
 
 class TestAnalysisOrchestratorBuildPrompt:
-    def test_build_prompt_quick_mode(self):
+    def test_build_system_context_quick_mode(self):
         orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
         data = {"company_snapshot": {"name": "测试"}}
-        prompt = orchestrator._build_prompt("quick", "测试问题", data, None, [])
-        assert "测试问题" in prompt
-        assert "测试" in prompt
+        context = orchestrator._build_system_context("quick", data, None, [])
+        assert "测试" in context
+        # 用户问题不应出现在系统上下文中
+        assert "测试问题" not in context
 
-    def test_build_prompt_deep_mode_includes_frameworks(self):
+    def test_build_system_context_deep_mode_includes_frameworks(self):
         orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
         data = {
             "company_snapshot": {"name": "贵州茅台"},
@@ -100,13 +101,15 @@ class TestAnalysisOrchestratorBuildPrompt:
         signals = [
             {"name": "纸面富贵预警", "trigger_data": "ROE=30.5%", "task": "分析杠杆贡献率", "level": "medium"},
         ]
-        prompt = orchestrator._build_prompt("deep", "深度分析", data, None, signals)
-        assert "哈佛分析框架" in prompt
-        assert "三表联动验证" in prompt
-        assert "生命周期" in prompt
-        assert "利润质量恶化预警" in prompt
-        assert "纸面富贵预警" in prompt
-        assert "数据依据" in prompt
+        context = orchestrator._build_system_context("deep", data, None, signals)
+        assert "哈佛分析框架" in context
+        assert "三表联动验证" in context
+        assert "生命周期" in context
+        assert "利润质量恶化预警" in context
+        assert "纸面富贵预警" in context
+        assert "数据依据" in context
+        # 用户问题不应出现在系统上下文中 (不会有"## 用户问题"标题)
+        assert "## 用户问题" not in context
 
 
 class TestAnalysisOrchestratorAnalyze:
