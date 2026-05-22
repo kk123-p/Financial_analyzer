@@ -336,6 +336,9 @@ def _format_trend_summary(df, data_type: str) -> str:
     """资金类数据的趋势摘要"""
     lines = []
 
+    if "trade_date" not in df.columns:
+        return ""
+
     if data_type == "moneyflow" and not df.empty:
         df = df.sort_values("trade_date")
         recent = df.tail(20)
@@ -379,6 +382,8 @@ def _format_top_holders(df) -> str:
 
 def _format_holder_trend(df) -> str:
     """股东人数趋势"""
+    if "ann_date" not in df.columns:
+        return ""
     df = df.sort_values("ann_date")
     if len(df) >= 2:
         first = df.iloc[0].get("holder_num", 0)
@@ -390,6 +395,8 @@ def _format_holder_trend(df) -> str:
 
 def _format_dividend_summary(df) -> str:
     """分红摘要"""
+    if "ann_date" not in df.columns:
+        return ""
     cash_divs = [float(r.get("cash_div", 0) or 0) for _, r in df.sort_values("ann_date").iterrows()]
     cash_divs = [c for c in cash_divs if c > 0]
     if cash_divs:
@@ -481,7 +488,7 @@ def build_lightweight_summary(data: dict, stock_code: str) -> str:
         lines.append(f"最新价: {r.get('close', 'N/A')} | 换手率: {r.get('turnover_rate', 'N/A')}%")
         if len(daily) > 1:
             prev = daily["close"].iloc[1]
-            if prev:
+            if pd.notna(prev):
                 chg = (r["close"] - prev) / prev * 100
                 lines.append(f"涨跌幅: {chg:+.2f}%")
 
@@ -493,17 +500,21 @@ def build_lightweight_summary(data: dict, stock_code: str) -> str:
                          ("netprofit_margin", "净利率(%)"), ("debt_to_assets", "资产负债率(%)"),
                          ("or_yoy", "营收同比(%)")]:
             v = r.get(k)
-            if v is not None and not str(v) == "nan":
+            if v is not None and pd.notna(v):
                 lines.append(f"{label}: {v}")
 
     income = data.get("income")
     if income is not None and not income.empty:
         r = income.iloc[0]
-        rev = r.get("total_revenue") or r.get("revenue")
-        np_val = r.get("net_profit") or r.get("n_income_attr_p")
-        if rev:
+        rev = r.get("total_revenue")
+        if rev is None:
+            rev = r.get("revenue")
+        np_val = r.get("net_profit")
+        if np_val is None:
+            np_val = r.get("n_income_attr_p")
+        if rev is not None:
             lines.append(f"营收: {_fmt_yi(rev)}")
-        if np_val:
+        if np_val is not None:
             lines.append(f"净利润: {_fmt_yi(np_val)}")
 
     moneyflow = data.get("moneyflow")
@@ -518,19 +529,19 @@ def build_lightweight_summary(data: dict, stock_code: str) -> str:
     margin = data.get("margin")
     if margin is not None and not margin.empty:
         rzye = margin.sort_values("trade_date").iloc[-1].get("rzye")
-        if rzye:
+        if rzye is not None:
             lines.append(f"融资余额: {float(rzye)/1e8:.2f}亿")
 
     hk = data.get("hk_hold")
     if hk is not None and not hk.empty:
         ratio = hk.sort_values("trade_date").iloc[-1].get("ratio")
-        if ratio:
+        if ratio is not None:
             lines.append(f"北向持股: {float(ratio):.2f}%")
 
     holder = data.get("stk_holdernumber")
     if holder is not None and not holder.empty:
         num = holder.sort_values("ann_date").iloc[-1].get("holder_num")
-        if num:
+        if num is not None:
             lines.append(f"股东人数: {float(num)/1e4:.1f}万")
 
     top10 = data.get("top10_holders")
