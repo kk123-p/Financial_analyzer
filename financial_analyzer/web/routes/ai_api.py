@@ -346,7 +346,7 @@ async def ai_conversation(websocket: WebSocket):
         from financial_analyzer.ai.conversation import ConversationManager
         from financial_analyzer.ai.orchestrator import AnalysisOrchestrator
 
-        config = DeepSeekConfig(api_key=api_key)
+        config = DeepSeekConfig(api_key=api_key, max_tokens=1024, temperature=0.7)
         client = DeepSeekStreamClient(config=config)
 
         def debate_factory():
