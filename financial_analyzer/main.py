@@ -1,28 +1,19 @@
-"""
-Financial Analyzer Pro v9.0 - Entry Point
-"""
+"""Financial Analyzer Pro v9.0 — Entry point."""
 import sys
-from .logging_config import setup_logging
-from .config import APP_VERSION
+import uvicorn
 
 
 def main():
-    """Main entry point"""
-    setup_logging()
-
-    import tkinter as tk
-    from .ui.app import FinancialAnalyzerApp
-
-    try:
-        import ttkbootstrap as ttk
-        root = ttk.Window(themename="darkly")
-    except ImportError:
-        root = tk.Tk()
-
-    root.title("财务分析系统 v9.0")
-    app = FinancialAnalyzerApp(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
+    """Launch the FastAPI web server."""
+    host = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 8000
+    uvicorn.run(
+        "financial_analyzer.web.main:app",
+        host=host,
+        port=port,
+        reload=False,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":
