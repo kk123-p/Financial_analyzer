@@ -15,6 +15,31 @@ from financial_analyzer.utils.export import DataExporter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/export", tags=["export"])
 
+# 数据类型 -> 中文标签映射（用于导出和前端展示）
+DATA_TYPE_LABELS = {
+    "daily": "日线行情",
+    "daily_basic": "每日指标",
+    "basic": "基本信息",
+    "stock_basic": "股票基本信息",
+    "income": "利润表",
+    "balance": "资产负债表",
+    "cashflow": "现金流量表",
+    "financial": "财务指标",
+    "moneyflow": "资金流向",
+    "margin": "融资融券",
+    "margin_detail": "融资融券明细",
+    "hk_hold": "北向资金",
+    "block_trade": "大宗交易",
+    "weekly": "周线行情",
+    "monthly": "月线行情",
+    "stk_holdernumber": "股东人数",
+    "dividend": "分红送股",
+    "top10_holders": "前十大股东",
+    "top10_floatholders": "前十大流通股东",
+    "fina_audit": "审计意见",
+    "fina_mainbz": "主营业务构成",
+}
+
 
 @router.get("/{format}")
 async def export_data(

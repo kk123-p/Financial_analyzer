@@ -22,6 +22,19 @@ SHEET_NAMES = {
     "balance": "资产负债表",
     "cashflow": "现金流量表",
     "financial": "财务指标",
+    "moneyflow": "资金流向",
+    "margin": "融资融券",
+    "margin_detail": "融资融券明细",
+    "hk_hold": "北向资金",
+    "block_trade": "大宗交易",
+    "weekly": "周线行情",
+    "monthly": "月线行情",
+    "stk_holdernumber": "股东人数",
+    "dividend": "分红送股",
+    "top10_holders": "前十大股东",
+    "top10_floatholders": "前十大流通股东",
+    "fina_audit": "审计意见",
+    "fina_mainbz": "主营业务构成",
 }
 
 
