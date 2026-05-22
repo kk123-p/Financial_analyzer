@@ -31,7 +31,7 @@ class AnalysisService(AnalysisDispatcher):
 # ============================================================================
 
 def get_pipeline_stages() -> list[dict]:
-    """5阶段递进式分析管线（34项）"""
+    """6阶段递进式分析管线（34项）"""
     return [
         ("1. 数据概览", "market_overview", [
             ("market_overview", "行情概览"), ("price_trend", "价格趋势"),
@@ -44,27 +44,27 @@ def get_pipeline_stages() -> list[dict]:
             ("ratio_analysis", "财务比率分析"),
             ("trend_score", "趋势评分"),
         ]),
-        ("3. 深度诊断", "dupont", [
+        ("3. 股东与资金", "shareholder", [
+            ("shareholder", "股东结构分析"), ("capital_flow", "资金面分析"),
+            ("dividend_analysis", "分红分析"), ("weekly_pe", "周线PE分位"),
+        ]),
+        ("4. 深度诊断", "dupont", [
             ("dupont", "杜邦分析（含ROIC）"),
             ("fcf", "现金流分析"),
             ("moat", "护城河评估"), ("deep_comprehensive", "综合深度报告"),
         ]),
-        ("4. 风险审查", "audit_full", [
+        ("5. 风险审查", "audit_full", [
             ("audit_full", "综合审计报告"), ("fraud_ml", "ML舞弊检测"),
             ("audit_asset", "资产端信号"), ("audit_profit", "利润端信号"),
             ("audit_cashflow", "现金流信号"), ("audit_cross", "勾稽关系验证"),
             ("risk", "风险评估"), ("zscore", "Z-score"),
             ("fscore", "F-score"), ("mscore", "M-score"),
         ]),
-        ("5. 估值评级", "comprehensive", [
+        ("6. 估值评级", "comprehensive", [
             ("comprehensive", "综合投资评级"), ("pe_valuation", "PE估值分析"),
             ("pe_percentile", "PE历史分位"), ("pb_roe", "PB-ROE模型"),
             ("ev_ebitda", "EV/EBITDA"), ("shareholder_return", "股东回报"),
             ("quality", "财报质量"),
-        ]),
-        ("2.5 股东与资金", "shareholder", [
-            ("shareholder", "股东结构分析"), ("capital_flow", "资金面分析"),
-            ("dividend_analysis", "分红分析"), ("weekly_pe", "周线PE分位"),
         ]),
     ]
 

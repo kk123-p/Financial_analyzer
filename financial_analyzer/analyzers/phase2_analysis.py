@@ -706,6 +706,10 @@ class Phase2Analyzer:
             return f"⚠️ PE分位异常: {e}"
 
     def pb_roe_analysis(self, required_return: float = 10.0) -> str:
+        """PB-ROE模型分析
+        核心逻辑：ROE越高，公司为股东创造价值的能力越强，市场给予的PB溢价也应越高。
+        理论公平PB = (ROE - g) / (r - g)，其中g为可持续增长率，r为要求回报率。
+        """
         income = self._get_multi_year("income", 1)
         balance = self._get_multi_year("balance", 1)
         basic = self._get_price_data()
@@ -717,35 +721,91 @@ class Phase2Analyzer:
             if not (np_ and eq and eq > 0):
                 return "⚠️ 数据不足"
             roe = np_ / eq * 100
-            g = roe / 100 * 0.7
+
+            # 计算实际PB
+            actual_pb = None
+            if basic is not None and len(basic) > 0:
+                c = self._val(basic.iloc[0], ["close"])
+                s = self._val(basic.iloc[0], ["total_share"])
+                if c and s and s > 0:
+                    actual_pb = (c * s) / (eq / 10000)  # c*s=万元, eq=元→万元
+
+            # 可持续增长率 g = ROE × 留存比率（假设30%分红，留存70%）
+            retention = 0.7
+            g = roe / 100 * retention
             r = required_return / 100
+
             lines = ["=" * 55, "  PB-ROE模型", "=" * 55]
-            lines.append(f"\n  ROE = {roe:.2f}%")
+
+            # --- 核心指标 ---
+            lines.append(f"\n  【核心指标】")
+            lines.append(f"  ROE（净资产收益率） = {roe:.2f}%")
+            if actual_pb is not None:
+                lines.append(f"  当前PB（市净率）    = {actual_pb:.2f}倍")
+
+            # --- PB-ROE关系解释 ---
+            lines.append(f"\n  【PB-ROE关系原理】")
+            lines.append(f"  ROE衡量公司为股东创造回报的能力，PB衡量市场愿意为每元净资产支付的价格。")
+            lines.append(f"  一般规律：ROE越高的公司，市场给予的PB溢价也越高。")
+            if roe > 20:
+                lines.append(f"  当前ROE {roe:.1f}% 属于高水平（>20%），理论上有较强PB支撑。")
+            elif roe > 10:
+                lines.append(f"  当前ROE {roe:.1f}% 处于中等水平（10%-20%），PB支撑力度一般。")
+            elif roe > 0:
+                lines.append(f"  当前ROE {roe:.1f}% 偏低（<10%），PB支撑较弱，股价更多反映资产净值。")
+            else:
+                lines.append(f"  当前ROE为负，公司处于亏损状态，PB估值意义有限。")
+
+            # --- 行业背景 ---
+            lines.append(f"\n  【行业背景参考】")
+            lines.append(f"  高ROE行业（如白酒、消费龙头）PB通常在5-15倍，ROE可达20%-35%。")
+            lines.append(f"  中等ROE行业（如制造业、科技）PB通常在2-5倍，ROE约10%-20%。")
+            lines.append(f"  低ROE行业（如钢铁、银行）PB通常<2倍，ROE约5%-10%。")
+
+            # --- 理论PB计算 ---
             if r > g:
                 fair_pb = (roe / 100 - g) / (r - g)
-                lines.append(f"  理论PB = {fair_pb:.2f}倍（要求回报率{required_return}%）")
-                if basic is not None and len(basic) > 0:
-                    c = self._val(basic.iloc[0], ["close"])
-                    s = self._val(basic.iloc[0], ["total_share"])
-                    if c and s and s > 0:
-                        actual_pb = (c * s) / (eq / 10000)  # c*s=万元, eq=元→万元
-                        dev = (actual_pb - fair_pb) / fair_pb * 100 if fair_pb > 0 else 0
-                        lines.append(f"  实际PB = {actual_pb:.2f}倍（偏离{dev:+.1f}%）")
-                        if dev < -20:
-                            lines.append(f"  → 明显低估")
-                        elif dev < -5:
-                            lines.append(f"  → 略低估")
-                        elif dev <= 5:
-                            lines.append(f"  → 合理估值")
-                        elif dev <= 20:
-                            lines.append(f"  → 略高估")
-                        else:
-                            lines.append(f"  → 明显高估")
+                lines.append(f"\n  【理论PB计算】")
+                lines.append(f"  公式：公平PB = (ROE - g) / (r - g)")
+                lines.append(f"  其中 g = ROE × 留存率({retention:.0%}) = {g*100:.2f}%  （可持续增长率）")
+                lines.append(f"       r = {required_return:.1f}%  （投资者要求回报率，参考A股长期中枢）")
+                lines.append(f"  计算：公平PB = ({roe:.1f}% - {g*100:.1f}%) / ({r*100:.1f}% - {g*100:.1f}%) = {fair_pb:.2f}倍")
+
+                if actual_pb is not None:
+                    dev = (actual_pb - fair_pb) / fair_pb * 100 if fair_pb > 0 else 0
+                    lines.append(f"\n  【估值判断】")
+                    lines.append(f"  理论PB = {fair_pb:.2f}倍  |  实际PB = {actual_pb:.2f}倍  |  偏离 = {dev:+.1f}%")
+                    if dev < -30:
+                        lines.append(f"  → 实际PB大幅低于理论PB，市场可能过度悲观，存在显著低估机会。")
+                    elif dev < -10:
+                        lines.append(f"  → 实际PB低于理论PB，有一定安全边际，偏低估。")
+                    elif dev < -5:
+                        lines.append(f"  → 实际PB略低于理论PB，处于合理偏低区间。")
+                    elif dev <= 5:
+                        lines.append(f"  → 实际PB与理论PB基本吻合，估值合理。")
+                    elif dev <= 10:
+                        lines.append(f"  → 实际PB略高于理论PB，市场给予一定溢价。")
+                    elif dev <= 20:
+                        lines.append(f"  → 实际PB超过理论PB，估值偏高，需关注ROE能否持续支撑。")
+                    else:
+                        lines.append(f"  → 实际PB远超理论PB，严重高估，除非ROE大幅提升否则回调风险大。")
+                else:
+                    lines.append(f"\n  【估值判断】")
+                    lines.append(f"  理论PB = {fair_pb:.2f}倍（缺少实际股价数据，无法比较偏离度）")
+            else:
+                lines.append(f"\n  要求回报率({required_return}%)小于可持续增长率({g*100:.1f}%)，")
+                lines.append(f"  传统PB-ROE模型不适用，公司处于高增长阶段，适用PEG等成长估值方法。")
+
             return "\n".join(lines)
         except Exception as e:
             return f"⚠️ PB-ROE异常: {e}"
 
     def ev_ebitda_analysis(self) -> str:
+        """EV/EBITDA估值分析
+        企业价值(EV) = 市值 + 总负债 - 货币资金
+        EBITDA ≈ 营业利润 + 财务费用（利息折旧摊销的近似替代）
+        EV/EBITDA排除了资本结构和折旧政策的影响，比PE更适合资本密集型行业。
+        """
         income = self._get_multi_year("income", 1)
         balance = self._get_multi_year("balance", 1)
         basic = self._get_price_data()
@@ -758,29 +818,89 @@ class Phase2Analyzer:
             cash = self._val(balance.iloc[0], ["money_cap"])
             if op is None:
                 return "⚠️ 营业利润数据缺失"
-            ebitda = op + (abs(fin) if fin and fin > 0 else 0)
+
+            # EBITDA近似计算：营业利润 + 财务费用（利息）
+            depreciation_like = abs(fin) if fin and fin != 0 else 0
+            ebitda = op + (abs(fin) if fin and fin > 0 else fin if fin and fin < 0 else 0)
+            # more accurate: 营业利润 + 利息支出（财务费用为正表示净支出）
+            if fin is not None:
+                ebitda = op + (fin if fin > 0 else 0)  # 仅加财务费用（利息支出部分）
+
             if basic is None or len(basic) == 0:
                 return "⚠️ 缺少股价数据"
             c = self._val(basic.iloc[0], ["close"])
             s = self._val(basic.iloc[0], ["total_share"])
             if not (c and s and s > 0):
                 return "⚠️ 缺少股价数据"
-            mcap = c * s * 10000  # c(元)*s(万股)→万元→*10000转为元
-            ev = mcap + (liab or 0) - (cash or 0)
-            lines = ["=" * 55, "  EV/EBITDA", "=" * 55]
-            lines.append(f"\n  EV = {self._fmt_yi(ev)}")
-            lines.append(f"  EBITDA ≈ {self._fmt_yi(ebitda)}")
+
+            # 市值计算：股价(元) × 总股本(万股) × 10000 → 元
+            mcap = c * s * 10000
+            debt = liab or 0
+            cash_val = cash or 0
+            ev = mcap + debt - cash_val
+
+            lines = ["=" * 55, "  EV/EBITDA估值", "=" * 55]
+
+            # --- EV计算明细 ---
+            lines.append(f"\n  【企业价值（EV）计算明细】")
+            lines.append(f"  公式：EV = 市值 + 总负债 - 货币资金")
+            lines.append(f"  市值       = {self._fmt_yi(mcap)}")
+            lines.append(f"  总负债     = {self._fmt_yi(debt)}")
+            lines.append(f"  货币资金   = {self._fmt_yi(cash_val)}")
+            lines.append(f"  ───────────────────────")
+            lines.append(f"  企业价值EV = {self._fmt_yi(ev)}")
+
+            # --- EBITDA计算 ---
+            lines.append(f"\n  【EBITDA（息税折旧摊销前利润）】")
+            lines.append(f"  公式：EBITDA ≈ 营业利润 + 折旧摊销（此处以财务费用近似）")
+            lines.append(f"  营业利润    = {self._fmt_yi(op)}")
+            if fin is not None:
+                lines.append(f"  财务费用    = {self._fmt_yi(fin)}")
+            lines.append(f"  ───────────────────────")
+            lines.append(f"  EBITDA      = {self._fmt_yi(ebitda)}")
+
+            # --- EV/EBITDA比率 ---
+            lines.append(f"\n  【EV/EBITDA估值】")
             if ebitda > 0:
                 ratio = ev / ebitda
-                lines.append(f"  EV/EBITDA = {ratio:.1f}倍")
-                if ratio < 6:
-                    lines.append(f"  → 可能低估")
-                elif ratio < 10:
-                    lines.append(f"  → 合理区间")
-                elif ratio < 15:
-                    lines.append(f"  → 偏高")
+                lines.append(f"  EV/EBITDA = {self._fmt_yi(ev)} / {self._fmt_yi(ebitda)} = {ratio:.1f}倍")
+
+                # 阈值判断
+                lines.append(f"\n  【估值区间判断】")
+                lines.append(f"  通用参考标准（A股市场）：")
+                lines.append(f"    < 8倍   — 明显低估，值得深入关注")
+                lines.append(f"    8-12倍  — 合理偏低，有一定安全边际")
+                lines.append(f"    12-18倍 — 估值合理，符合市场中枢")
+                lines.append(f"    18-25倍 — 偏高，需要高增长支撑")
+                lines.append(f"    > 25倍  — 显著高估")
+
+                if ratio < 8:
+                    lines.append(f"\n  → EV/EBITDA = {ratio:.1f}倍，处于低估区间。")
+                    lines.append(f"    市场对公司盈利能力定价不足，可能因行业周期低谷或短期负面因素。")
+                elif ratio < 12:
+                    lines.append(f"\n  → EV/EBITDA = {ratio:.1f}倍，处于合理偏低区间。")
+                    lines.append(f"    相对A股中枢有一定安全边际，适合价值投资者关注。")
+                elif ratio < 18:
+                    lines.append(f"\n  → EV/EBITDA = {ratio:.1f}倍，处于合理区间。")
+                    lines.append(f"    估值与A股市场中枢基本吻合，需结合成长性判断性价比。")
+                elif ratio < 25:
+                    lines.append(f"\n  → EV/EBITDA = {ratio:.1f}倍，偏高。")
+                    lines.append(f"    市场给予较高估值溢价，需确认公司是否有超行业增速或独特竞争优势。")
                 else:
-                    lines.append(f"  → 高估")
+                    lines.append(f"\n  → EV/EBITDA = {ratio:.1f}倍，显著高估。")
+                    lines.append(f"    除非公司处于高成长期且EBITDA快速增长，否则回调风险较大。")
+            else:
+                lines.append(f"  EBITDA ≤ 0，无法计算EV/EBITDA比率。")
+                lines.append(f"  公司当前盈利能力较弱，EBITDA为负，EV/EBITDA不适用。")
+
+            # --- PE vs EV/EBITDA对比 ---
+            lines.append(f"\n  【PE vs EV/EBITDA对比】")
+            lines.append(f"  EV/EBITDA相比PE的优势：")
+            lines.append(f"  1) 排除了资本结构影响 — EV包含债务，比较时不受杠杆水平干扰。")
+            lines.append(f"  2) 排除了折旧政策差异 — EBITDA加回折旧摊销，适合重资产行业对比。")
+            lines.append(f"  3) 特别适用于：制造业、钢铁、化工、航空、电信等资本密集型行业。")
+            lines.append(f"  4) PE估值更适合：轻资产、高现金流行业（如消费、互联网、金融）。")
+
             return "\n".join(lines)
         except Exception as e:
             return f"⚠️ EV/EBITDA异常: {e}"
