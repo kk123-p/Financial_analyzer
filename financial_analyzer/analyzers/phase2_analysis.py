@@ -758,3 +758,113 @@ class Phase2Analyzer:
             return "\n".join(lines)
         except Exception as e:
             return f"⚠️ EV/EBITDA异常: {e}"
+
+    # ====================================================================
+    # 5. 分红分析
+    # ====================================================================
+    def dividend_analysis(self) -> str:
+        """分红分析 — 股息率、分红稳定性"""
+        df = self.data.get("dividend")
+        if df is None or df.empty:
+            return "  未获取到分红数据（该股票可能分红较少或数据缺失）\n"
+
+        df = df.sort_values("ann_date").reset_index(drop=True)
+        lines = ["▌ 分红分析", ""]
+
+        lines.append(f"  {'公告日':<12s} {'每股派息':>10s} {'每股送股':>10s}")
+        lines.append(f"  {'─' * 36}")
+        for _, row in df.tail(10).iterrows():
+            date = str(row.get("ann_date", ""))[:8]
+            cash = float(row.get("cash_div", 0) or 0)
+            stk = float(row.get("stk_div", 0) or 0)
+            lines.append(f"  {date:<12s} {cash:>8.2f}元 {stk:>8.2f}股")
+
+        cash_divs = [float(row.get("cash_div", 0) or 0) for _, row in df.iterrows()]
+        cash_divs = [c for c in cash_divs if c > 0]
+        if len(cash_divs) >= 5:
+            total_5y = sum(cash_divs[-5:])
+            avg = total_5y / 5
+            lines.append(f"\n  近5年累计派息: {total_5y:.2f}元/股")
+            lines.append(f"  年均派息: {avg:.2f}元/股")
+
+            consecutive = 0
+            for c in reversed(cash_divs):
+                if c > 0:
+                    consecutive += 1
+                else:
+                    break
+            lines.append(f"  连续分红年数: {consecutive}")
+
+            if consecutive >= 5:
+                lines.append("  ✅ 分红稳定，连续5年以上派息")
+            elif consecutive >= 3:
+                lines.append("  → 分红基本稳定")
+            else:
+                lines.append("  ⚠️ 分红不稳定")
+
+        price = self._get_current_price()
+        if price and cash_divs:
+            latest_div = cash_divs[-1]
+            div_yield = latest_div / price * 100
+            lines.append(f"\n  当前股价: {price:.2f}元")
+            lines.append(f"  最新每股派息: {latest_div:.2f}元")
+            lines.append(f"  股息率: {div_yield:.2f}%")
+            if div_yield > 4:
+                lines.append("  ✅ 高股息（>4%），适合股息策略")
+            elif div_yield > 2:
+                lines.append("  → 中等股息率（2-4%）")
+            else:
+                lines.append("  → 低股息率（<2%）")
+
+        return "\n".join(lines)
+
+    # ====================================================================
+    # 6. 周线PE分位分析
+    # ====================================================================
+    def weekly_pe_percentile(self) -> str:
+        """基于周线数据的PE分位分析"""
+        weekly = self.data.get("weekly")
+        if weekly is None or weekly.empty:
+            return "  未获取到周线数据\n"
+
+        daily_basic = self.data.get("daily_basic")
+        current_pe = None
+        if daily_basic is not None and not daily_basic.empty:
+            current_pe = daily_basic.iloc[0].get("pe_ttm")
+
+        lines = ["▌ 周线PE分位分析", ""]
+        lines.append(f"  周线数据: {len(weekly)} 条")
+        if current_pe:
+            lines.append(f"  当前PE(TTM): {float(current_pe):.1f}")
+        lines.append("")
+
+        weekly = weekly.sort_values("trade_date").reset_index(drop=True)
+        if "close" in weekly.columns:
+            recent = float(weekly["close"].iloc[-1])
+            high_52w = float(weekly["close"].tail(52).max()) if len(weekly) >= 52 else float(weekly["close"].max())
+            low_52w = float(weekly["close"].tail(52).min()) if len(weekly) >= 52 else float(weekly["close"].min())
+            lines.append(f"  最新收盘价: {recent:.2f}")
+            lines.append(f"  52周最高: {high_52w:.2f}")
+            lines.append(f"  52周最低: {low_52w:.2f}")
+
+            if high_52w > low_52w:
+                pct_52w = (recent - low_52w) / (high_52w - low_52w) * 100
+                lines.append(f"  52周价格分位: {pct_52w:.1f}%")
+                if pct_52w < 20:
+                    lines.append("  ✅ 价格处于52周低位")
+                elif pct_52w > 80:
+                    lines.append("  ⚠️ 价格处于52周高位")
+
+        return "\n".join(lines)
+
+    # ====================================================================
+    # 辅助方法（补充）
+    # ====================================================================
+    def _get_current_price(self) -> float | None:
+        daily = self.data.get("daily")
+        if daily is not None and not daily.empty and "close" in daily.columns:
+            return float(daily["close"].iloc[0])
+        weekly = self.data.get("weekly")
+        if weekly is not None and not weekly.empty and "close" in weekly.columns:
+            return float(weekly["close"].iloc[0])
+        return None

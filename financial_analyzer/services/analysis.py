@@ -19,6 +19,8 @@ from ..analyzers.comprehensive import ComprehensiveAnalyzer
 from ..analyzers.balance_sheet import BalanceSheetAnalyzer
 from ..analyzers.income_statement import IncomeStatementAnalyzer
 from ..analyzers.cash_flow import CashFlowAnalyzer
+from ..analyzers.shareholder import ShareholderAnalyzer
+from ..analyzers.capital_flow import CapitalFlowAnalyzer
 from ..data_sources.adapter import DataSourceAdapter
 from ..cache.manager import DataCacheManager
 from ..pipeline.textbook.ch5_ratio_compute import compute_13_ratios, compute_4_cashflow_metrics
@@ -511,6 +513,11 @@ ANALYSIS_MAP: dict[str, Callable] = {
     "cashflow_portrait": _run_cashflow_portrait,
     "dupont_roic": _run_dupont_roic,
     "fraud_ml": _run_fraud_ml,
+    # 股东与资金面（Phase 1 新增）
+    "shareholder": _make_analyzer(ShareholderAnalyzer, "analyze"),
+    "capital_flow": _make_analyzer(CapitalFlowAnalyzer, "analyze"),
+    "dividend_analysis": _make_phase2_runner("dividend_analysis"),
+    "weekly_pe": _make_phase2_runner("weekly_pe_percentile"),
 }
 
 

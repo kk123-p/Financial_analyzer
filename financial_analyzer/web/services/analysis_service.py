@@ -62,6 +62,10 @@ def get_pipeline_stages() -> list[dict]:
             ("ev_ebitda", "EV/EBITDA"), ("shareholder_return", "股东回报"),
             ("quality", "财报质量"),
         ]),
+        ("2.5 股东与资金", "shareholder", [
+            ("shareholder", "股东结构分析"), ("capital_flow", "资金面分析"),
+            ("dividend_analysis", "分红分析"), ("weekly_pe", "周线PE分位"),
+        ]),
     ]
 
 
@@ -106,5 +110,9 @@ def get_analysis_list() -> list[dict]:
             ("trend_score", "趋势评分 (Ch6)"),
             ("dupont_roic", "增强杜邦+ROIC (Ch9)"),
             ("fraud_ml", "ML舞弊检测 (Ch12-13)"),
+        ]),
+        ("股东与资金面 (Phase 1)", [
+            ("shareholder", "股东结构分析"), ("capital_flow", "资金面分析"),
+            ("dividend_analysis", "分红分析"), ("weekly_pe", "周线PE分位"),
         ]),
     ]
