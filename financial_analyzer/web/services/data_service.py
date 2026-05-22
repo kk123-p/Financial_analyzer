@@ -20,8 +20,11 @@ class DataService:
 
     # 所有可获取的数据类型
     BASIC_DATA_TYPES = ["daily", "daily_basic", "basic", "stock_basic"]
+    MARKET_DATA_TYPES = ["moneyflow", "margin", "margin_detail", "hk_hold",
+                         "block_trade", "weekly", "monthly", "stk_holdernumber"]
     FINANCIAL_DATA_TYPES = ["income", "balance", "cashflow", "financial",
-                            "fina_audit", "mainbz"]
+                            "dividend", "top10_holders", "top10_floatholders",
+                            "fina_audit", "fina_mainbz"]
 
     def fetch_stock_data(
         self,
@@ -44,7 +47,7 @@ class DataService:
         # 第一阶段：获取基本行情数据
         all_types = self.BASIC_DATA_TYPES.copy()
         if include_financials:
-            all_types += self.FINANCIAL_DATA_TYPES
+            all_types += self.MARKET_DATA_TYPES + self.FINANCIAL_DATA_TYPES
 
         for dtype in all_types:
             try:
@@ -178,6 +181,79 @@ class DataService:
                     kpis["market_cap"] = f"{mv:.0f}万元"
             except (ValueError, TypeError):
                 pass
+
+        # ===== 新增 KPI（Phase 1 扩展数据）=====
+
+        # 主力资金净流入
+        moneyflow = data.get("moneyflow")
+        if moneyflow is not None and not moneyflow.empty:
+            net_mf = moneyflow.iloc[0].get("net_mf_amount")
+            if net_mf:
+                try:
+                    net_mf_val = float(net_mf)
+                    if abs(net_mf_val) >= 1e8:
+                        kpis["net_mf_amount"] = f"{net_mf_val / 1e8:+.2f}亿"
+                    elif abs(net_mf_val) >= 1e4:
+                        kpis["net_mf_amount"] = f"{net_mf_val / 1e4:+.2f}万"
+                    else:
+                        kpis["net_mf_amount"] = f"{net_mf_val:+,.0f}"
+                    kpis["net_mf_positive"] = net_mf_val >= 0
+                except (ValueError, TypeError):
+                    kpis["net_mf_amount"] = "--"
+
+        # 融资余额
+        margin = data.get("margin")
+        if margin is not None and not margin.empty:
+            rzye = margin.iloc[0].get("rzye")
+            if rzye:
+                try:
+                    kpis["margin_balance"] = f"{float(rzye) / 1e8:.2f}亿"
+                except (ValueError, TypeError):
+                    kpis["margin_balance"] = "--"
+
+        # 北向持股占比
+        hk_hold = data.get("hk_hold")
+        if hk_hold is not None and not hk_hold.empty:
+            ratio = hk_hold.iloc[0].get("ratio")
+            if ratio:
+                try:
+                    kpis["hk_hold_ratio"] = f"{float(ratio):.2f}%"
+                except (ValueError, TypeError):
+                    kpis["hk_hold_ratio"] = "--"
+
+        # 股东人数
+        stk_holdernumber = data.get("stk_holdernumber")
+        if stk_holdernumber is not None and not stk_holdernumber.empty:
+            holder_num = stk_holdernumber.iloc[0].get("holder_num")
+            if holder_num:
+                try:
+                    hn = float(holder_num)
+                    if hn >= 1e4:
+                        kpis["holder_num"] = f"{hn / 1e4:.2f}万"
+                    else:
+                        kpis["holder_num"] = f"{hn:,.0f}"
+                except (ValueError, TypeError):
+                    kpis["holder_num"] = "--"
+
+        # 股息率（需要 current_price）
+        dividend = data.get("dividend")
+        cash_div = None
+        if dividend is not None and not dividend.empty:
+            cash_div = dividend.iloc[0].get("cash_div")
+            if cash_div:
+                try:
+                    kpis["cash_div"] = f"{float(cash_div):.2f}元"
+                except (ValueError, TypeError):
+                    kpis["cash_div"] = "--"
+
+        if kpis.get("cash_div", "--") != "--" and kpis.get("current_price", "--") != "--":
+            try:
+                cd_val = float(str(kpis["cash_div"]).replace("元", ""))
+                price_val = float(kpis["current_price"])
+                if price_val > 0:
+                    kpis["div_yield"] = f"{cd_val / price_val * 100:.2f}%"
+            except (ValueError, TypeError):
+                kpis["div_yield"] = "--"
 
         return kpis
 
