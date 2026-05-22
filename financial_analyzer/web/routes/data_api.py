@@ -85,8 +85,10 @@ async def fetch_data(
 
     # 统计财务报表状态
     fin_types = DataService.FINANCIAL_DATA_TYPES
+    market_types = DataService.MARKET_DATA_TYPES
+    all_async_types = fin_types + market_types
     fin_loaded = [k for k in fin_types if k in data and data[k]]
-    fin_pending = [k for k in fin_types if k not in data or not data[k]]
+    fin_pending = [k for k in all_async_types if k not in data or not data[k]]
 
     # 后台加载财务报表（使用 session ID 避免请求对象过期）
     if fin_pending:
@@ -118,6 +120,35 @@ async def fetch_data(
 
         asyncio.create_task(background_financials())
 
+    # 后台加载市场数据
+    def do_fetch_market():
+        market_data = {}
+        for dtype in market_types:
+            try:
+                df = adapter.get_stock_data(stock_code, start_date, end_date, dtype)
+                if df is not None and not df.empty:
+                    market_data[dtype] = df
+                    logger.info(f"市场数据 {dtype} 获取成功: {len(df)} 行")
+            except Exception as e:
+                logger.debug(f"市场数据 {dtype} 获取失败: {e}")
+        return market_data
+
+    async def background_market():
+        try:
+            sid = request.cookies.get("fa_session", DEFAULT_SESSION_ID)
+            logger.info(f"开始后台加载市场数据: {market_types}")
+            market_data = await loop.run_in_executor(None, do_fetch_market)
+            sess = _sessions.get(sid)
+            if sess is None:
+                return
+            for k, df in market_data.items():
+                sess["data"][k] = df.to_dict("records")
+            logger.info(f"后台市场数据加载完成: {list(market_data.keys())}")
+        except Exception as e:
+            logger.error(f"后台市场数据加载失败: {e}", exc_info=True)
+
+    asyncio.create_task(background_market())
+
     from fastapi.responses import HTMLResponse
     response = templates.TemplateResponse(request, "partials/kpi_cards.html", {
         "kpis": kpis,
@@ -137,8 +168,10 @@ async def financials_status(request: Request):
     data = session.get("data", {})
 
     fin_types = DataService.FINANCIAL_DATA_TYPES
-    loaded = [k for k in fin_types if k in data and data[k]]
-    pending = [k for k in fin_types if k not in loaded]
+    market_types = DataService.MARKET_DATA_TYPES
+    all_async_types = fin_types + market_types
+    loaded = [k for k in all_async_types if k in data and data[k]]
+    pending = [k for k in all_async_types if k not in loaded]
 
     if not pending:
         # 全部加载完成：更新状态 + 触发数据表格刷新
@@ -168,7 +201,7 @@ async def data_table(request: Request):
     session = _get_session(request)
     data = session.get("data", {})
 
-    all_data_types = DataService.BASIC_DATA_TYPES + DataService.FINANCIAL_DATA_TYPES
+    all_data_types = DataService.BASIC_DATA_TYPES + DataService.MARKET_DATA_TYPES + DataService.FINANCIAL_DATA_TYPES
     loaded = [k for k in all_data_types if k in data and data[k]]
     pending = [k for k in all_data_types if k not in loaded]
 
