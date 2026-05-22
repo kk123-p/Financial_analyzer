@@ -11,10 +11,7 @@ from typing import Callable
 
 from ..logging_config import get_logger
 from .conversation import ConversationManager, Message
-from .prompt_framework import PromptBuilder
 from .output_parser import OutputParser
-from .signal_detector import SignalDetector
-from .report_builder import ReportBuilder
 
 logger = get_logger(__name__)
 
@@ -44,32 +41,18 @@ class AnalysisOrchestrator:
         company_name: str = "",
         callback: Callable | None = None,
     ):
-        """统一分析入口"""
+        """统一分析入口 — 所有模式行为一致，LLM 纯问答"""
         conversation.add_message(Message(role="user", content=user_message, msg_type="text"))
 
         intent = self._identify_intent(user_message, conversation)
-
-        # Always build report for data context (all modes need it)
-        report = None
-        signals = []
-        try:
-            report = ReportBuilder.build(data, stock_code)
-            if intent in ("deep", "debate"):
-                signals = SignalDetector.detect(report)
-        except Exception as e:
-            logger.warning(f"Report building failed: {e}")
 
         if callback:
             callback("meta", f"intent:{intent}", None)
 
         if intent == "debate" and self._debate_factory:
             self._stream_debate(data, stock_code, company_name, conversation, callback)
-        elif intent == "deep":
-            self._stream_deep(data, report, signals, user_message, conversation, callback)
-        elif intent == "followup":
-            self._stream_followup(data, report, signals, user_message, conversation, callback)
         else:
-            self._stream_quick(data, report, user_message, conversation, callback)
+            self._stream_chat(user_message, conversation, callback)
 
     def _identify_intent(self, message: str, conversation: ConversationManager | None = None) -> str:
         """识别用户分析意图"""
@@ -95,66 +78,8 @@ class AnalysisOrchestrator:
 
         return "quick"
 
-    def _build_system_context(self, intent: str, data: dict | None,
-                              report: dict | None, signals: list | None) -> str:
-        """构建系统上下文（角色 + 数据 + 框架 + 输出格式），不包含用户问题"""
-        company_name = report.get("company_snapshot", {}).get("name", "") if report else ""
-        builder = PromptBuilder(company_name)
-
-        # 加载当前模板
-        template = getattr(self, '_current_template', None)
-
-        if intent == "quick":
-            builder.with_mode("quick")
-            # quick 模式仅需要公司快照，不需要完整数据
-            if report:
-                builder.with_data({"company_snapshot": report.get("company_snapshot", {})})
-            elif data:
-                builder.with_data(data)
-            if template:
-                builder.with_template(template)
-        elif intent == "deep":
-            builder.with_mode("deep")
-            if report:
-                builder.with_data(report)
-            elif data:
-                builder.with_data(data)
-            if template:
-                builder.with_template(template)
-            else:
-                builder.with_framework("harvard")
-                builder.with_framework("crosscheck")
-                builder.with_framework("lifecycle")
-                builder.with_framework("warnings")
-                builder.with_output_format("structured")
-            if signals:
-                builder.with_signals(signals)
-        elif intent == "followup":
-            builder.with_mode("followup")
-            if report:
-                builder.with_data(report)
-            elif data:
-                builder.with_data(data)
-            if template:
-                builder.with_template(template)
-        elif intent == "debate":
-            builder.with_mode("debate")
-            if report:
-                builder.with_data(report)
-            elif data:
-                builder.with_data(data)
-            if template:
-                builder.with_template(template)
-
-        return builder.build()
-
-    # ========================================================================
-    # 各模式流式处理
-    # ========================================================================
-
-    def _stream_quick(self, data, report, message, conversation, callback):
-        """快速模式：简单问答 — 数据作为上下文，问题单独发送"""
-        system_context = self._build_system_context("quick", data, report, None)
+    def _stream_chat(self, message, conversation, callback):
+        """纯问答模式 — 用户消息直接发给 LLM，无自动注入"""
         parser = OutputParser()
 
         def on_chunk(chunk: str, done: bool):
@@ -179,79 +104,7 @@ class AnalysisOrchestrator:
                 if callback:
                     callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(
-            message, system_prompt=system_context, callback=on_chunk
-        )
-        if not result.success:
-            if callback:
-                callback("error", result.error or "AI 分析失败", None)
-                callback("done", "", None)
-
-    def _stream_deep(self, data, report, signals, message, conversation, callback):
-        """深度模式：完整框架 + 结构化输出"""
-        system_context = self._build_system_context("deep", data, report, signals)
-        parser = OutputParser()
-
-        def on_chunk(chunk: str, done: bool):
-            if chunk:
-                for event in parser.feed(chunk):
-                    if callback:
-                        cb_type = event.get("type", "chunk")
-                        callback(cb_type, event.get("content", ""), None)
-            if done:
-                result = parser.finalize()
-                if result and callback:
-                    callback("chunk", result.raw_text, None)
-                    callback("structured", result.raw_text, {
-                        "confidence": result.confidence,
-                        "signal_tags": result.signal_tags,
-                    })
-                    conversation.add_message(Message(
-                        role="assistant", content=result.raw_text,
-                        msg_type="structured",
-                        metadata={"confidence": result.confidence, "signal_tags": result.signal_tags},
-                    ))
-                if callback:
-                    callback("done", "", None)
-
-        result = self._llm.generate_deep_analysis_stream(
-            message, system_prompt=system_context, callback=on_chunk
-        )
-        if not result.success:
-            if callback:
-                callback("error", result.error or "AI 分析失败", None)
-                callback("done", "", None)
-
-    def _stream_followup(self, data, report, signals, message, conversation, callback):
-        """追问模式：注入历史上下文"""
-        context = conversation.get_all_assistant_content()
-        system_context = self._build_system_context("followup", data, report, signals)
-
-        if context:
-            system_context = f"{system_context}\n\n## 之前的分析上下文\n{context[:3000]}"
-
-        parser = OutputParser()
-
-        def on_chunk(chunk: str, done: bool):
-            if chunk:
-                for event in parser.feed(chunk):
-                    if callback:
-                        cb_type = event.get("type", "chunk")
-                        callback(cb_type, event.get("content", ""), None)
-            if done:
-                result = parser.finalize()
-                if result:
-                    conversation.add_message(Message(
-                        role="assistant", content=result.raw_text,
-                        msg_type="text",
-                        metadata={"confidence": result.confidence},
-                    ))
-                if callback:
-                    callback("done", "", None)
-
-        result = self._llm.generate_deep_analysis_stream(
-            message, system_prompt=system_context, callback=on_chunk
-        )
+        result = self._llm.generate_deep_analysis_stream(message, callback=on_chunk)
         if not result.success:
             if callback:
                 callback("error", result.error or "AI 分析失败", None)

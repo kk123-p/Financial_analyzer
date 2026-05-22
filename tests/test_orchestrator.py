@@ -5,8 +5,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from financial_analyzer.ai.orchestrator import AnalysisOrchestrator
 from financial_analyzer.ai.conversation import ConversationManager, Message
-from financial_analyzer.ai.prompt_framework import PromptBuilder
-
 
 class FakeLLMClient:
     """模拟 LLM 客户端，用于测试调度逻辑"""
@@ -70,46 +68,6 @@ class TestAnalysisOrchestratorIntent:
     def test_debate_keyword_triggers(self):
         orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
         assert orchestrator._identify_intent("来个三方辩论") == "debate"
-
-
-class TestAnalysisOrchestratorBuildPrompt:
-    def test_build_system_context_quick_mode(self):
-        orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
-        data = {"company_snapshot": {"name": "测试"}}
-        context = orchestrator._build_system_context("quick", data, None, [])
-        assert "测试" in context
-        # 用户问题不应出现在系统上下文中
-        assert "测试问题" not in context
-
-    def test_build_system_context_deep_mode_includes_frameworks(self):
-        orchestrator = AnalysisOrchestrator(llm_client=FakeLLMClient())
-        data = {
-            "company_snapshot": {"name": "贵州茅台"},
-            "financial_health": {
-                "盈利能力": {"ROE": 30.5, "毛利率": 92.0},
-                "偿债能力": {"资产负债率": 21.5},
-                "营运能力": {"总资产周转率": 0.5},
-                "发展能力": {"营收增长率": 15.0},
-            },
-            "risk_models": {
-                "zscore": {"z_score": 8.5},
-                "mscore": {"m_score": -2.5},
-            },
-            "anomaly_signals": [],
-            "cashflow_analysis": {"quadrant": [{"quadrant_type": "成熟期", "op_sign": "正", "inv_sign": "负", "fin_sign": "负"}]},
-        }
-        signals = [
-            {"name": "纸面富贵预警", "trigger_data": "ROE=30.5%", "task": "分析杠杆贡献率", "level": "medium"},
-        ]
-        context = orchestrator._build_system_context("deep", data, None, signals)
-        assert "哈佛分析框架" in context
-        assert "三表联动验证" in context
-        assert "生命周期" in context
-        assert "利润质量恶化预警" in context
-        assert "纸面富贵预警" in context
-        assert "数据依据" in context
-        # 用户问题不应出现在系统上下文中 (不会有"## 用户问题"标题)
-        assert "## 用户问题" not in context
 
 
 class TestAnalysisOrchestratorAnalyze:
