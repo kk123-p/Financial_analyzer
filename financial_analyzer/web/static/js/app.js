@@ -860,7 +860,9 @@ function loadTemplates() {
     fetch('/ai/prompts')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var templates = (data.templates || []).filter(function(t) {
+            // API returns array directly: [{name, description, mode, ...}]
+            var list = Array.isArray(data) ? data : (data.templates || []);
+            var templates = list.filter(function(t) {
                 return t.mode === 'template';
             });
             renderTemplateButtons(templates);
@@ -871,28 +873,138 @@ function loadTemplates() {
 }
 
 function renderTemplateButtons(templates) {
-    var container = document.getElementById('template-buttons');
-    if (!container) return;
-    container.innerHTML = '';
-    templates.forEach(function(t) {
-        var btn = document.createElement('button');
-        btn.className = 'template-quick-btn';
-        btn.textContent = t.name;
-        btn.title = t.description || '';
-        btn.onclick = function() { selectTemplate(t.name); };
-        container.appendChild(btn);
-    });
+    // 填充模板栏按钮
+    var tbar = document.getElementById('template-buttons');
+    if (tbar) {
+        tbar.innerHTML = '';
+        templates.forEach(function(t) {
+            var btn = document.createElement('button');
+            btn.className = 'template-quick-btn';
+            btn.textContent = t.name;
+            btn.title = t.description || '';
+            btn.onclick = function() { selectTemplate(t.name); };
+            tbar.appendChild(btn);
+        });
+    }
+    // 填充快捷入口按钮
+    var qarea = document.getElementById('template-quick-actions');
+    if (qarea) {
+        qarea.innerHTML = templates.map(function(t) {
+            return '<button class="quick-action" onclick="selectTemplate(\'' +
+                t.name.replace(/'/g, "\\'") + '\')">' + t.name + '</button>';
+        }).join('');
+    }
 }
 
 function selectTemplate(name) {
     currentTemplate = name;
     // 高亮选中按钮
-    document.querySelectorAll('.template-quick-btn').forEach(function(b) {
+    document.querySelectorAll('.template-quick-btn, .quick-action').forEach(function(b) {
         b.classList.toggle('active', b.textContent === name);
     });
-    // 发送模板执行消息
-    if (window._conversationWs && window._conversationWs.readyState === WebSocket.OPEN) {
-        window._conversationWs.send(JSON.stringify({type: 'template', template_name: name, extra_question: ''}));
+
+    var stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
+    if (!stockCode) {
+        alert('请先输入股票代码并获取数据');
+        return;
+    }
+
+    var emptyEl = document.getElementById('chat-empty');
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // WebSocket 已打开，直接发送
+    if (chatWs && chatWs.readyState === WebSocket.OPEN) {
+        chatWs.send(JSON.stringify({type: 'template', template_name: name, extra_question: ''}));
+        return;
+    }
+
+    // 打开新 WebSocket
+    chatInProgress = true;
+    document.getElementById('chat-send-btn').style.display = 'none';
+    document.getElementById('chat-stop-btn').style.display = 'inline-block';
+
+    var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var wsUrl = protocol + '//' + location.host + '/ai/conversation';
+
+    try {
+        chatWs = new WebSocket(wsUrl);
+        window._conversationWs = chatWs;
+        var _templateName = name;
+
+        chatWs.onopen = function() {
+            chatWs.send(JSON.stringify({ stock_code: stockCode }));
+            setTimeout(function() {
+                if (chatWs.readyState === WebSocket.OPEN) {
+                    chatWs.send(JSON.stringify({type: 'template', template_name: _templateName, extra_question: ''}));
+                }
+            }, 200);
+        };
+
+        chatWs.onmessage = function(event) {
+            var msg = JSON.parse(event.data);
+
+            if (msg.type === 'meta') {
+                if (msg.content === 'ready') return;
+                appendMeta(msg.content);
+                return;
+            }
+
+            if (msg.type === 'template_start') {
+                appendMeta('🔍 执行模板分析: ' + (msg.meta ? msg.meta.template : '') + ' (' + (msg.meta ? msg.meta.sections : '') + ' 个维度)');
+                return;
+            }
+
+            if (msg.type === 'template_section') {
+                appendSectionCard(msg.content, msg.meta);
+                return;
+            }
+
+            if (msg.type === 'template_done') {
+                appendMeta('✅ 模板分析完成');
+                return;
+            }
+
+            if (msg.type === 'chunk') {
+                var el = document.getElementById('chat-streaming');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'chat-streaming';
+                    el.className = 'chat-bubble chat-bubble--assistant';
+                    document.getElementById('chat-messages').appendChild(el);
+                }
+                if (msg.content) el.innerHTML += msg.content.replace(/\n/g, '<br>');
+                document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+                return;
+            }
+
+            if (msg.type === 'done') {
+                chatInProgress = false;
+                document.getElementById('chat-send-btn').style.display = 'inline-block';
+                document.getElementById('chat-stop-btn').style.display = 'none';
+                var streamingEl = document.getElementById('chat-streaming');
+                if (streamingEl) streamingEl.id = '';
+                return;
+            }
+
+            if (msg.type === 'error') {
+                appendMeta('⚠️ ' + msg.content);
+                chatInProgress = false;
+                document.getElementById('chat-send-btn').style.display = 'inline-block';
+                document.getElementById('chat-stop-btn').style.display = 'none';
+                return;
+            }
+        };
+
+        chatWs.onerror = function() {
+            appendMeta('⚠️ 连接失败');
+            chatInProgress = false;
+            document.getElementById('chat-send-btn').style.display = 'inline-block';
+            document.getElementById('chat-stop-btn').style.display = 'none';
+        };
+
+    } catch (e) {
+        console.error('WebSocket error:', e);
+        chatInProgress = false;
     }
 }
 
