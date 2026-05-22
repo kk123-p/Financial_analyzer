@@ -171,11 +171,11 @@ class DataService:
             total_mv = basic.iloc[0].get("total_mv")
         if total_mv:
             try:
-                mv = float(total_mv)
-                if mv >= 1e8:
-                    kpis["market_cap"] = f"{mv / 1e8:.0f}亿"
+                mv = float(total_mv)  # Tushare 单位：万元
+                if mv >= 1e4:  # >= 1亿元 = 10000万元
+                    kpis["market_cap"] = f"{mv / 1e4:.0f}亿"
                 else:
-                    kpis["market_cap"] = f"{mv / 1e4:.1f}万"
+                    kpis["market_cap"] = f"{mv:.0f}万元"
             except (ValueError, TypeError):
                 pass
 
