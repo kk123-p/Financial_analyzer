@@ -272,20 +272,30 @@ class Phase2Analyzer:
 
             close = None
             total_share = None
+            total_mv = None
+            pe_ttm = None
             if basic is not None and len(basic) > 0:
                 close = self._val(basic.iloc[0], ["close"])
                 total_share = self._val(basic.iloc[0], ["total_share"])
+                total_mv = self._val(basic.iloc[0], ["total_mv"])
+                pe_ttm = self._val(basic.iloc[0], ["pe_ttm"])
 
-            if not (close and total_share and total_share > 0):
-                lines.append("\n  ⚠️ 缺少股价/股本数据")
+            if not (close and total_mv and total_mv > 0):
+                lines.append("\n  ⚠️ 缺少股价/市值数据")
                 return "\n".join(lines)
 
-            market_cap = close * total_share
-            lines.append(f"\n  股价: {close:.2f} 元 | 总市值: {self._fmt_yi(market_cap)}")
+            # market_cap 单位：万元（Tushare total_mv）
+            market_cap = total_mv
+            # _fmt_yi 期望元，需 ×10000 转换
+            lines.append(f"\n  股价: {close:.2f} 元 | 总市值: {self._fmt_yi(market_cap * 10000)}")
 
             # --- PE ---
-            if np_ and np_ > 0:
-                pe = market_cap / np_
+            # 优先使用 Tushare 预计算的 pe_ttm（更可靠、单位正确）
+            pe = pe_ttm if (pe_ttm and pe_ttm > 0) else None
+            # 回退：手工计算（market_cap 万元 / (np_ 元 / 10000 → 万元)）
+            if pe is None and np_ and np_ > 0:
+                pe = market_cap / (np_ / 10000)
+            if pe is not None and pe > 0:
                 earnings_yield = 1 / pe * 100
                 lines.append(f"\n  【PE估值（市盈率）】")
                 lines.append(f"  PE(TTM) = {pe:.1f}倍")
@@ -317,8 +327,10 @@ class Phase2Analyzer:
                                 lines.append(f"  → PEG>2，估值相对增速偏高")
 
             # --- PB ---
+            # market_cap 万元, total_equity 元 → 统一为万元
             if total_equity and total_equity > 0:
-                pb = market_cap / total_equity
+                equity_wan = total_equity / 10000  # 元→万元
+                pb = market_cap / equity_wan
                 roe = np_ / total_equity * 100 if np_ else 0
                 lines.append(f"\n  【PB估值（市净率）】")
                 lines.append(f"  PB = {pb:.2f}倍 | ROE = {roe:.2f}%")
@@ -334,8 +346,10 @@ class Phase2Analyzer:
                         lines.append(f"  → PB与ROE基本匹配")
 
             # --- PS ---
+            # market_cap 万元, revenue 元 → 统一为万元
             if revenue and revenue > 0:
-                ps = market_cap / revenue
+                revenue_wan = revenue / 10000  # 元→万元
+                ps = market_cap / revenue_wan
                 net_margin = np_ / revenue * 100 if np_ and revenue else 0
                 lines.append(f"\n  【PS估值（市销率）】")
                 lines.append(f"  PS = {ps:.2f}倍 | 净利率 = {net_margin:.2f}%")
@@ -346,14 +360,22 @@ class Phase2Analyzer:
                 else:
                     lines.append(f"  → PS偏高，需要高利润率或高增长支撑")
 
-            # --- 行业对比维度 ---
+            # --- 估值总结 ---
             lines.append(f"\n  【估值总结】")
-            pe_val = market_cap / np_ if np_ and np_ > 0 else None
-            pb_val = market_cap / total_equity if total_equity and total_equity > 0 else None
-            if pe_val and pe_val < 15 and pb_val and pb_val < 2:
-                lines.append(f"  综合判断: 偏低估（PE和PB均处于较低水平）")
-            elif pe_val and pe_val > 30 or pb_val and pb_val > 5:
+            if pe and pe < 15 and total_equity and total_equity > 0:
+                pb_val = market_cap / (total_equity / 10000)
+                if pb_val < 2:
+                    lines.append(f"  综合判断: 偏低估（PE和PB均处于较低水平）")
+                else:
+                    lines.append(f"  综合判断: 估值合理区间")
+            elif pe and (pe > 30):
                 lines.append(f"  综合判断: 偏高估（估值指标偏高）")
+            elif total_equity and total_equity > 0:
+                pb_val = market_cap / (total_equity / 10000)
+                if pb_val > 5:
+                    lines.append(f"  综合判断: 偏高估（估值指标偏高）")
+                else:
+                    lines.append(f"  综合判断: 估值合理区间")
             else:
                 lines.append(f"  综合判断: 估值合理区间")
 
@@ -653,7 +675,7 @@ class Phase2Analyzer:
                 c = self._val(basic.iloc[i], ["close"])
                 s = self._val(basic.iloc[i], ["total_share"])
                 if c and s and s > 0:
-                    pe = c * s / np_
+                    pe = (c * s) / (np_ / 10000)  # c*s=万元, np_=元→万元
                     if 0 < pe < 500:
                         pe_list.append(pe)
             if not pe_list:
@@ -702,7 +724,7 @@ class Phase2Analyzer:
                     c = self._val(basic.iloc[0], ["close"])
                     s = self._val(basic.iloc[0], ["total_share"])
                     if c and s and s > 0:
-                        actual_pb = c * s / eq
+                        actual_pb = (c * s) / (eq / 10000)  # c*s=万元, eq=元→万元
                         dev = (actual_pb - fair_pb) / fair_pb * 100 if fair_pb > 0 else 0
                         lines.append(f"  实际PB = {actual_pb:.2f}倍（偏离{dev:+.1f}%）")
                         if dev < -20:
@@ -739,7 +761,7 @@ class Phase2Analyzer:
             s = self._val(basic.iloc[0], ["total_share"])
             if not (c and s and s > 0):
                 return "⚠️ 缺少股价数据"
-            mcap = c * s
+            mcap = c * s * 10000  # c(元)*s(万股)→万元→*10000转为元
             ev = mcap + (liab or 0) - (cash or 0)
             lines = ["=" * 55, "  EV/EBITDA", "=" * 55]
             lines.append(f"\n  EV = {self._fmt_yi(ev)}")
