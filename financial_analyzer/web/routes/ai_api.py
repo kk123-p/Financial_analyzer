@@ -200,7 +200,7 @@ async def ai_debate(websocket: WebSocket):
         while True:
             try:
                 followup_msg = await asyncio.wait_for(websocket.receive_text(), timeout=300)
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, WebSocketDisconnect, RuntimeError):
                 break
 
             fu_data = json.loads(followup_msg)
@@ -372,7 +372,12 @@ async def ai_conversation(websocket: WebSocket):
         await websocket.send_text(json.dumps({"type": "meta", "content": "ready"}))
 
         while True:
-            msg_data = await websocket.receive_text()
+            try:
+                msg_data = await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+            except RuntimeError:
+                break
             msg = json.loads(msg_data)
 
             if msg.get("type") == "message":
