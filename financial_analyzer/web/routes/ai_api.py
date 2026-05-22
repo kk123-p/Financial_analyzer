@@ -331,7 +331,17 @@ async def ai_conversation(websocket: WebSocket):
             return
 
         data = {k: pd.DataFrame(v) for k, v in session["data"].items()}
-        company_name = session.get("stock_name", stock_code)
+        company_name = session.get("stock_name", "")
+        if not company_name:
+            sb = data.get("stock_basic")
+            if sb is not None and not sb.empty:
+                company_name = str(sb.iloc[0].get("name", stock_code))
+            elif "basic" in data:
+                b = data.get("basic")
+                if b is not None and not b.empty:
+                    company_name = str(b.iloc[0].get("name", stock_code))
+        if not company_name:
+            company_name = stock_code
 
         template_name = params.get("template_name", "")
         template_data = params.get("template")  # 前端传过来的完整模板 dict
