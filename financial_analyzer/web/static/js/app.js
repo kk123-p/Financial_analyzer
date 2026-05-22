@@ -1140,19 +1140,51 @@ function openExportModal() {
     var container = document.getElementById('export-categories');
     container.innerHTML = '';
 
-    // 预设数据类型 — 对应 Tushare 导入的数据类别
+    // 预设数据类型 — 全部可用类别
     var categories = [
-        { key: 'income', label: '利润表' },
-        { key: 'balance', label: '资产负债表' },
-        { key: 'cashflow', label: '现金流量表' },
-        { key: 'basic', label: '行情数据(日线)' },
+        { group: '行情数据', items: [
+            { key: 'daily', label: '日线行情' },
+            { key: 'weekly', label: '周线行情' },
+            { key: 'monthly', label: '月线行情' },
+            { key: 'daily_basic', label: '每日指标' },
+            { key: 'basic', label: '基本信息' },
+            { key: 'stock_basic', label: '股票信息' },
+        ]},
+        { group: '财务报表', items: [
+            { key: 'income', label: '利润表' },
+            { key: 'balance', label: '资产负债表' },
+            { key: 'cashflow', label: '现金流量表' },
+            { key: 'financial', label: '财务指标' },
+            { key: 'fina_audit', label: '审计意见' },
+            { key: 'fina_mainbz', label: '主营业务构成' },
+        ]},
+        { group: '市场数据', items: [
+            { key: 'moneyflow', label: '资金流向' },
+            { key: 'margin', label: '融资融券' },
+            { key: 'margin_detail', label: '融资融券明细' },
+            { key: 'hk_hold', label: '北向资金' },
+            { key: 'block_trade', label: '大宗交易' },
+        ]},
+        { group: '股东数据', items: [
+            { key: 'stk_holdernumber', label: '股东人数' },
+            { key: 'top10_holders', label: '前十大股东' },
+            { key: 'top10_floatholders', label: '前十大流通股东' },
+            { key: 'dividend', label: '分红送股' },
+        ]},
     ];
 
-    categories.forEach(function(cat) {
-        var label = document.createElement('label');
-        label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;color:var(--text-primary);cursor:pointer;';
-        label.innerHTML = '<input type="checkbox" name="export-cat" value="' + cat.key + '" checked> ' + cat.label;
-        container.appendChild(label);
+    categories.forEach(function(group) {
+        var groupTitle = document.createElement('div');
+        groupTitle.style.cssText = 'color:var(--fg-muted);font-size:10px;font-weight:600;margin:8px 0 4px 0;text-transform:uppercase;';
+        groupTitle.textContent = group.group;
+        container.appendChild(groupTitle);
+
+        group.items.forEach(function(cat) {
+            var label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0 3px 8px;color:var(--text-primary);cursor:pointer;font-size:13px;';
+            label.innerHTML = '<input type="checkbox" name="export-cat" value="' + cat.key + '" checked> ' + cat.label;
+            container.appendChild(label);
+        });
     });
 
     document.getElementById('export-modal-overlay').style.display = 'flex';
