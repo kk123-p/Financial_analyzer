@@ -93,13 +93,8 @@ function switchTab(tabName, btn) {
 }
 
 // ---- AI 子标签切换 ----
-function switchAiTab(tab, btn) {
-    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-
-    document.getElementById('ai-chat-panel').style.display = tab === 'chat' ? 'flex' : 'none';
-    document.getElementById('ai-debate-panel').style.display = tab === 'debate' ? 'flex' : 'none';
-}
+// DEPRECATED: 统一对话面板已替代子标签，ai-chat-panel/ai-debate-panel 已移除
+function switchAiTab(tab, btn) { }
 
 // ---- 侧边栏 — 平滑展开/折叠 + 高度动画 ----
 function toggleSection(header) {
