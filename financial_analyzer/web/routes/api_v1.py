@@ -15,7 +15,7 @@ from ..dependencies import get_adapter, get_cache
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
-from .data_api import _get_session
+from .data_api import _get_session, _load_and_apply_token
 
 _config_dir = Path.home() / ".financialanalyzer"
 
@@ -39,6 +39,7 @@ async def api_fetch_data(request: Request):
         return JSONResponse({"success": False, "error": "缺少 stock_code"}, status_code=400)
 
     adapter = get_adapter()
+    _load_and_apply_token(adapter)
     cache = get_cache()
     data_service = DataService(adapter)
 
