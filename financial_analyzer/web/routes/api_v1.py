@@ -40,7 +40,7 @@ async def api_fetch_data(request: Request):
 
     adapter = get_adapter()
     cache = get_cache()
-    data_service = DataService(adapter, cache)
+    data_service = DataService(adapter)
 
     session = _get_session(request)
     session["stock_code"] = stock_code
