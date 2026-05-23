@@ -43,6 +43,27 @@
     </nav>
 
     <main id="main-content">
+      <!-- Welcome / Token Setup Screen -->
+      <div id="welcome-screen" class="welcome-screen" style="display:none;">
+        <div class="welcome-card">
+          <div class="welcome-logo">FA</div>
+          <h1 class="welcome-title">欢迎使用 Financial Analyzer Pro</h1>
+          <p class="welcome-desc">连接 Tushare 数据源，获取 A 股完整财务数据与 AI 深度分析</p>
+          <div class="welcome-form">
+            <label class="welcome-label">Tushare Token</label>
+            <input type="password" id="welcome-token-input" class="welcome-input"
+                   placeholder="在此粘贴你的 Tushare API Token..."
+                   autocomplete="off">
+            <p class="welcome-hint">
+              前往 <a href="https://tushare.pro" target="_blank">tushare.pro</a> 注册获取 Token（免费）
+            </p>
+            <button class="welcome-btn-primary" id="welcome-btn-save">保存并开始使用</button>
+            <button class="welcome-btn-skip" id="welcome-btn-skip">跳过，先看看</button>
+          </div>
+          <p class="welcome-status" id="welcome-status"></p>
+        </div>
+      </div>
+
       <div id="view-dashboard" class="view active">
         <div id="dashboard-empty" class="dashboard-empty">
           <div class="search-hero">

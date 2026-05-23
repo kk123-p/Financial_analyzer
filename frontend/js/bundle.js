@@ -1850,6 +1850,80 @@ function App() {
   this._listeners = {};
 }
 
+App.prototype._checkTokenAndWelcome = function () {
+  var self = this;
+  var welcomeScreen = document.getElementById('welcome-screen');
+  if (!welcomeScreen) { this._afterWelcomeInit(); return; }
+
+  this.api.getSettingsStatus().then(function (status) {
+    if (status.has_tushare) {
+      welcomeScreen.style.display = 'none';
+      self._afterWelcomeInit();
+    } else {
+      welcomeScreen.style.display = 'flex';
+      self._bindWelcomeForm(welcomeScreen);
+    }
+  }).catch(function () {
+    welcomeScreen.style.display = 'flex';
+    self._bindWelcomeForm(welcomeScreen);
+  });
+};
+
+App.prototype._bindWelcomeForm = function (welcomeScreen) {
+  var self = this;
+  var input = document.getElementById('welcome-token-input');
+  var saveBtn = document.getElementById('welcome-btn-save');
+  var skipBtn = document.getElementById('welcome-btn-skip');
+  var statusEl = document.getElementById('welcome-status');
+
+  var savedToken = localStorage.getItem('fa_tushare_token');
+  if (savedToken && input) input.value = savedToken;
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      var token = input ? input.value.trim() : '';
+      if (!token) { if (statusEl) { statusEl.textContent = '请输入 Tushare Token'; statusEl.className = 'welcome-status error'; } return; }
+      saveBtn.disabled = true;
+      if (statusEl) { statusEl.textContent = '正在验证...'; statusEl.className = 'welcome-status'; }
+      self.api.saveTokens(token, '').then(function (res) {
+        if (res.success) {
+          localStorage.setItem('fa_tushare_token', token);
+          if (statusEl) { statusEl.textContent = 'Token 已保存！进入系统...'; statusEl.className = 'welcome-status success'; }
+          setTimeout(function () { welcomeScreen.style.display = 'none'; self._afterWelcomeInit(); }, 800);
+        } else {
+          saveBtn.disabled = false;
+          if (statusEl) { statusEl.textContent = '保存失败: ' + (res.error || '未知错误'); statusEl.className = 'welcome-status error'; }
+        }
+      }).catch(function (e) {
+        saveBtn.disabled = false;
+        if (statusEl) { statusEl.textContent = '网络错误: ' + e.message; statusEl.className = 'welcome-status error'; }
+      });
+    });
+  }
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', function () {
+      welcomeScreen.style.display = 'none';
+      self._afterWelcomeInit();
+    });
+  }
+};
+
+App.prototype._afterWelcomeInit = function () {
+  console.log('[FA] init step3: binding events...');
+  this._bindNavTabs();
+  this._bindStockSearch();
+  this._bindKeyboardShortcuts();
+  this._bindSettingsButton();
+  this._bindViewChanges();
+  console.log('[FA] init step3: events bound');
+  console.log('[FA] init step4: restore session...');
+  this._restoreSession();
+  console.log('[FA] init step5: connect ws...');
+  this.api.connectWebSocket();
+  console.log('[FA] init COMPLETE');
+};
+
 App.prototype.init = function () {
   var self = this;
   this.router = new Router({
@@ -1870,19 +1944,8 @@ App.prototype.init = function () {
     console.warn('[FA] Failed to load modules: ' + e.message);
   });
 
-  console.log('[FA] init step3: binding events...');
-  this._bindNavTabs();
-  this._bindStockSearch();
-  this._bindKeyboardShortcuts();
-  this._bindSettingsButton();
-  this._bindViewChanges();
-  console.log('[FA] init step3: events bound');
-
-  console.log('[FA] init step4: restore session...');
-  this._restoreSession();
-  console.log('[FA] init step5: connect ws...');
-  this.api.connectWebSocket();
-  console.log('[FA] init COMPLETE — app ready');
+  // Check token, show welcome screen if needed, then bind events
+  this._checkTokenAndWelcome();
 };
 
 App.prototype.selectStock = function (code, name, market) {
