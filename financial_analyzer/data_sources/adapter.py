@@ -216,55 +216,64 @@ class DataSourceAdapter:
     # ======================== Tushare ========================
     def _get_tushare(self, symbol, start_date, end_date, data_type):
         try:
+            # Auto-append exchange suffix for plain 6-digit codes
+            ts_code = symbol
+            if len(symbol) == 6 and symbol.isdigit() and '.' not in symbol:
+                if symbol.startswith(('600', '601', '603', '605', '688')):
+                    ts_code = symbol + '.SH'
+                elif symbol.startswith(('000', '001', '002', '003', '300', '301')):
+                    ts_code = symbol + '.SZ'
+                elif symbol.startswith(('4', '8')):
+                    ts_code = symbol + '.BJ'
             if data_type == "daily":
-                return self.tushare_pro.daily(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "basic":
                 return self.tushare_pro.daily_basic(
-                    ts_code=symbol, start_date=start_date, end_date=end_date,
+                    ts_code=ts_code, start_date=start_date, end_date=end_date,
                     fields="ts_code,trade_date,close,turnover_rate,volume_ratio,pe,pe_ttm,pb,ps,total_mv,circ_mv,total_share,float_share"
                 )
             elif data_type == "stock_basic":
                 return self.tushare_pro.stock_basic(
-                    ts_code=symbol,
+                    ts_code=ts_code,
                     fields='ts_code,name,industry,market,list_date'
                 )
             elif data_type == "financial":
-                return self.tushare_pro.fina_indicator(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.fina_indicator(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "income":
-                return self.tushare_pro.income(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.income(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "balance":
-                return self.tushare_pro.balancesheet(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.balancesheet(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "cashflow":
-                return self.tushare_pro.cashflow(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.cashflow(ts_code=ts_code, start_date=start_date, end_date=end_date)
             # ---- NEW: Market data (Phase 1) ----
             elif data_type == "moneyflow":
-                return self.tushare_pro.moneyflow(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.moneyflow(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "margin":
-                return self.tushare_pro.margin(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.margin(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "margin_detail":
-                return self.tushare_pro.margin_detail(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.margin_detail(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "hk_hold":
-                return self.tushare_pro.hk_hold(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.hk_hold(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "block_trade":
-                return self.tushare_pro.block_trade(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.block_trade(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "weekly":
-                return self.tushare_pro.weekly(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.weekly(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "monthly":
-                return self.tushare_pro.monthly(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.monthly(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "stk_holdernumber":
-                return self.tushare_pro.stk_holdernumber(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.stk_holdernumber(ts_code=ts_code, start_date=start_date, end_date=end_date)
             # ---- NEW: Financial data ----
             elif data_type == "dividend":
-                return self.tushare_pro.dividend(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.dividend(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "top10_holders":
-                return self.tushare_pro.top10_holders(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.top10_holders(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "top10_floatholders":
-                return self.tushare_pro.top10_floatholders(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.top10_floatholders(ts_code=ts_code, start_date=start_date, end_date=end_date)
             # ---- FIX: pre-existing types missing Tushare handler ----
             elif data_type == "fina_audit":
-                return self.tushare_pro.fina_audit(ts_code=symbol, start_date=start_date, end_date=end_date)
+                return self.tushare_pro.fina_audit(ts_code=ts_code, start_date=start_date, end_date=end_date)
             elif data_type == "fina_mainbz":
-                return self.tushare_pro.fina_mainbz(ts_code=symbol, start_date=start_date, end_date=end_date, type='P')
+                return self.tushare_pro.fina_mainbz(ts_code=ts_code, start_date=start_date, end_date=end_date, type='P')
             return None
         except Exception as e:
             logger.error(f"Tushare 数据获取失败: {e}")
