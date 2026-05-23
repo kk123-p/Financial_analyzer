@@ -47,10 +47,10 @@ async def api_fetch_data(request: Request):
     session["source"] = source
 
     try:
-        result = data_service.fetch_stock_data(stock_code, source, start_date)
+        result = data_service.fetch_stock_data(stock_code, start_date)
         session["data"] = result.get("data", {})
 
-        kpis = data_service.extract_kpis(result.get("data", {}), stock_code)
+        kpis = data_service.extract_kpis(result.get("data", {}))
 
         data_types = list(result.get("data", {}).keys())
         financial_ready = all(
