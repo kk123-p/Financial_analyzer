@@ -1958,17 +1958,32 @@ App.prototype.selectStock = function (code, name, market) {
   $('#search-status').className = 'search-status connected';
   $('#search-status').textContent = '加载中...';
 
+  // Show loading in the dashboard
+  var emptyState = document.getElementById('dashboard-empty');
+  var dataState = document.getElementById('dashboard-data');
+  if (emptyState) { emptyState.style.display = 'flex'; }
+  if (dataState) { dataState.style.display = 'none'; }
+
+  // Update search input to show loading
+  var heroInput = document.getElementById('hero-search-input');
+  if (heroInput) { heroInput.disabled = true; heroInput.placeholder = '正在获取 ' + code + ' 的数据...'; }
+
   // Step 1: Fetch stock data into server session
   this.api.fetchStockData(code).then(function (fetchResult) {
+    if (heroInput) { heroInput.disabled = false; heroInput.placeholder = '输入股票代码，如 600519、000001...'; }
     if (!fetchResult.success) {
-      throw new Error(fetchResult.error || '数据获取失败');
+      var errMsg = fetchResult.error || '数据获取失败';
+      if (errMsg.toLowerCase().indexOf('tushare') >= 0 || errMsg.indexOf('token') >= 0 || errMsg.indexOf('权限') >= 0) {
+        errMsg = errMsg + ' — 请检查 Tushare Token 配置是否正确（点击右上角齿轮 ⚙ 进入设置）';
+      }
+      throw new Error(errMsg);
     }
 
     // Step 2: Build KPI from response
     var kpis = fetchResult.kpis || {};
     self.state.kpiData = {
       kpi: {
-        latest_price: kpis.latest_price || kpis.price || '--',
+        latest_price: kpis.latest_price || kpis.price || kpis.current_price || '--',
         change_pct: kpis.change_pct || kpis.change || 0,
         pe_ratio: kpis.pe_ratio || kpis.pe || '--',
         market_cap: kpis.market_cap || kpis.total_mv || '--',
@@ -1981,8 +1996,21 @@ App.prototype.selectStock = function (code, name, market) {
     $('#search-status').textContent = '● 已连接';
     self.emit('stock:loaded', self.state.kpiData);
   }).catch(function (err) {
+    if (heroInput) { heroInput.disabled = false; heroInput.placeholder = '输入股票代码，如 600519、000001...'; }
     $('#search-status').className = 'search-status disconnected';
-    $('#search-status').textContent = '加载失败';
+    $('#search-status').textContent = '加载失败: ' + (err.message || '').substring(0, 30);
+    // Show error in the empty dashboard area
+    if (emptyState) {
+      var errEl = emptyState.querySelector('.search-hero-error');
+      if (!errEl) {
+        errEl = document.createElement('div');
+        errEl.className = 'search-hero-error';
+        errEl.style.cssText = 'margin-top:12px;padding:12px 16px;background:var(--danger-bg);border:1px solid rgba(239,68,68,0.2);border-radius:8px;color:var(--danger);font-size:12px;text-align:center;max-width:400px;';
+        var heroEl = emptyState.querySelector('.search-hero');
+        if (heroEl) heroEl.appendChild(errEl);
+      }
+      errEl.textContent = (err.message || '数据加载失败，请检查 Token 配置和网络连接');
+    }
     self.emit('stock:error', err);
   });
 
