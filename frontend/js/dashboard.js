@@ -172,25 +172,22 @@ export class DashboardView {
     });
   }
 
-  async _fetchAiSummary() {
+  _fetchAiSummary() {
     const body = $('#ai-summary-body');
     if (!body) return;
 
-    body.innerHTML = '<div class="skeleton" style="height:60px;"></div>';
-
-    try {
-      const stock = this.app.state.currentStock;
-      const res = await this.app.api.post('/api/ai/quick-summary', {
-        stock_code: stock.code,
-      });
-      if (res && res.summary) {
-        body.innerHTML = `<p>${res.summary}</p>`;
-      } else {
-        body.innerHTML = '<p class="text-muted">暂无AI快评</p>';
-      }
-    } catch {
-      body.innerHTML = '<p class="text-muted">AI快评暂不可用</p>';
+    const kpi = this.app.state.kpiData;
+    if (!kpi) {
+      body.innerHTML = '<p class="text-muted">输入股票代码后自动生成AI快评</p>';
+      return;
     }
+
+    const types = (kpi.data_types || []).join('、');
+    body.innerHTML = `
+      <p>数据已就绪 · ${kpi.financial_ready ? '财务报表数据完整' : '正在加载更多数据...'}</p>
+      <p style="font-size:10px;color:var(--text-muted);margin-top:4px;">可用数据类型：${types || '加载中...'}</p>
+      <p style="font-size:10px;color:var(--text-muted);">点击右侧「开始 AI 分析对话」进行深度解读</p>
+    `;
   }
 
   _loadRecentAnalyses() {

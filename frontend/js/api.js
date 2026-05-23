@@ -36,6 +36,11 @@ export class ApiClient {
     return this.post('/api/v1/fetch', { stock_code: code, source });
   }
 
+  /** Get raw data table (not available via JSON API — use web UI for data browsing) */
+  async fetchDetailedData(code, dataType) {
+    return { data: [], message: '原始数据浏览请使用 Web UI 的数据页面' };
+  }
+
   /** Get detailed data summary from current session */
   async fetchDataSummary() {
     return this.get('/api/v1/data/summary');
