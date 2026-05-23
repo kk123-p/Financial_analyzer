@@ -49,14 +49,15 @@ async def api_fetch_data(request: Request):
 
     try:
         result = data_service.fetch_stock_data(stock_code, start_date)
-        session["data"] = result.get("data", {})
+        # result IS the data dict: {"daily": DataFrame, "basic": DataFrame, ...}
+        session["data"] = result
 
-        kpis = data_service.extract_kpis(result.get("data", {}))
+        kpis = data_service.extract_kpis(result)
 
-        data_types = list(result.get("data", {}).keys())
+        data_types = list(result.keys())
         financial_ready = all(
-            t in result.get("data", {}) and result["data"][t] is not None and
-            (not hasattr(result["data"][t], 'empty') or not result["data"][t].empty)
+            t in result and result[t] is not None and
+            (not hasattr(result[t], 'empty') or not result[t].empty)
             for t in ["income", "balance", "cashflow"]
         )
 
