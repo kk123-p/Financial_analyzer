@@ -1979,12 +1979,12 @@ App.prototype.selectStock = function (code, name, market) {
       throw new Error(errMsg);
     }
 
-    // Step 2: Build KPI from response
+    // Step 2: Build KPI from response (match backend field names)
     var kpis = fetchResult.kpis || {};
     self.state.kpiData = {
       kpi: {
-        latest_price: kpis.latest_price || kpis.price || kpis.current_price || '--',
-        change_pct: kpis.change_pct || kpis.change || 0,
+        latest_price: kpis.current_price || kpis.latest_price || kpis.price || '--',
+        change_pct: parseFloat(kpis.price_change_pct) || kpis.change_pct || kpis.change || 0,
         pe_ratio: kpis.pe_ratio || kpis.pe || '--',
         market_cap: kpis.market_cap || kpis.total_mv || '--',
         roe: kpis.roe || '--',
@@ -1993,6 +1993,14 @@ App.prototype.selectStock = function (code, name, market) {
       financial_ready: fetchResult.financial_ready,
       data_types: fetchResult.data_types || [],
     };
+
+    // Directly switch to data state
+    if (emptyState) emptyState.style.display = 'none';
+    if (dataState) dataState.style.display = 'flex';
+
+    // Fill KPI cards directly
+    self._renderKpiDirect(self.state.kpiData);
+
     $('#search-status').textContent = '● 已连接';
     self.emit('stock:loaded', self.state.kpiData);
   }).catch(function (err) {
@@ -2015,6 +2023,23 @@ App.prototype.selectStock = function (code, name, market) {
   });
 
   this._saveSession();
+};
+
+// Direct KPI render — bypasses event system
+App.prototype._renderKpiDirect = function (kpiData) {
+  var strip = document.getElementById('kpi-strip');
+  if (!strip) return;
+  var kpi = kpiData.kpi || kpiData;
+  var items = [
+    { label: '最新价', value: kpi.latest_price || '--' },
+    { label: '市盈率 PE', value: kpi.pe_ratio || '--' },
+    { label: '总市值', value: kpi.market_cap || '--' },
+    { label: 'ROE', value: kpi.roe || '--' },
+    { label: '数据状态', value: kpiData.financial_ready ? '财报就绪' : '行情已加载' },
+  ];
+  strip.innerHTML = items.map(function (item) {
+    return '<div class=\"kpi-card\"><div class=\"kpi-card-label\">' + item.label + '</div><div class=\"kpi-card-value\">' + item.value + '</div></div>';
+  }).join('');
 };
 
 App.prototype.on = function (event, callback) {
