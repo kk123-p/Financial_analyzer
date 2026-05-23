@@ -4,15 +4,19 @@
 
 // Error boundary — show errors on screen
 window.addEventListener('error', function(e) {
-  var el = document.getElementById('js-error');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'js-error';
-    el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#EF4444;color:#fff;padding:12px 20px;z-index:99999;font-family:sans-serif;font-size:13px;word-break:break-all;';
-    document.body.prepend(el);
-  }
-  el.innerHTML = '<strong>JS 错误:</strong> ' + (e.message || e.error || 'Unknown') + ' (行 ' + (e.lineno || '?') + ')';
-  console.error('[FA]', e);
+  var msg = '[FA ERROR] ' + (e.message || e.error || 'Unknown') + ' (line ' + (e.lineno || '?') + ', file: ' + (e.filename || '?') + ')';
+  console.error(msg, e);
+  // Create visible error banner
+  var el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#EF4444;color:#fff;padding:14px 20px;z-index:99999;font-family:sans-serif;font-size:14px;word-break:break-all;line-height:1.5;';
+  el.textContent = msg;
+  var parent = document.body || document.documentElement;
+  if (parent) parent.insertBefore(el, parent.firstChild);
+});
+
+// Unhandled promise rejections
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[FA UNHANDLED PROMISE]', e.reason);
 });
 
 console.log('[FA] Bundle loaded');
@@ -1858,20 +1862,27 @@ App.prototype.init = function () {
   });
   this.router.start();
 
+  console.log('[FA] init step1: router started');
   this.api.getAnalysisModules().then(function (modules) {
     self.state.modules = modules;
-  }).catch(function () {
-    console.warn('Failed to load module catalog, using fallback');
+    console.log('[FA] init step2: modules loaded, count=' + (modules ? modules.length : 0));
+  }).catch(function (e) {
+    console.warn('[FA] Failed to load modules: ' + e.message);
   });
 
+  console.log('[FA] init step3: binding events...');
   this._bindNavTabs();
   this._bindStockSearch();
   this._bindKeyboardShortcuts();
   this._bindSettingsButton();
   this._bindViewChanges();
+  console.log('[FA] init step3: events bound');
 
+  console.log('[FA] init step4: restore session...');
   this._restoreSession();
+  console.log('[FA] init step5: connect ws...');
   this.api.connectWebSocket();
+  console.log('[FA] init COMPLETE — app ready');
 };
 
 App.prototype.selectStock = function (code, name, market) {
@@ -1937,6 +1948,7 @@ App.prototype._bindNavTabs = function () {
 App.prototype._bindStockSearch = function () {
   var self = this;
   var input = $('#stock-input');
+  if (!input) { console.warn('[FA] #stock-input not found, skipping bind'); return; }
 
   // Enter key triggers data fetch
   input.addEventListener('keydown', function (e) {
@@ -1970,7 +1982,9 @@ App.prototype._bindKeyboardShortcuts = function () {
 
 App.prototype._bindSettingsButton = function () {
   var self = this;
-  $('#btn-settings').addEventListener('click', function () {
+  var btn = $('#btn-settings');
+  if (!btn) { console.warn('[FA] #btn-settings not found, skipping bind'); return; }
+  btn.addEventListener('click', function () {
     self.router.navigate('/settings');
   });
 };

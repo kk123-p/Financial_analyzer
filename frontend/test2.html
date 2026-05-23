@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Bundle Test</title>
+<style>
+body { background:#06080F; color:#F1F5F9; font-family: sans-serif; padding:40px; }
+.pass { color:#10B981; } .fail { color:#EF4444; }
+.test { margin:8px 0; padding:8px; background:rgba(255,255,255,0.03); border-radius:8px; }
+</style>
+</head>
+<body>
+<h2>Bundle.js 加载测试</h2>
+<div id="results"></div>
+
+<script>
+var results = document.getElementById('results');
+function log(name, pass, detail) {
+  var div = document.createElement('div');
+  div.className = 'test';
+  div.innerHTML = '<span class="' + (pass ? 'pass' : 'fail') + '">' + (pass ? 'PASS' : 'fail') + '</span> ' + name + (detail ? ': ' + detail : '');
+  results.appendChild(div);
+}
+
+// Catch bundle errors
+window.addEventListener('error', function(e) {
+  log('Bundle 错误', false, (e.message || 'Unknown') + ' at line ' + e.lineno);
+});
+</script>
+
+<script src="/static/frontend/js/bundle.js"></script>
+
+<script>
+// After bundle loads, check what was created
+setTimeout(function() {
+  if (window.__app) {
+    log('App 实例', true, 'window.__app 已创建');
+    log('Router', !!window.__app.router, window.__app.router ? '已创建' : '未创建');
+    log('API Client', !!window.__app.api, window.__app.api ? '已创建' : '未创建');
+    log('State', !!window.__app.state, JSON.stringify(window.__app.state).substring(0, 80));
+  } else {
+    log('App 实例', false, 'window.__app 未创建 — 检查上方 Bundle 错误');
+  }
+}, 2000);
+</script>
+</body>
+</html>

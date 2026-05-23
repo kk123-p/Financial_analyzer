@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>JS Test</title>
+<style>
+body { background:#06080F; color:#F1F5F9; font-family: sans-serif; padding:40px; }
+.pass { color:#10B981; } .fail { color:#EF4444; }
+.test { margin:8px 0; padding:8px; background:rgba(255,255,255,0.03); border-radius:8px; }
+</style>
+</head>
+<body>
+<h2>Pywebview JS 诊断</h2>
+<div id="results"></div>
+<script>
+var results = document.getElementById('results');
+function log(name, pass, detail) {
+  var div = document.createElement('div');
+  div.className = 'test';
+  div.innerHTML = '<span class="' + (pass ? 'pass' : 'fail') + '">' + (pass ? 'PASS' : 'FAIL') + '</span> ' + name + (detail ? ': ' + detail : '');
+  results.appendChild(div);
+}
+
+// Test 1: Basic JS execution
+log('JS 执行', true, 'bundle 已加载');
+
+// Test 2: DOM manipulation
+var span = document.createElement('span');
+span.textContent = 'Hello World';
+document.body.appendChild(span);
+log('DOM 操作', span.textContent === 'Hello World');
+
+// Test 3: Event binding
+var btn = document.createElement('button');
+btn.textContent = '点击测试';
+btn.style.cssText = 'padding:8px 16px;margin:8px 0;cursor:pointer;background:#6C5CE7;color:#fff;border:none;border-radius:6px;';
+var clicked = false;
+btn.addEventListener('click', function() {
+  clicked = true;
+  log('事件绑定', true, '按钮点击事件触发');
+});
+document.body.appendChild(btn);
+setTimeout(function() {
+  if (!clicked) log('事件绑定', false, '请手动点击上方按钮验证');
+}, 1000);
+
+// Test 4: Fetch API
+fetch('/api/health')
+  .then(function(r) { return r.json(); })
+  .then(function(d) { log('Fetch API', d.status === 'ok', JSON.stringify(d)); })
+  .catch(function(e) { log('Fetch API', false, e.message); });
+
+// Test 5: localStorage
+try {
+  localStorage.setItem('_test', '1');
+  var val = localStorage.getItem('_test');
+  log('localStorage', val === '1');
+} catch(e) { log('localStorage', false, e.message); }
+
+// Test 6: CSS custom properties
+var style = getComputedStyle(document.body);
+var bg = style.backgroundColor;
+log('CSS 变量', true, '背景色: ' + bg);
+</script>
+</body>
+</html>
