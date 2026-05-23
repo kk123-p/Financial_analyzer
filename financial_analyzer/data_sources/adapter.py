@@ -144,7 +144,7 @@ class DataSourceAdapter:
         if active == "tushare" and sources.get("tushare") and tushare:
             df = self._get_tushare(symbol, start_date, end_date, data_type)
             source = "tushare"
-            if df is None and HAS_AKSHARE and data_type in ("income", "balance", "cashflow"):
+            if df is None and HAS_AKSHARE:
                 logger.info(f"Tushare 获取 {data_type} 失败，尝试 Akshare 回退")
                 df = self._get_akshare(symbol, start_date, end_date, data_type)
                 source = "akshare"

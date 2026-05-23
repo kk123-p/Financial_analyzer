@@ -59,9 +59,13 @@ class DataService:
                 logger.warning(f"获取 {dtype} 失败: {e}")
 
         # 如果没获取到任何数据，尝试回退数据源
+        # 优先国内数据源（yfinance 在国内不可靠，跳过）
         if not data:
-            fallbacks = [s for s in self.adapter.get_available_sources()
-                        if s != effective_source]
+            all_sources = self.adapter.get_available_sources()
+            # Reorder: domestic sources (akshare, sina) before foreign (yfinance)
+            domestic = [s for s in all_sources if s in ('akshare', 'sina') and s != effective_source]
+            foreign = [s for s in all_sources if s == 'yfinance' and s != effective_source]
+            fallbacks = domestic + foreign
             for fb in fallbacks:
                 self.adapter.set_active_source(fb)
                 effective_source = fb
