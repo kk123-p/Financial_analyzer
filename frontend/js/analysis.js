@@ -123,8 +123,9 @@ export class AnalysisView {
 
       if (stock) {
         try {
-          const result = await this.app.api.runAnalysis(stock.code, moduleKey);
-          body.innerHTML = this._renderMarkdown(result.text || result.report || JSON.stringify(result));
+          const result = await this.app.api.runAnalysis(moduleKey);
+          const text = result.result_text || result.report || '';
+          body.innerHTML = text ? this._renderMarkdown(text) : '<p class="text-muted">分析完成，暂无内容</p>';
           this._addCopyButtons(body);
           this._renderChart(moduleKey, result);
           this._renderRecommendations(moduleKey, mod);
