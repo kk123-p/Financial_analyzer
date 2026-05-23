@@ -5,6 +5,7 @@ import threading
 import webview
 
 API_URL = "http://127.0.0.1:8000/static/frontend/index.html"
+HEALTH_URL = "http://127.0.0.1:8000/api/health"
 
 
 def start_fastapi():
@@ -23,7 +24,7 @@ def main():
         for _ in range(30):
             try:
                 import urllib.request
-                urllib.request.urlopen(API_URL + "/api/health", timeout=1)
+                urllib.request.urlopen(HEALTH_URL, timeout=1)
                 break
             except Exception:
                 time.sleep(0.5)
