@@ -4,7 +4,7 @@ import time
 import threading
 import webview
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "http://127.0.0.1:8000/static/frontend/index.html"
 
 
 def start_fastapi():

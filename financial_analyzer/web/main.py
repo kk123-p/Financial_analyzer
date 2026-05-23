@@ -38,25 +38,21 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # 新前端 — 纯 HTML/CSS/JS SPA（挂载在 /static/frontend）
+    # 必须先挂载更具体的路径，否则 /static 会抢先捕获 /static/frontend/* 请求
+    frontend_dir = Path(__file__).parent.parent.parent / "frontend"
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static/frontend", StaticFiles(directory=str(frontend_dir)), name="frontend_static")
+
     # 静态文件
     static_dir = Path(__file__).parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    # 新前端 — 纯 HTML/CSS/JS SPA（挂载在 /static/frontend）
-    frontend_dir = Path(__file__).parent.parent.parent / "frontend"
-    frontend_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/static/frontend", StaticFiles(directory=str(frontend_dir)), name="frontend_static")
-
     # 健康检查
     @app.get("/api/health")
     async def health():
         return {"status": "ok"}
-
-    # 根路由 — 服务于新 SPA 前端
-    @app.get("/")
-    async def root():
-        return FileResponse(str(frontend_dir / "index.html"))
 
     # 注册路由
     from .routes import pages, data_api, analysis, charts_api, ai_api, export_api, settings_api, api_v1

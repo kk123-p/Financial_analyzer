@@ -12,7 +12,7 @@ class FakeLLMClient:
         self.calls = []
         self._stream_responses = ["模拟分析结果。置信度: 高"]
 
-    def generate_deep_analysis_stream(self, prompt, system_prompt=None, callback=None):
+    def generate_deep_analysis_stream(self, prompt, system_prompt=None, callback=None, cancel_event=None):
         self.calls.append({"prompt": prompt, "system_prompt": system_prompt})
         from financial_analyzer.deepseek.client import AnalysisReport
         for chunk in self._stream_responses:
@@ -115,7 +115,7 @@ class TestAnalysisOrchestratorAnalyze:
     def test_analyze_error_handling(self):
         """LLM 返回失败时不应崩溃"""
         class FailingClient(FakeLLMClient):
-            def generate_deep_analysis_stream(self, prompt, system_prompt=None, callback=None):
+            def generate_deep_analysis_stream(self, prompt, system_prompt=None, callback=None, cancel_event=None):
                 from financial_analyzer.deepseek.client import AnalysisReport
                 report = AnalysisReport()
                 report.success = False
