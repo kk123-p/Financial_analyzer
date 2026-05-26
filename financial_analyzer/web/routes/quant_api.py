@@ -1,7 +1,10 @@
 """量化策略 API 路由"""
 import json
 import logging
+import threading
+import uuid
 from pathlib import Path
+from datetime import datetime
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -28,6 +31,10 @@ from ..dependencies import get_adapter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/quant", tags=["quant"])
+
+# 任务状态存储
+_task_store: dict[str, dict] = {}
+_task_lock = threading.Lock()
 
 CONFIG_DIR = Path.home() / ".financialanalyzer"
 
@@ -102,138 +109,154 @@ async def list_factors():
     })
 
 
+def _update_task(task_id: str, **kwargs):
+    with _task_lock:
+        if task_id in _task_store:
+            _task_store[task_id].update(kwargs)
+
+
 @router.post("/run")
 async def run_signal_generation(
     pool: str = Query("沪深300", description="选股池名称"),
     top_n: int = Query(30, description="TOP-N 排名数量"),
-    skip_data_fetch: bool = Query(False, description="跳过数据获取（仅测试管道结构）"),
 ):
-    """运行完整的信号生成管道"""
-    try:
-        adapter = get_adapter()
-        _load_token(adapter)
+    """启动信号生成（后台线程 + 进度轮询）"""
+    task_id = uuid.uuid4().hex[:12]
 
-        mgr = UniverseManager(adapter)
-        stocks = mgr.get_universe(pool)
+    with _task_lock:
+        _task_store[task_id] = {
+            "status": "starting",
+            "progress": 0,
+            "message": "正在初始化...",
+            "started_at": datetime.now().isoformat(),
+            "pool": pool,
+        }
 
-        if not stocks:
-            return JSONResponse({
-                "success": False,
-                "error": f"选股池 [{pool}] 无可用股票，请检查Tushare连接",
-            }, status_code=400)
+    def run_pipeline():
+        try:
+            _update_task(task_id, status="running", progress=5, message="加载 Tushare 连接...")
+            adapter = get_adapter()
+            _load_token(adapter)
 
-        logger.info(f"选股池 [{pool}]: {len(stocks)} 只成分股")
+            _update_task(task_id, progress=10, message=f"获取 {pool} 成分股...")
+            mgr = UniverseManager(adapter)
+            stocks = mgr.get_universe(pool)
 
-        # P0: 先补充股票基本信息，再应用硬过滤
-        if skip_data_fetch:
-            stock_data = {}
-            logger.warning("跳过数据获取，管道将产生空结果")
-        else:
-            fetcher = QuantDataFetcher(adapter, start_date="20230101")
+            if not stocks:
+                _update_task(task_id, status="error", message=f"选股池 [{pool}] 无可用股票")
+                return
+
+            n_stocks = len(stocks)
+            _update_task(task_id, progress=15, message=f"成分股: {n_stocks} 只，补充基本信息...")
+
+            def progress_cb(stage, current, total, msg):
+                # fetch 阶段占 15%–80% 的进度
+                base = 15
+                pct = base + int(65 * current / total) if total > 0 else base
+                _update_task(task_id, progress=pct, message=msg, stage=stage,
+                             current=current, total=total)
+
+            fetcher = QuantDataFetcher(adapter, start_date="20230101",
+                                       progress_callback=progress_cb)
             stocks = fetcher.enrich_stock_info(stocks)
             stocks = mgr.apply_filters(stocks)
-            logger.info(f"硬过滤后: {len(stocks)} 只")
             stock_data = fetcher.fetch_all(stocks)
 
-        stocks_with_data = [
-            s for s in stocks if s.code in stock_data
-        ]
-        logger.info(
-            f"数据获取完成: {len(stocks_with_data)}/{len(stocks)} 只有效数据"
-        )
-        if len(stocks_with_data) < 5:
-            return JSONResponse({
-                "success": False,
-                "error": (
-                    f"有效数据不足: {len(stocks_with_data)} 只股票"
-                    f"（共 {len(stocks)} 只在池中）。请检查 Tushare 权限和网络。"
-                ),
-                "total_stocks_analyzed": len(stocks),
-                "valid_stocks": len(stocks_with_data),
-            }, status_code=400)
+            stocks_with_data = [s for s in stocks if s.code in stock_data]
+            n_valid = len(stocks_with_data)
 
-        # 构建因子矩阵
-        builder = FactorMatrixBuilder(factors=ALL_FACTORS)
-        matrix = builder.build(stocks_with_data, stock_data)
-        logger.info(
-            f"因子矩阵: {len(matrix.stocks)} 只股票, "
-            f"{len(matrix.scores.get(matrix.stocks[0], {}) if matrix.stocks else 0)} 个因子/只"
-        )
+            if n_valid < 5:
+                _update_task(task_id, status="error",
+                             message=f"有效数据不足: {n_valid}/{n_stocks} 只")
+                return
 
-        if len(matrix.stocks) < 5:
-            return JSONResponse({
-                "success": False,
-                "error": f"因子计算后有效股票不足: {len(matrix.stocks)} 只",
-                "total_stocks_analyzed": len(stocks),
-            }, status_code=400)
+            _update_task(task_id, progress=80, message=f"计算因子矩阵 ({n_valid} 只)...")
 
-        # 截面标准化
-        normalizer = CrossSectionalNormalizer(method="zscore")
-        matrix = normalizer.normalize(matrix)
+            builder = FactorMatrixBuilder(factors=ALL_FACTORS)
+            matrix = builder.build(stocks_with_data, stock_data)
 
-        # 加权打分
-        scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
-        composite_scores = scorer.score(matrix)
+            if len(matrix.stocks) < 5:
+                _update_task(task_id, status="error", message=f"因子计算后不足: {len(matrix.stocks)} 只")
+                return
 
-        # 排名 + 硬过滤
-        ranker = Ranker(top_n=top_n, max_price=15.0)
-        ranked = ranker.rank(matrix, composite_scores, stocks_with_data)
-        logger.info(f"排名过滤后: {len(ranked)} 只进入TOP-{top_n}")
+            _update_task(task_id, progress=85, message="截面标准化 + 打分 + 排名...")
+            normalizer = CrossSectionalNormalizer(method="zscore")
+            matrix = normalizer.normalize(matrix)
 
-        if not ranked:
-            return JSONResponse({
-                "success": False,
-                "error": "没有股票通过排名和过滤条件",
-                "total_stocks_analyzed": len(stocks),
-            }, status_code=400)
+            scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
+            composite_scores = scorer.score(matrix)
 
-        # 约束优化
-        optimizer = ConstraintOptimizer()
-        optimized = optimizer.optimize(ranked, composite_scores)
-        logger.info(f"约束优化后: {len(optimized)} 只")
+            ranker = Ranker(top_n=top_n, max_price=15.0)
+            ranked = ranker.rank(matrix, composite_scores, stocks_with_data)
 
-        if not optimized:
-            return JSONResponse({
-                "success": False,
-                "error": "约束优化后无股票入选",
-                "total_stocks_analyzed": len(stocks),
-            }, status_code=400)
+            if not ranked:
+                _update_task(task_id, status="error", message="排名过滤后无股票入选")
+                return
 
-        # 信号生成
-        signal_gen = SignalGenerator()
-        trade_list = signal_gen.generate(
-            optimized_stocks=optimized,
-            scores=composite_scores,
-            current_holdings=set(),
-            universe=pool,
-        )
+            _update_task(task_id, progress=90, message="约束优化 + 生成信号...")
+            optimizer = ConstraintOptimizer()
+            optimized = optimizer.optimize(ranked, composite_scores)
 
-        # 构建响应中的排名列表（含股价信息）
-        prices_from_data = {}
-        for code, data in stock_data.items():
-            daily = data.get("daily")
-            if daily is not None and not daily.empty and "close" in daily.columns:
-                prices_from_data[code] = float(daily["close"].iloc[0])
+            signal_gen = SignalGenerator()
+            trade_list = signal_gen.generate(
+                optimized_stocks=optimized,
+                scores=composite_scores,
+                current_holdings=set(),
+                universe=pool,
+            )
 
-        return JSONResponse({
-            "success": True,
-            "date": str(trade_list.date),
-            "universe": pool,
-            "total_stocks_analyzed": len(stocks),
-            "valid_stocks": len(stocks_with_data),
-            "signals": [
-                {
-                    "code": s.stock_code,
-                    "name": s.stock_name,
-                    "action": s.action,
-                    "score": round(s.composite_score, 4),
-                    "weight": round(s.target_weight, 4),
-                    "price": round(prices_from_data.get(s.stock_code, 0), 2),
-                    "reason": s.reason,
-                }
-                for s in trade_list.signals
-            ],
-        })
-    except Exception as e:
-        logger.error(f"信号生成失败: {e}", exc_info=True)
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+            prices_from_data = {}
+            for code, data in stock_data.items():
+                daily = data.get("daily")
+                if daily is not None and not daily.empty and "close" in daily.columns:
+                    prices_from_data[code] = float(daily["close"].iloc[0])
+
+            _update_task(task_id, status="done", progress=100, message="完成",
+                         result={
+                             "success": True,
+                             "date": str(trade_list.date),
+                             "universe": pool,
+                             "total_stocks_analyzed": n_stocks,
+                             "valid_stocks": n_valid,
+                             "signals": [
+                                 {
+                                     "code": s.stock_code,
+                                     "name": s.stock_name,
+                                     "action": s.action,
+                                     "score": round(s.composite_score, 4),
+                                     "weight": round(s.target_weight, 4),
+                                     "price": round(prices_from_data.get(s.stock_code, 0), 2),
+                                     "reason": s.reason,
+                                 }
+                                 for s in trade_list.signals
+                             ],
+                         })
+
+        except Exception as e:
+            logger.error(f"信号生成失败: {e}", exc_info=True)
+            _update_task(task_id, status="error", message=str(e))
+
+    threading.Thread(target=run_pipeline, daemon=True).start()
+    return JSONResponse({"task_id": task_id})
+
+
+@router.get("/status/{task_id}")
+async def task_status(task_id: str):
+    """查询任务进度"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse(task)
+
+
+@router.get("/result/{task_id}")
+async def task_result(task_id: str):
+    """获取任务结果"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    if task["status"] == "done":
+        return JSONResponse(task.get("result", {}))
+    return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})

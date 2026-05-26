@@ -15,11 +15,15 @@ logger = logging.getLogger(__name__)
 
 # 因子计算需要的数据类型
 FACTOR_DATA_TYPES = [
-    "daily",       # 日线行情 → 动量/低波/PS/FCFYield
-    "basic",       # 每日指标 → PE/PB/PS/总市值
-    "income",      # 利润表 → ROE/毛利率/净利率/增长率
-    "balance",     # 资产负债表 → ROE/ROIC/负债率/流动比率
-    "cashflow",    # 现金流量表 → FCF收益率/现金流增长
+    "daily",       # 日线行情 → 动量/低波/PS/FCFYield (≈0.3s per call)
+    "basic",       # 每日指标 → PE/PB/PS/总市值 (≈0.3s)
+    "income",      # 利润表 → ROE/毛利率/净利率/增长率 (≈0.5s)
+    "balance",     # 资产负债表 → ROE/ROIC/负债率/流动比率 (≈0.5s)
+    "cashflow",    # 现金流量表 → FCF收益率/现金流增长 (≈0.5s)
+]
+
+# 高级数据类型（需要 Tushare 更高权限，按需启用）
+OPTIONAL_DATA_TYPES = [
     "margin",      # 融资融券 → 融资变化
     "hk_hold",     # 北向资金 → 北向流入
     "dividend",    # 分红 → 股息率
@@ -35,7 +39,8 @@ class QuantDataFetcher:
 
     def __init__(self, adapter: DataSourceAdapter,
                  start_date: str = "20240101",
-                 max_workers: int = 4):
+                 max_workers: int = 4,
+                 progress_callback=None):
         self.adapter = adapter
         self.start_date = start_date
         self.max_workers = max_workers
@@ -43,6 +48,7 @@ class QuantDataFetcher:
         self._last_call_time = 0.0
         self._call_count = 0
         self._fetch_stats: dict[str, int] = {}
+        self._progress_callback = progress_callback  # fn(stage, current, total, msg)
 
     def enrich_stock_info(self, stocks: list[StockInfo]) -> list[StockInfo]:
         """用 Tushare stock_basic 数据补充 StockInfo 的 name/industry/market/listed_date"""
@@ -125,8 +131,14 @@ class QuantDataFetcher:
                     result[code][data_type] = df
                     self._fetch_stats[data_type] = self._fetch_stats.get(data_type, 0) + 1
 
-                if completed % 500 == 0:
-                    logger.info(f"数据获取进度: {completed}/{total} ({100*completed/total:.0f}%)")
+                if completed % 100 == 0 or completed == total:
+                    pct = 100 * completed / total
+                    logger.info(f"数据获取进度: {completed}/{total} ({pct:.0f}%)")
+                    if self._progress_callback:
+                        self._progress_callback(
+                            "fetching", completed, total,
+                            f"获取数据 {completed}/{total} ({pct:.0f}%)"
+                        )
 
         logger.info(f"数据获取完成: {len(result)}/{len(stocks)} 只有效数据")
         for dt, count in self._fetch_stats.items():
@@ -135,14 +147,21 @@ class QuantDataFetcher:
         return result
 
     def _rate_limited_fetch(self, code: str, data_type: str) -> Optional[pd.DataFrame]:
-        """带速率限制的单次数据获取"""
+        """带速率限制的单次数据获取（锁外sleep，支持并行）"""
+        # 预留时间槽
         with self._rate_lock:
             now = time.time()
-            elapsed = now - self._last_call_time
-            if elapsed < CALL_INTERVAL and self._call_count > 0:
-                time.sleep(CALL_INTERVAL - elapsed)
-            self._last_call_time = time.time()
+            if self._call_count == 0:
+                slot = now
+            else:
+                slot = max(self._last_call_time + CALL_INTERVAL, now)
+            self._last_call_time = slot
             self._call_count += 1
+
+        # 在锁外等待（不阻塞其他线程）
+        wait = slot - time.time()
+        if wait > 0:
+            time.sleep(wait)
 
         end_date = date.today().strftime("%Y%m%d")
         return self.adapter.get_stock_data(code, self.start_date, end_date, data_type)

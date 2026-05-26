@@ -441,8 +441,9 @@
 
     <script src="/static/js/app.js"></script>
     <script>
-    // ========== 量化策略面板 ==========
-    var _quantAbortController = null;
+    // ========== 量化策略面板（异步 + 进度轮询） ==========
+    var _quantTimer = null;
+    var _quantTaskId = null;
 
     function runQuantSignal() {
         var pool = document.getElementById('quant-pool').value;
@@ -453,60 +454,87 @@
         var emptyEl = document.getElementById('quant-empty');
 
         btn.disabled = true;
-        btn.textContent = '计算中...';
+        btn.textContent = '提交中...';
         stopBtn.style.display = 'inline-block';
-        statusEl.textContent = '正在获取成分股和因子数据...';
+        statusEl.textContent = '正在提交任务...';
         statusEl.style.color = 'var(--text-muted)';
         resultEl.style.display = 'none';
         emptyEl.style.display = 'none';
 
-        _quantAbortController = new AbortController();
-
-        fetch('/api/v1/quant/run?pool=' + encodeURIComponent(pool) + '&top_n=30', {
-            method: 'POST',
-            signal: _quantAbortController.signal,
-        })
+        fetch('/api/v1/quant/run?pool=' + encodeURIComponent(pool) + '&top_n=30', { method: 'POST' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            _quantAbortController = null;
-            btn.disabled = false;
-            btn.textContent = '生成信号';
-            stopBtn.style.display = 'none';
-
-            if (data.success) {
-                statusEl.textContent = '完成 · ' + data.total_stocks_analyzed + '只分析 · ' + (data.valid_stocks || 0) + '只有效';
-                statusEl.style.color = '#4caf50';
-                renderQuantResult(data);
-                resultEl.style.display = 'block';
-            } else {
-                statusEl.textContent = data.error || '信号生成失败';
-                statusEl.style.color = '#f44336';
-                emptyEl.style.display = 'block';
-                emptyEl.innerHTML = '<div style="font-size:14px;color:#f44336;text-align:center;padding:40px;">' +
-                    (data.error || '未知错误') +
-                    '<br><span style="font-size:12px;color:var(--text-muted);">分析: ' + (data.total_stocks_analyzed || 0) + '只 · 有效: ' + (data.valid_stocks || 0) + '只</span></div>';
-            }
+            _quantTaskId = data.task_id;
+            btn.textContent = '计算中...';
+            statusEl.textContent = '[0%] 任务已提交，初始化...';
+            pollTaskProgress();
         })
         .catch(function(err) {
-            _quantAbortController = null;
             btn.disabled = false;
             btn.textContent = '生成信号';
             stopBtn.style.display = 'none';
-            if (err.name !== 'AbortError') {
-                statusEl.textContent = '请求失败: ' + err.message;
+            statusEl.textContent = '提交失败: ' + err.message;
+            statusEl.style.color = '#f44336';
+        });
+    }
+
+    function pollTaskProgress() {
+        if (!_quantTaskId) return;
+        fetch('/api/v1/quant/status/' + _quantTaskId)
+        .then(function(r) { return r.json(); })
+        .then(function(task) {
+            var btn = document.getElementById('btn-quant-run');
+            var statusEl = document.getElementById('quant-status-text');
+            var stopBtn = document.getElementById('btn-quant-stop');
+            var emptyEl = document.getElementById('quant-empty');
+            var resultEl = document.getElementById('quant-result');
+
+            var pct = task.progress || 0;
+            var msg = task.message || '';
+            statusEl.textContent = '[' + pct + '%] ' + msg;
+
+            if (task.status === 'done') {
+                _quantTimer = null;
+                _quantTaskId = null;
+                btn.disabled = false;
+                btn.textContent = '生成信号';
+                stopBtn.style.display = 'none';
+                statusEl.textContent = '[' + pct + '%] 完成！';
+                statusEl.style.color = '#4caf50';
+                if (task.result) {
+                    renderQuantResult(task.result);
+                    resultEl.style.display = 'block';
+                }
+            } else if (task.status === 'error') {
+                _quantTimer = null;
+                _quantTaskId = null;
+                btn.disabled = false;
+                btn.textContent = '生成信号';
+                stopBtn.style.display = 'none';
+                statusEl.textContent = msg || '计算失败';
                 statusEl.style.color = '#f44336';
+                emptyEl.style.display = 'block';
             } else {
-                statusEl.textContent = '已停止';
                 statusEl.style.color = 'var(--text-muted)';
+                _quantTimer = setTimeout(pollTaskProgress, 2000);
             }
+        })
+        .catch(function() {
+            _quantTimer = setTimeout(pollTaskProgress, 3000);
         });
     }
 
     function stopQuantSignal() {
-        if (_quantAbortController) {
-            _quantAbortController.abort();
-            _quantAbortController = null;
-        }
+        if (_quantTimer) { clearTimeout(_quantTimer); _quantTimer = null; }
+        _quantTaskId = null;
+        var btn = document.getElementById('btn-quant-run');
+        var stopBtn = document.getElementById('btn-quant-stop');
+        var statusEl = document.getElementById('quant-status-text');
+        btn.disabled = false;
+        btn.textContent = '生成信号';
+        stopBtn.style.display = 'none';
+        statusEl.textContent = '已停止';
+        statusEl.style.color = 'var(--text-muted)';
     }
 
     function renderQuantResult(data) {
