@@ -192,14 +192,27 @@ async def run_signal_generation(
             scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
             composite_scores = scorer.score(matrix)
 
-            ranker = Ranker(top_n=top_n, max_price=15.0)
-            ranked = ranker.rank(matrix, composite_scores, stocks_with_data)
+            # 从 stock_data 中提取股价
+            prices_from_data = {}
+            for code, data in stock_data.items():
+                daily = data.get("daily")
+                if daily is not None and not daily.empty and "close" in daily.columns:
+                    prices_from_data[code] = float(daily["close"].iloc[0])
+
+            # 5000元本金：每只至少买100股，预留10%现金
+            # 5只持仓：4500/5=900/只 → max 9元 | 8只：4500/8=562/只 → max 5元
+            # 取折中：max_price=10, min 5只
+            max_price = 10.0
+            ranker = Ranker(top_n=top_n, max_price=max_price)
+            ranked = ranker.rank(matrix, composite_scores, stocks_with_data,
+                                 prices=prices_from_data)
 
             if not ranked:
-                _update_task(task_id, status="error", message="排名过滤后无股票入选")
+                _update_task(task_id, status="error",
+                             message=f"股价≤{max_price}元过滤后无股票入选（共{len(stocks_with_data)}只有效数据）")
                 return
 
-            _update_task(task_id, progress=90, message="约束优化 + 生成信号...")
+            _update_task(task_id, progress=90, message=f"约束优化 ({len(ranked)} 只) + 生成信号...")
             optimizer = ConstraintOptimizer()
             optimized = optimizer.optimize(ranked, composite_scores)
 
@@ -210,12 +223,6 @@ async def run_signal_generation(
                 current_holdings=set(),
                 universe=pool,
             )
-
-            prices_from_data = {}
-            for code, data in stock_data.items():
-                daily = data.get("daily")
-                if daily is not None and not daily.empty and "close" in daily.columns:
-                    prices_from_data[code] = float(daily["close"].iloc[0])
 
             _update_task(task_id, status="done", progress=100, message="完成",
                          result={
