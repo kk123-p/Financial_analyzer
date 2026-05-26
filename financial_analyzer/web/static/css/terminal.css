@@ -1069,3 +1069,38 @@ a:hover { color: var(--accent-primary-hover); }
   .kpi-bar { flex-wrap: wrap; }
   .kpi-card { flex: 1 1 calc(33% - 8px); min-width: 140px; }
 }
+
+/* ============================================================================
+   量化策略面板
+   ============================================================================ */
+.quant-panel {
+  color: var(--fg-primary);
+}
+
+.quant-select-native {
+  padding: 8px 12px;
+  background: var(--depth-2);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-width: 130px;
+}
+
+.quant-select-native:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.quant-card-native {
+  background: var(--depth-2);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.quant-card-native h4 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}

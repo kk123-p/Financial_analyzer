@@ -337,25 +337,45 @@
 
                 <!-- Tab: 量化策略 -->
                 <div id="tab-quant" class="tab-panel">
-                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;gap:24px;">
-                        <div style="font-size:48px;opacity:0.2;">📈</div>
-                        <h3 style="color:var(--fg-primary);margin:0;">多因子量化策略引擎</h3>
-                        <p style="color:var(--text-muted);text-align:center;max-width:500px;line-height:1.6;">
-                            基于 7 大类因子（价值/质量/成长/动量/情绪/低波/风险）<br>
-                            覆盖沪深300/中证500/创业板等主要指数<br>
-                            每月末自动生成调仓信号
-                        </p>
-                        <div style="display:flex;gap:12px;">
-                            <button class="btn btn-accent" onclick="window.open('/static/frontend/index.html#/quant', '_blank')"
-                                    style="padding:12px 28px;font-size:1rem;">
-                                打开策略面板
+                    <div class="quant-panel" style="padding:16px;">
+                        <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);white-space:nowrap;">选股池</label>
+                                <select id="quant-pool" class="quant-select-native">
+                                    <option value="沪深300">沪深300</option>
+                                    <option value="中证500">中证500</option>
+                                    <option value="中证800">中证800</option>
+                                    <option value="创业板指">创业板指</option>
+                                    <option value="科创50">科创50</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-accent" id="btn-quant-run" onclick="runQuantSignal()">
+                                生成信号
                             </button>
-                            <button class="btn" onclick="window.open('/static/frontend/index.html', '_blank')"
-                                    style="padding:12px 28px;font-size:1rem;">
-                                打开完整终端
+                            <span id="quant-status-text" style="color:var(--text-muted);font-size:var(--text-xs);"></span>
+                            <button class="btn" id="btn-quant-stop" onclick="stopQuantSignal()" style="display:none;background:var(--danger-bg, #3a1a1a);color:#f44336;">
+                                停止
                             </button>
                         </div>
-                        <p style="color:var(--text-muted);font-size:0.8rem;">策略面板将在新窗口中打开</p>
+                        <div id="quant-result" style="display:none;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                                <div class="quant-card-native">
+                                    <h4 style="margin:0 0 12px;color:var(--fg-primary);">调仓信号</h4>
+                                    <div id="quant-signals-list"></div>
+                                </div>
+                                <div class="quant-card-native">
+                                    <h4 style="margin:0 0 12px;color:var(--fg-primary);">运行概况</h4>
+                                    <div id="quant-overview"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="quant-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+                            <div style="font-size:40px;opacity:0.2;margin-bottom:12px;">&#x1F4C8;</div>
+                            <div>多因子量化策略引擎</div>
+                            <div style="font-size:var(--text-xs);margin-top:4px;">
+                                7 大类因子 · 覆盖沪深300/中证500/创业板等 · 每月末自动调仓
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -420,5 +440,130 @@
     </div>
 
     <script src="/static/js/app.js"></script>
+    <script>
+    // ========== 量化策略面板 ==========
+    var _quantAbortController = null;
+
+    function runQuantSignal() {
+        var pool = document.getElementById('quant-pool').value;
+        var btn = document.getElementById('btn-quant-run');
+        var statusEl = document.getElementById('quant-status-text');
+        var stopBtn = document.getElementById('btn-quant-stop');
+        var resultEl = document.getElementById('quant-result');
+        var emptyEl = document.getElementById('quant-empty');
+
+        btn.disabled = true;
+        btn.textContent = '计算中...';
+        stopBtn.style.display = 'inline-block';
+        statusEl.textContent = '正在获取成分股和因子数据...';
+        statusEl.style.color = 'var(--text-muted)';
+        resultEl.style.display = 'none';
+        emptyEl.style.display = 'none';
+
+        _quantAbortController = new AbortController();
+
+        fetch('/api/v1/quant/run?pool=' + encodeURIComponent(pool) + '&top_n=30', {
+            method: 'POST',
+            signal: _quantAbortController.signal,
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _quantAbortController = null;
+            btn.disabled = false;
+            btn.textContent = '生成信号';
+            stopBtn.style.display = 'none';
+
+            if (data.success) {
+                statusEl.textContent = '完成 · ' + data.total_stocks_analyzed + '只分析 · ' + (data.valid_stocks || 0) + '只有效';
+                statusEl.style.color = '#4caf50';
+                renderQuantResult(data);
+                resultEl.style.display = 'block';
+            } else {
+                statusEl.textContent = data.error || '信号生成失败';
+                statusEl.style.color = '#f44336';
+                emptyEl.style.display = 'block';
+                emptyEl.innerHTML = '<div style="font-size:14px;color:#f44336;text-align:center;padding:40px;">' +
+                    (data.error || '未知错误') +
+                    '<br><span style="font-size:12px;color:var(--text-muted);">分析: ' + (data.total_stocks_analyzed || 0) + '只 · 有效: ' + (data.valid_stocks || 0) + '只</span></div>';
+            }
+        })
+        .catch(function(err) {
+            _quantAbortController = null;
+            btn.disabled = false;
+            btn.textContent = '生成信号';
+            stopBtn.style.display = 'none';
+            if (err.name !== 'AbortError') {
+                statusEl.textContent = '请求失败: ' + err.message;
+                statusEl.style.color = '#f44336';
+            } else {
+                statusEl.textContent = '已停止';
+                statusEl.style.color = 'var(--text-muted)';
+            }
+        });
+    }
+
+    function stopQuantSignal() {
+        if (_quantAbortController) {
+            _quantAbortController.abort();
+            _quantAbortController = null;
+        }
+    }
+
+    function renderQuantResult(data) {
+        var signals = data.signals || [];
+        var actionLabels = { buy: '买入', sell: '卖出', hold: '持有' };
+        var actionColors = { buy: '#4caf50', sell: '#f44336', hold: '#64b5f6' };
+
+        var html = '<table style="width:100%;border-collapse:collapse;font-size:var(--text-sm);">' +
+            '<thead><tr style="color:var(--text-muted);border-bottom:1px solid var(--border-color);">' +
+            '<th style="text-align:left;padding:6px 8px;">代码</th>' +
+            '<th style="text-align:left;padding:6px 8px;">名称</th>' +
+            '<th style="text-align:left;padding:6px 8px;">操作</th>' +
+            '<th style="text-align:right;padding:6px 8px;">股价</th>' +
+            '<th style="text-align:right;padding:6px 8px;">权重</th>' +
+            '</tr></thead><tbody>';
+
+        if (signals.length === 0) {
+            html += '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">无调仓信号</td></tr>';
+        } else {
+            signals.forEach(function(s) {
+                var label = actionLabels[s.action] || s.action;
+                var color = actionColors[s.action] || 'var(--fg-primary)';
+                html += '<tr style="border-bottom:1px solid var(--border-color);">' +
+                    '<td style="padding:8px;font-family:monospace;">' + s.code + '</td>' +
+                    '<td style="padding:8px;">' + (s.name || '') + '</td>' +
+                    '<td style="padding:8px;color:' + color + ';font-weight:600;">' + label + '</td>' +
+                    '<td style="padding:8px;text-align:right;font-family:monospace;">' + (s.price ? '¥' + s.price : '--') + '</td>' +
+                    '<td style="padding:8px;text-align:right;font-family:monospace;">' + (s.weight * 100).toFixed(1) + '%</td>' +
+                    '</tr>';
+            });
+        }
+        html += '</tbody></table>';
+        document.getElementById('quant-signals-list').innerHTML = html;
+
+        var buyCount = signals.filter(function(s) { return s.action === 'buy'; }).length;
+        var sellCount = signals.filter(function(s) { return s.action === 'sell'; }).length;
+        var holdCount = signals.filter(function(s) { return s.action === 'hold'; }).length;
+
+        document.getElementById('quant-overview').innerHTML =
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">' +
+            '<div style="text-align:center;padding:12px;background:rgba(76,175,80,0.1);border-radius:8px;">' +
+            '<div style="font-size:1.5rem;font-weight:700;color:#4caf50;">' + buyCount + '</div>' +
+            '<div style="font-size:var(--text-xs);color:var(--text-muted);">买入</div></div>' +
+            '<div style="text-align:center;padding:12px;background:rgba(244,67,54,0.1);border-radius:8px;">' +
+            '<div style="font-size:1.5rem;font-weight:700;color:#f44336;">' + sellCount + '</div>' +
+            '<div style="font-size:var(--text-xs);color:var(--text-muted);">卖出</div></div>' +
+            '<div style="text-align:center;padding:12px;background:rgba(100,181,246,0.1);border-radius:8px;">' +
+            '<div style="font-size:1.5rem;font-weight:700;color:#64b5f6;">' + holdCount + '</div>' +
+            '<div style="font-size:var(--text-xs);color:var(--text-muted);">持有</div></div>' +
+            '</div>' +
+            '<div style="font-size:var(--text-xs);color:var(--text-muted);line-height:1.8;">' +
+            '<div>选股池: ' + data.universe + '</div>' +
+            '<div>分析股票: ' + data.total_stocks_analyzed + ' 只</div>' +
+            '<div>有效数据: ' + (data.valid_stocks || 0) + ' 只</div>' +
+            '<div>日期: ' + data.date + '</div>' +
+            '</div>';
+    }
+    </script>
 </body>
 </html>
