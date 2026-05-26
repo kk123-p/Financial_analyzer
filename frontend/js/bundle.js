@@ -1930,6 +1930,7 @@ App.prototype.init = function () {
     'ai': 'ai',
     'data': 'data',
     'settings': 'settings',
+    'quant': 'quant',
   });
   this.router.start();
 
