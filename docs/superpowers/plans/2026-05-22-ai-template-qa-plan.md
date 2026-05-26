@@ -1300,7 +1300,7 @@ from financial_analyzer.web.services.data_service import DataService
 from financial_analyzer.ai.templates import SYSTEM_TEMPLATES, get_template_data_summary, build_lightweight_summary
 
 adapter = DataSourceAdapter()
-adapter.set_tushare_token('6367aee173729fa7e60bb06a1286e2fac31bd031e61b7762fa23ba55')
+adapter.set_tushare_token('YOUR_TUSHARE_TOKEN')
 ds = DataService(adapter)
 data = ds.fetch_stock_data('000001.SZ', '20240101', '20250501')
 

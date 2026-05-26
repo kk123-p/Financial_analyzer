@@ -104,7 +104,7 @@ def _get_tushare(self, symbol, start_date, end_date, data_type):
 Run: `cd c:/Users/LK/Desktop/FA/10.6 && python -c "
 from financial_analyzer.data_sources.adapter import DataSourceAdapter
 a = DataSourceAdapter()
-a.set_tushare_token('6367aee173729fa7e60bb06a1286e2fac31bd031e61b7762fa23ba55')
+a.set_tushare_token('YOUR_TUSHARE_TOKEN')
 # Test existing
 df = a.get_stock_data('000001.SZ', '20250101', '20250110', 'daily')
 assert df is not None and not df.empty, 'daily failed'
@@ -1639,14 +1639,14 @@ from financial_analyzer.data_sources.adapter import DataSourceAdapter
 from financial_analyzer.web.services.data_service import DataService
 
 adapter = DataSourceAdapter()
-adapter.set_tushare_token('6367aee173729fa7e60bb06a1286e2fac31bd031e61b7762fa23ba55')
+adapter.set_tushare_token('YOUR_TUSHARE_TOKEN')
 ds = DataService(adapter)
 
 # Fetch all data for a well-known stock
 import json, datetime
 from financial_analyzer.config import CONFIG_FILE
 with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-    json.dump({'tushare': '6367aee173729fa7e60bb06a1286e2fac31bd031e61b7762fa23ba55'}, f)
+    json.dump({'tushare': 'YOUR_TUSHARE_TOKEN'}, f)
 
 end = datetime.datetime.now().strftime('%Y%m%d')
 data = ds.fetch_stock_data('000001.SZ', '20240101', end)
@@ -1675,7 +1675,7 @@ from financial_analyzer.analyzers.shareholder import ShareholderAnalyzer
 from financial_analyzer.analyzers.capital_flow import CapitalFlowAnalyzer
 
 adapter = DataSourceAdapter()
-adapter.set_tushare_token('6367aee173729fa7e60bb06a1286e2fac31bd031e61b7762fa23ba55')
+adapter.set_tushare_token('YOUR_TUSHARE_TOKEN')
 ds = DataService(adapter)
 
 data = ds.fetch_stock_data('000001.SZ', '20240101', '20250501')
