@@ -51,40 +51,94 @@ class QuantDataFetcher:
         self._progress_callback = progress_callback  # fn(stage, current, total, msg)
 
     def enrich_stock_info(self, stocks: list[StockInfo]) -> list[StockInfo]:
-        """用 Tushare stock_basic 数据补充 StockInfo 的 name/industry/market/listed_date"""
-        codes = [s.code for s in stocks if not s.name]
-        if not codes:
+        """用 Tushare stock_basic 批量补充 StockInfo（一次性获取全部，不逐只调用）"""
+        codes_to_enrich = [s for s in stocks if not s.name]
+        if not codes_to_enrich:
             return stocks
 
-        code_map = {s.code: s for s in stocks}
+        total = len(codes_to_enrich)
+        logger.info(f"开始补充 {total} 只股票基本信息...")
 
-        for code in codes:
+        # 尝试用 Tushare stock_basic 批量获取（全市场一次性查询）
+        try:
+            if self.adapter.tushare_pro:
+                df = self.adapter.tushare_pro.stock_basic(
+                    exchange='', list_status='L',
+                    fields='ts_code,name,industry,market,list_date'
+                )
+                if df is not None and not df.empty:
+                    # 构建代码→信息映射
+                    info_map = {}
+                    for _, row in df.iterrows():
+                        code = str(row.get("ts_code", ""))[:6]
+                        info_map[code] = {
+                            "name": str(row.get("name", "")),
+                            "industry": str(row.get("industry", "")),
+                            "market": str(row.get("market", "")),
+                            "list_date": str(row.get("list_date", "")),
+                        }
+
+                    enriched = 0
+                    for stock in codes_to_enrich:
+                        info = info_map.get(stock.code)
+                        if info:
+                            stock.name = info["name"]
+                            stock.industry = info["industry"]
+                            stock.market = info["market"]
+                            if "ST" in stock.name.upper():
+                                stock.is_st = True
+                            list_str = info["list_date"].replace("-", "")[:8]
+                            try:
+                                if len(list_str) == 8:
+                                    stock.listed_date = date(
+                                        int(list_str[:4]),
+                                        int(list_str[4:6]),
+                                        int(list_str[6:8]),
+                                    )
+                            except (ValueError, IndexError):
+                                pass
+                            enriched += 1
+
+                    logger.info(f"StockInfo 补充完成: {enriched}/{total} 只")
+                    if self._progress_callback:
+                        self._progress_callback("enriching", enriched, total,
+                                                f"补充基本信息 {enriched}/{total}")
+                    return stocks
+        except Exception as e:
+            logger.warning(f"批量获取 stock_basic 失败，回退到逐只查询: {e}")
+
+        # 回退：逐只获取
+        code_map = {s.code: s for s in stocks}
+        for i, stock in enumerate(codes_to_enrich):
             try:
-                df = self._rate_limited_fetch(code, "stock_basic")
+                df = self._rate_limited_fetch(stock.code, "stock_basic")
                 if df is not None and not df.empty:
                     row = df.iloc[0]
-                    stock = code_map[code]
-                    stock.name = str(row.get("name", code))
+                    stock.name = str(row.get("name", stock.code))
                     stock.industry = str(row.get("industry", ""))
                     stock.market = str(row.get("market", ""))
-                    list_date = row.get("list_date")
-                    if pd.notna(list_date):
-                        list_str = str(list_date).replace("-", "")[:8]
+                    list_date_val = row.get("list_date")
+                    if pd.notna(list_date_val):
+                        list_str = str(list_date_val).replace("-", "")[:8]
                         try:
-                            stock.listed_date = date(
-                                int(list_str[:4]),
-                                int(list_str[4:6]),
-                                int(list_str[6:8]),
-                            )
+                            if len(list_str) == 8:
+                                stock.listed_date = date(
+                                    int(list_str[:4]),
+                                    int(list_str[4:6]),
+                                    int(list_str[6:8]),
+                                )
                         except (ValueError, IndexError):
                             pass
-                    # ST / 停牌 从 name 推断（Tushare stock_basic 不直接提供）
                     if "ST" in stock.name.upper():
                         stock.is_st = True
             except Exception as e:
-                logger.warning(f"获取 {code} 基本信息失败: {e}")
+                logger.debug(f"获取 {stock.code} 基本信息失败: {e}")
 
-        logger.info(f"StockInfo 补充完成: {len(codes)} 只，成功 {sum(1 for s in stocks if s.name)}")
+            if (i + 1) % 20 == 0 and self._progress_callback:
+                self._progress_callback("enriching", i + 1, total,
+                                        f"补充基本信息 {i + 1}/{total}")
+
+        logger.info(f"StockInfo 补充完成: {total} 只")
         return stocks
 
     def fetch_all(self, stocks: list[StockInfo]) -> dict[str, dict[str, pd.DataFrame]]:
