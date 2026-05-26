@@ -16,27 +16,12 @@ from financial_analyzer.config import APP_VERSION
 
 @router.get("/")
 async def index(request: Request):
-    from ..services.analysis_service import get_pipeline_stages
+    """主页面 — 返回 SPA 前端"""
+    from fastapi.responses import FileResponse
+    from pathlib import Path
 
-    sources = ["tushare", "akshare", "sina", "yfinance"]
-    active_source = "tushare"
-
-    session = _get_session(request)
-
-    return templates.TemplateResponse(request, "base.html", {
-        "version": APP_VERSION,
-        "stages": get_pipeline_stages(),
-        "sources": sources,
-        "active_source": active_source,
-        "kpis": {
-            "stock_name": "--",
-            "current_price": "--",
-            "price_change": "--",
-            "price_change_up": False,
-            "volume": "--",
-            "pe_ratio": "--",
-            "market_cap": "--",
-            "source": active_source.upper(),
-        },
-        "stock_code": session.get("stock_code", ""),
-    })
+    frontend_index = Path(__file__).parent.parent.parent.parent / "frontend" / "index.html"
+    if frontend_index.exists():
+        return FileResponse(str(frontend_index))
+    # 回退到旧版 Jinja2 模板
+    return templates.TemplateResponse(request, "base.html", {})
