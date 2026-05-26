@@ -119,6 +119,7 @@
                     <button class="tab-btn" onclick="switchTab('ai', this)">AI问答</button>
                     <button class="tab-btn" onclick="switchTab('data', this)">数据</button>
                     <button class="tab-btn" onclick="switchTab('debate', this)">AI 辩论</button>
+                    <button class="tab-btn" onclick="switchTab('quant', this)">量化策略</button>
                 </div>
 
                 <!-- Tab: 分析结果 -->
@@ -332,6 +333,15 @@
                     <div class="data-table-wrapper">
                         <div class="result-empty" id="data-table-content">请先获取数据</div>
                     </div>
+                </div>
+
+                <!-- Tab: 量化策略 -->
+                <div id="tab-quant" class="tab-panel">
+                    <iframe src="/static/frontend/#/quant"
+                            style="width:100%;height:calc(100vh - 280px);border:none;"
+                            id="quant-iframe"
+                            onload="this.style.opacity='1'"
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
                 </div>
             </div>
 
