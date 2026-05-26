@@ -32,10 +32,8 @@ class FactorMatrixBuilder:
                 income=data.get("income"),
                 balance=data.get("balance"),
                 cashflow=data.get("cashflow"),
-                moneyflow=data.get("moneyflow"),
                 margin=data.get("margin"),
                 hk_hold=data.get("hk_hold"),
-                top10_holders=data.get("top10_holders"),
                 dividend=data.get("dividend"),
             )
 

@@ -20,7 +20,6 @@ FACTOR_DATA_TYPES = [
     "income",      # 利润表 → ROE/毛利率/净利率/增长率
     "balance",     # 资产负债表 → ROE/ROIC/负债率/流动比率
     "cashflow",    # 现金流量表 → FCF收益率/现金流增长
-    "moneyflow",   # 资金流向 → (预留)
     "margin",      # 融资融券 → 融资变化
     "hk_hold",     # 北向资金 → 北向流入
     "dividend",    # 分红 → 股息率
@@ -83,38 +82,51 @@ class QuantDataFetcher:
         return stocks
 
     def fetch_all(self, stocks: list[StockInfo]) -> dict[str, dict[str, pd.DataFrame]]:
-        """批量获取所有股票的因子数据
+        """批量获取所有股票的因子数据（并行，遵守速率限制）
 
         Returns:
             {stock_code: {data_type: DataFrame}}
-            格式可直接传入 FactorMatrixBuilder.build()
         """
         result: dict[str, dict[str, pd.DataFrame]] = {}
         self._fetch_stats = {}
         total = len(stocks) * len(FACTOR_DATA_TYPES)
 
         logger.info(f"开始批量获取 {len(stocks)} 只股票 × {len(FACTOR_DATA_TYPES)} 种数据")
-        logger.info(f"预估耗时: {total * CALL_INTERVAL:.0f} 秒 (~{total * CALL_INTERVAL / 60:.1f} 分钟)")
+        logger.info(f"预估耗时: {total * CALL_INTERVAL / self.max_workers:.0f} 秒")
 
-        # 串行获取，遵守速率限制
+        # 并行获取，共享速率锁
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        tasks = [
+            (stock.code, data_type)
+            for stock in stocks
+            for data_type in FACTOR_DATA_TYPES
+        ]
+
         completed = 0
-        for stock in stocks:
-            stock_data = {}
-            for data_type in FACTOR_DATA_TYPES:
-                try:
-                    df = self._rate_limited_fetch(stock.code, data_type)
-                    if df is not None and not df.empty:
-                        stock_data[data_type] = df
-                        self._fetch_stats[data_type] = self._fetch_stats.get(data_type, 0) + 1
-                except Exception as e:
-                    logger.debug(f"获取 {stock.code} {data_type} 失败: {e}")
 
+        def fetch_one(code, data_type):
+            try:
+                return code, data_type, self._rate_limited_fetch(code, data_type)
+            except Exception as e:
+                logger.debug(f"获取 {code} {data_type} 失败: {e}")
+                return code, data_type, None
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            futures = {executor.submit(fetch_one, c, d): (c, d) for c, d in tasks}
+
+            for future in as_completed(futures):
+                code, data_type, df = future.result()
                 completed += 1
+
+                if df is not None and not df.empty:
+                    if code not in result:
+                        result[code] = {}
+                    result[code][data_type] = df
+                    self._fetch_stats[data_type] = self._fetch_stats.get(data_type, 0) + 1
+
                 if completed % 500 == 0:
                     logger.info(f"数据获取进度: {completed}/{total} ({100*completed/total:.0f}%)")
-
-            if stock_data:
-                result[stock.code] = stock_data
 
         logger.info(f"数据获取完成: {len(result)}/{len(stocks)} 只有效数据")
         for dt, count in self._fetch_stats.items():

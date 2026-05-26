@@ -1,4 +1,5 @@
 """选股池管理 — 从Tushare获取成分股并应用过滤"""
+import time
 from datetime import date, timedelta
 from typing import Optional
 
@@ -16,13 +17,17 @@ POOL_DEFINITIONS = {
     "科创50": {"index_code": "000688.SH"},
 }
 
+CACHE_TTL_SECONDS = 86400  # 24小时
+
 
 class UniverseManager:
     """选股池管理器"""
 
-    def __init__(self, adapter: Optional[DataSourceAdapter] = None):
+    def __init__(self, adapter: Optional[DataSourceAdapter] = None,
+                 cache_ttl: int = CACHE_TTL_SECONDS):
         self._adapter = adapter
-        self._cache: dict[str, list[StockInfo]] = {}
+        self._cache: dict[str, tuple[float, list[StockInfo]]] = {}
+        self._cache_ttl = cache_ttl
 
     @property
     def adapter(self):
@@ -36,12 +41,20 @@ class UniverseManager:
     def get_universe(self, pool_name: str) -> list[StockInfo]:
         """获取选股池成分股（未过滤，由调用方在数据补充后过滤）"""
         if pool_name in self._cache:
-            return self._cache[pool_name]
+            ts, stocks = self._cache[pool_name]
+            if time.time() - ts < self._cache_ttl:
+                logger.debug(f"选股池 [{pool_name}] 命中缓存, {len(stocks)} 只")
+                return stocks
 
         stocks = self._fetch_index_members(pool_name)
-        self._cache[pool_name] = stocks
+        self._cache[pool_name] = (time.time(), stocks)
         logger.info(f"选股池 [{pool_name}]: {len(stocks)} 只成分股")
         return stocks
+
+    def refresh(self, pool_name: str):
+        """强制刷新指定选股池"""
+        self._cache.pop(pool_name, None)
+        return self.get_universe(pool_name)
 
     def apply_filters(self, stocks: list[StockInfo],
                       prices: Optional[dict[str, float]] = None,

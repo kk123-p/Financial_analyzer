@@ -15,10 +15,8 @@ class FactorInput:
     balance: Optional[pd.DataFrame] = None       # 资产负债表
     cashflow: Optional[pd.DataFrame] = None      # 现金流量表
     basic: Optional[pd.DataFrame] = None         # 股票基本信息
-    moneyflow: Optional[pd.DataFrame] = None     # 资金流向
     margin: Optional[pd.DataFrame] = None        # 融资融券
     hk_hold: Optional[pd.DataFrame] = None       # 北向资金
-    top10_holders: Optional[pd.DataFrame] = None # 十大股东
     dividend: Optional[pd.DataFrame] = None      # 分红数据
 
 
