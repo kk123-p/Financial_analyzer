@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/frontend/css/chat.css">
   <link rel="stylesheet" href="/static/frontend/css/data.css">
   <link rel="stylesheet" href="/static/frontend/css/overlays.css">
+  <link rel="stylesheet" href="/static/frontend/css/quant.css">
 </head>
 <body>
   <div id="app">
@@ -25,6 +26,7 @@
         <button class="nav-tab" data-route="/analysis">分析中心</button>
         <button class="nav-tab" data-route="/ai">AI 投研</button>
         <button class="nav-tab" data-route="/data">数据浏览</button>
+        <button class="nav-tab" data-route="/quant">策略</button>
       </div>
       <div class="nav-center">
         <div class="stock-search" id="stock-search">
@@ -178,6 +180,8 @@
       <div id="view-settings" class="view">
         <div class="settings-page" id="settings-page"></div>
       </div>
+
+      <div id="view-quant" class="view"></div>
     </main>
   </div>
 
@@ -210,5 +214,6 @@
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
 
   <script src="/static/frontend/js/bundle.js"></script>
+  <script src="/static/frontend/js/quant.js"></script>
 </body>
 </html>

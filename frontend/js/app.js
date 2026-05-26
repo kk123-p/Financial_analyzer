@@ -24,6 +24,7 @@ class App {
       'ai': 'ai',
       'data': 'data',
       'settings': 'settings',
+      'quant': 'quant',
     });
     this.router.start();
 
