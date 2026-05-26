@@ -62,3 +62,15 @@
   margin-top: 8px;
 }
 .quant-status.success { color: #4caf50; }
+
+.quant-select {
+  padding: 10px 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-width: 140px;
+}
+.quant-select:focus { outline: none; border-color: var(--accent); }

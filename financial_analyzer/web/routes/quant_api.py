@@ -124,13 +124,15 @@ async def run_signal_generation(
 
         logger.info(f"选股池 [{pool}]: {len(stocks)} 只成分股")
 
-        # P0: 批量获取因子数据
+        # P0: 先补充股票基本信息，再应用硬过滤
         if skip_data_fetch:
             stock_data = {}
             logger.warning("跳过数据获取，管道将产生空结果")
         else:
             fetcher = QuantDataFetcher(adapter, start_date="20230101")
             stocks = fetcher.enrich_stock_info(stocks)
+            stocks = mgr.apply_filters(stocks)
+            logger.info(f"硬过滤后: {len(stocks)} 只")
             stock_data = fetcher.fetch_all(stocks)
 
         stocks_with_data = [

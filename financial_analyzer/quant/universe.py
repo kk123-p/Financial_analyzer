@@ -34,15 +34,30 @@ class UniverseManager:
         return list(POOL_DEFINITIONS.keys())
 
     def get_universe(self, pool_name: str) -> list[StockInfo]:
-        """获取选股池成分股（已应用基础过滤）"""
+        """获取选股池成分股（未过滤，由调用方在数据补充后过滤）"""
         if pool_name in self._cache:
             return self._cache[pool_name]
 
         stocks = self._fetch_index_members(pool_name)
-        stocks = self._apply_hard_filters(stocks)
         self._cache[pool_name] = stocks
-        logger.info(f"选股池 [{pool_name}]: {len(stocks)} 只股票（过滤后）")
+        logger.info(f"选股池 [{pool_name}]: {len(stocks)} 只成分股")
         return stocks
+
+    def apply_filters(self, stocks: list[StockInfo],
+                      prices: Optional[dict[str, float]] = None,
+                      max_price: float = 15.0,
+                      today: Optional[date] = None,
+                      min_months: int = 6) -> list[StockInfo]:
+        """应用全部硬过滤（调用方应在 StockInfo 字段补充后调用）"""
+        filtered = self._apply_hard_filters(stocks)
+        filtered = self._filter_by_age(filtered, today or date.today(), min_months)
+        if prices:
+            filtered = self._filter_by_price(filtered, prices, max_price)
+        logger.info(
+            f"过滤: {len(stocks)} → {len(filtered)} "
+            f"(排除 ST/停牌/次新/高价)"
+        )
+        return filtered
 
     def get_custom_universe(self, pool_names: list[str]) -> list[StockInfo]:
         """合并多个选股池，去重"""
