@@ -113,8 +113,12 @@ class UniverseManager:
 
             stocks = []
             for _, row in df.iterrows():
-                code = str(row.get("con_code", ""))
-                if not code:
+                raw_code = str(row.get("con_code", ""))
+                if not raw_code:
+                    continue
+                # con_code 格式: 000001.SZ → 取前6位纯数字代码
+                code = raw_code.split(".")[0] if "." in raw_code else raw_code[:6]
+                if not code.isdigit() or len(code) != 6:
                     continue
                 stocks.append(StockInfo(code=code, name=""))
             return stocks

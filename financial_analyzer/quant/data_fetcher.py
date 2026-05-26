@@ -63,11 +63,12 @@ class QuantDataFetcher:
         try:
             if self.adapter.tushare_pro:
                 df = self.adapter.tushare_pro.stock_basic(
-                    exchange='', list_status='L',
+                    list_status='L',
                     fields='ts_code,name,industry,market,list_date'
                 )
+                logger.info(f"stock_basic 批量查询返回: {len(df) if df is not None else 0} 行")
                 if df is not None and not df.empty:
-                    # 构建代码→信息映射（ts_code 格式: 000001.SZ → 取前6位）
+                    # 构建代码→信息映射（ts_code 格式: 000001.SZ → 取前6位数字）
                     info_map = {}
                     for _, row in df.iterrows():
                         ts_code = str(row.get("ts_code", ""))
