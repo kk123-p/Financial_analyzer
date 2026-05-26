@@ -337,11 +337,26 @@
 
                 <!-- Tab: 量化策略 -->
                 <div id="tab-quant" class="tab-panel">
-                    <iframe src="/static/frontend/#/quant"
-                            style="width:100%;height:calc(100vh - 280px);border:none;"
-                            id="quant-iframe"
-                            onload="this.style.opacity='1'"
-                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;gap:24px;">
+                        <div style="font-size:48px;opacity:0.2;">📈</div>
+                        <h3 style="color:var(--fg-primary);margin:0;">多因子量化策略引擎</h3>
+                        <p style="color:var(--text-muted);text-align:center;max-width:500px;line-height:1.6;">
+                            基于 7 大类因子（价值/质量/成长/动量/情绪/低波/风险）<br>
+                            覆盖沪深300/中证500/创业板等主要指数<br>
+                            每月末自动生成调仓信号
+                        </p>
+                        <div style="display:flex;gap:12px;">
+                            <button class="btn btn-accent" onclick="window.open('/static/frontend/#/quant', '_blank')"
+                                    style="padding:12px 28px;font-size:1rem;">
+                                打开策略面板
+                            </button>
+                            <button class="btn" onclick="window.open('/static/frontend/', '_blank')"
+                                    style="padding:12px 28px;font-size:1rem;">
+                                打开完整终端
+                            </button>
+                        </div>
+                        <p style="color:var(--text-muted);font-size:0.8rem;">策略面板将在新窗口中打开</p>
+                    </div>
                 </div>
             </div>
 
