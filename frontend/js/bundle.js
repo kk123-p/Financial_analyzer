@@ -2129,5 +2129,7 @@ App.prototype._restoreSession = function () {
 var app = new App();
 app.init();
 window.__app = app;
+window.$ = $;
+window.$$ = $$;
 
 })();
