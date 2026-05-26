@@ -67,10 +67,11 @@ class QuantDataFetcher:
                     fields='ts_code,name,industry,market,list_date'
                 )
                 if df is not None and not df.empty:
-                    # 构建代码→信息映射
+                    # 构建代码→信息映射（ts_code 格式: 000001.SZ → 取前6位）
                     info_map = {}
                     for _, row in df.iterrows():
-                        code = str(row.get("ts_code", ""))[:6]
+                        ts_code = str(row.get("ts_code", ""))
+                        code = ts_code.split(".")[0] if "." in ts_code else ts_code[:6]
                         info_map[code] = {
                             "name": str(row.get("name", "")),
                             "industry": str(row.get("industry", "")),

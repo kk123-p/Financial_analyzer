@@ -147,6 +147,12 @@ async def run_signal_generation(
                 return
 
             n_stocks = len(stocks)
+            # 硬上限：防止 API 返回异常数据时无限处理
+            MAX_STOCKS = 500
+            if n_stocks > MAX_STOCKS:
+                logger.warning(f"选股池过大 ({n_stocks})，截断至 {MAX_STOCKS}")
+                stocks = stocks[:MAX_STOCKS]
+                n_stocks = MAX_STOCKS
             _update_task(task_id, progress=15, message=f"成分股: {n_stocks} 只，补充基本信息...")
 
             def progress_cb(stage, current, total, msg):

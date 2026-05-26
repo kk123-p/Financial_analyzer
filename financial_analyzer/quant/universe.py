@@ -96,9 +96,20 @@ class UniverseManager:
                 return []
 
             index_code = definition["index_code"]
-            df = pro.index_weight(index_code=index_code)
+            trade_date = date.today().strftime("%Y%m%d")
+
+            # 获取最近交易日成分股（Tushare index_weight 需要 trade_date）
+            df = pro.index_weight(index_code=index_code, trade_date=trade_date)
+            if df is None or df.empty:
+                # 回退：尝试不传 trade_date（部分 Tushare 版本行为不同）
+                df = pro.index_weight(index_code=index_code)
+
             if df is None or df.empty:
                 return []
+
+            # 确保只取当前指数、最近日期的记录
+            if "trade_date" in df.columns:
+                df = df[df["trade_date"] == df["trade_date"].max()]
 
             stocks = []
             for _, row in df.iterrows():
