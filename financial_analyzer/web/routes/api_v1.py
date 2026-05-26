@@ -66,7 +66,7 @@ async def api_fetch_data(request: Request):
             "stock_code": stock_code,
             "kpis": kpis,
             "data_types": data_types,
-            "financial_ready": financial_ready,
+            "financial_ready": bool(financial_ready),
         })
     except Exception as e:
         logger.error(f"数据获取失败: {e}", exc_info=True)

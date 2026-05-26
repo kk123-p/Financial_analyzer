@@ -147,7 +147,7 @@ class DataService:
             kpis["current_price"] = f"{current:.2f}"
             kpis["price_change"] = f"{change_pct:+.2f}%"
             kpis["price_change_pct"] = f"{abs(change_pct):.2f}%"
-            kpis["price_change_up"] = change_pct >= 0
+            kpis["price_change_up"] = bool(change_pct >= 0)
 
             if "vol" in daily.columns:
                 vol = daily["vol"].iloc[0]
