@@ -655,19 +655,31 @@
     }
 
     function showError(msg, data) {
-      var retryBtnHTML =
-        '<div class="quant-retry">' +
-        '  <p class="quant-status" style="color:#f44336;margin-bottom:8px;">' + msg + '</p>' +
-        '  <button class="quant-btn" id="btn-retry-signal">重试</button>' +
-        '</div>';
-      $('#signals-content').innerHTML = retryBtnHTML;
-      $('#btn-retry-signal').addEventListener('click', function () {
-        runSignal();
-      });
+      var signalsEl = $('#signals-content');
+      signalsEl.innerHTML = '';
+      var retryDiv = document.createElement('div');
+      retryDiv.className = 'quant-retry';
+      var errP = document.createElement('p');
+      errP.className = 'quant-status';
+      errP.style.cssText = 'color:#f44336;margin-bottom:8px;';
+      errP.textContent = msg;
+      retryDiv.appendChild(errP);
+      var retryBtn = document.createElement('button');
+      retryBtn.className = 'quant-btn';
+      retryBtn.id = 'btn-retry-signal';
+      retryBtn.textContent = '重试';
+      retryBtn.addEventListener('click', function () { runSignal(); });
+      retryDiv.appendChild(retryBtn);
+      signalsEl.appendChild(retryDiv);
+
       if (data) {
-        $('#overview-content').innerHTML =
-          '<p class="quant-status">分析股票: ' + (data.total_stocks_analyzed || 0) +
-          '只 | 有效数据: ' + (data.valid_stocks || 0) + '只</p>';
+        var overviewEl = $('#overview-content');
+        overviewEl.innerHTML = '';
+        var p = document.createElement('p');
+        p.className = 'quant-status';
+        p.textContent = '分析股票: ' + (data.total_stocks_analyzed || 0) +
+          '只 | 有效数据: ' + (data.valid_stocks || 0) + '只';
+        overviewEl.appendChild(p);
       }
     }
 
@@ -675,35 +687,65 @@
 
     function renderResults(data) {
       var signals = data.signals || [];
-      var signalHTML = '';
       var actionLabels = { buy: '买入', sell: '卖出', hold: '持有' };
 
+      var container = $('#signals-content');
+      container.innerHTML = '';
+
       // Copy button
-      signalHTML += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">' +
-        '<button class="quant-copy-btn" id="btn-copy-signals">📋 复制信号</button></div>';
+      var copyWrap = document.createElement('div');
+      copyWrap.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:8px;';
+      var copyBtn = document.createElement('button');
+      copyBtn.className = 'quant-copy-btn';
+      copyBtn.id = 'btn-copy-signals';
+      copyBtn.textContent = '复制信号';
+      copyWrap.appendChild(copyBtn);
+      container.appendChild(copyWrap);
 
       if (signals.length === 0) {
-        signalHTML += '<div class="quant-empty">无调仓信号</div>';
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'quant-empty';
+        emptyDiv.textContent = '无调仓信号';
+        container.appendChild(emptyDiv);
       } else {
-        signalHTML += '<ul class="signal-list">';
+        var ul = document.createElement('ul');
+        ul.className = 'signal-list';
         signals.forEach(function (s) {
           var label = actionLabels[s.action] || s.action;
-          signalHTML +=
-            '<li class="signal-item">' +
-            '  <span>' +
-            '    <span class="signal-code">' + s.code + '</span>' +
-            '    <span class="signal-name">' + (s.name || '') + '</span>' +
-            '  </span>' +
-            '  <span style="display:flex;align-items:center;gap:12px;">' +
-            '    <span style="font-family:monospace;font-size:0.85em;color:var(--text-secondary);">' + formatMoney(s.price) + '</span>' +
-            '    <span class="signal-action ' + s.action + '">' + label + '</span>' +
-            '    <span style="font-size:0.8rem;">' + (s.weight * 100).toFixed(1) + '%</span>' +
-            '  </span>' +
-            '</li>';
+          var li = document.createElement('li');
+          li.className = 'signal-item';
+
+          var leftSpan = document.createElement('span');
+          var codeSpan = document.createElement('span');
+          codeSpan.className = 'signal-code';
+          codeSpan.textContent = s.code;
+          var nameSpan = document.createElement('span');
+          nameSpan.className = 'signal-name';
+          nameSpan.textContent = s.name || '';
+          leftSpan.appendChild(codeSpan);
+          leftSpan.appendChild(nameSpan);
+
+          var rightSpan = document.createElement('span');
+          rightSpan.style.cssText = 'display:flex;align-items:center;gap:12px;';
+          var priceSpan = document.createElement('span');
+          priceSpan.style.cssText = 'font-family:monospace;font-size:0.85em;color:var(--text-secondary);';
+          priceSpan.textContent = formatMoney(s.price);
+          var actionSpan = document.createElement('span');
+          actionSpan.className = 'signal-action ' + s.action;
+          actionSpan.textContent = label;
+          var weightSpan = document.createElement('span');
+          weightSpan.style.cssText = 'font-size:0.8rem;';
+          weightSpan.textContent = (s.weight * 100).toFixed(1) + '%';
+          rightSpan.appendChild(priceSpan);
+          rightSpan.appendChild(actionSpan);
+          rightSpan.appendChild(weightSpan);
+
+          li.appendChild(leftSpan);
+          li.appendChild(rightSpan);
+          ul.appendChild(li);
         });
-        signalHTML += '</ul>';
+        container.appendChild(ul);
       }
-      $('#signals-content').innerHTML = signalHTML;
 
       // Bind copy button
       var copyBtn = $('#btn-copy-signals');
@@ -727,18 +769,36 @@
       var sellCount = signals.filter(function (s) { return s.action === 'sell'; }).length;
       var holdCount = signals.filter(function (s) { return s.action === 'hold'; }).length;
 
-      $('#overview-content').innerHTML =
-        '<p class="quant-status success">' +
-        '  选股池: ' + data.universe +
+      var overviewEl = $('#overview-content');
+      overviewEl.innerHTML = '';
+      var p1 = document.createElement('p');
+      p1.className = 'quant-status success';
+      p1.textContent = '选股池: ' + (data.universe || '') +
         ' | 分析: ' + formatNumber(data.total_stocks_analyzed) + '只' +
         ' | 有效: ' + formatNumber(data.valid_stocks || 0) + '只' +
-        ' | 日期: ' + data.date +
-        '</p>' +
-        '<p class="quant-status" style="margin-top:4px;">' +
-        '  买入 <span style="color:#4caf50;">' + buyCount + '</span> 只 | ' +
-        '卖出 <span style="color:#f44336;">' + sellCount + '</span> 只 | ' +
-        '持有 <span style="color:#64b5f6;">' + holdCount + '</span> 只' +
-        '</p>';
+        ' | 日期: ' + (data.date || '');
+      overviewEl.appendChild(p1);
+
+      var p2 = document.createElement('p');
+      p2.className = 'quant-status';
+      p2.style.marginTop = '4px';
+      p2.appendChild(document.createTextNode('买入 '));
+      var buySpan = document.createElement('span');
+      buySpan.style.color = '#4caf50';
+      buySpan.textContent = buyCount;
+      p2.appendChild(buySpan);
+      p2.appendChild(document.createTextNode(' 只 | 卖出 '));
+      var sellSpan = document.createElement('span');
+      sellSpan.style.color = '#f44336';
+      sellSpan.textContent = sellCount;
+      p2.appendChild(sellSpan);
+      p2.appendChild(document.createTextNode(' 只 | 持有 '));
+      var holdSpan = document.createElement('span');
+      holdSpan.style.color = '#64b5f6';
+      holdSpan.textContent = holdCount;
+      p2.appendChild(holdSpan);
+      p2.appendChild(document.createTextNode(' 只'));
+      overviewEl.appendChild(p2);
 
       // Show execute button if there are buy signals
       if (buyCount > 0) {
@@ -803,10 +863,22 @@
     }
 
     function showBacktestError(msg) {
-      $('#backtest-content').innerHTML =
-        '<p class="quant-status" style="color:#f44336;margin-bottom:8px;">' + msg + '</p>' +
-        '<div class="quant-retry"><button class="quant-btn" id="btn-retry-backtest">重试</button></div>';
-      $('#btn-retry-backtest').addEventListener('click', function () { runBacktest(); });
+      var el = $('#backtest-content');
+      el.innerHTML = '';
+      var p = document.createElement('p');
+      p.className = 'quant-status';
+      p.style.cssText = 'color:#f44336;margin-bottom:8px;';
+      p.textContent = msg;
+      el.appendChild(p);
+      var retryDiv = document.createElement('div');
+      retryDiv.className = 'quant-retry';
+      var btn = document.createElement('button');
+      btn.className = 'quant-btn';
+      btn.id = 'btn-retry-backtest';
+      btn.textContent = '重试';
+      btn.addEventListener('click', function () { runBacktest(); });
+      retryDiv.appendChild(btn);
+      el.appendChild(retryDiv);
     }
 
     function pollBacktestTask(taskId, signal) {
@@ -1040,7 +1112,10 @@
         .then(function (data) {
           renderHoldings(data);
         })
-        .catch(function () {});
+        .catch(function (err) {
+          console.warn('加载持仓失败', err);
+          showToast('加载持仓失败: ' + err.message, 'error');
+        });
     }
 
     function loadPaperLedger() {
@@ -1049,7 +1124,10 @@
         .then(function (data) {
           renderTradeHistory(data.trades || []);
         })
-        .catch(function () {});
+        .catch(function (err) {
+          console.warn('加载交易记录失败', err);
+          showToast('加载交易记录失败: ' + err.message, 'error');
+        });
     }
 
     function loadPaperPnl() {
@@ -1058,7 +1136,10 @@
         .then(function (data) {
           renderPnlSummary(data);
         })
-        .catch(function () {});
+        .catch(function (err) {
+          console.warn('加载盈亏数据失败', err);
+          showToast('加载盈亏数据失败: ' + err.message, 'error');
+        });
     }
 
     function initPaperTrading() {
@@ -1185,16 +1266,20 @@
     // ---- Toast Notifications ----
     function showToast(msg, type) {
       type = type || 'info';
-      var container = $('#quant-toast-container');
-      if (!container) return;
+      var toastContainer = $('#quant-toast-container');
+      if (!toastContainer) return;
       var toast = document.createElement('div');
       toast.className = 'quant-toast ' + type;
       var icon = { info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' }[type] || '';
-      toast.innerHTML = '<span>' + icon + ' ' + msg + '</span><span class="quant-toast-close">&times;</span>';
-      container.appendChild(toast);
-      toast.querySelector('.quant-toast-close').addEventListener('click', function () {
-        toast.remove();
-      });
+      var msgSpan = document.createElement('span');
+      msgSpan.textContent = icon + ' ' + msg;
+      var closeSpan = document.createElement('span');
+      closeSpan.className = 'quant-toast-close';
+      closeSpan.textContent = '×';
+      closeSpan.addEventListener('click', function () { toast.remove(); });
+      toast.appendChild(msgSpan);
+      toast.appendChild(closeSpan);
+      toastContainer.appendChild(toast);
       setTimeout(function () { if (toast.parentNode) toast.remove(); }, 5000);
     }
 
