@@ -6,7 +6,9 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, Query
+from typing import Optional
+
+from fastapi import APIRouter, Body, Query
 from fastapi.responses import JSONResponse
 
 from financial_analyzer.quant.universe import UniverseManager
@@ -130,6 +132,7 @@ def _update_task(task_id: str, **kwargs):
 async def run_signal_generation(
     pool: str = Query("沪深300", description="选股池名称"),
     top_n: int = Query(30, description="TOP-N 排名数量"),
+    factor_weights: Optional[dict] = Body(None, description="因子权重 {name: weight}"),
 ):
     """启动信号生成（后台线程 + 进度轮询）"""
     task_id = uuid.uuid4().hex[:12]
@@ -202,7 +205,19 @@ async def run_signal_generation(
             normalizer = CrossSectionalNormalizer(method="zscore")
             matrix = normalizer.normalize(matrix)
 
-            scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
+            # Use user-adjusted weights if provided, otherwise defaults
+            if factor_weights:
+                custom_configs = [
+                    FactorConfig(
+                        name=c.name, label=c.label, category=c.category,
+                        direction=c.direction, enabled=c.enabled,
+                        weight=float(factor_weights.get(c.name, c.weight)),
+                    )
+                    for c in DEFAULT_FACTOR_CONFIGS
+                ]
+                scorer = WeightedScorer(custom_configs)
+            else:
+                scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
             composite_scores = scorer.score(matrix)
 
             # 从 stock_data 中提取股价
