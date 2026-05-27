@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from financial_analyzer.quant.paper_trading.portfolio import PortfolioManager
 from financial_analyzer.quant.paper_trading.ledger import TradeLedger
 from financial_analyzer.quant.paper_trading.pnl import PnLTracker
+from ..dependencies import get_adapter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/paper", tags=["paper_trading"])
@@ -119,6 +120,22 @@ async def execute_signals(
     )
 
     prices = {s["code"]: s.get("price", 0) for s in signals}
+
+    # 补充缺失价格：对 price<=0 的股票从数据源获取最新价格
+    missing_codes = [code for code, price in prices.items() if price <= 0]
+    if missing_codes:
+        logger.info(f"有 {len(missing_codes)} 只股票缺少价格，尝试从数据源获取...")
+        from datetime import date as _date
+        _adapter = get_adapter()
+        _today_str = _date.today().strftime("%Y%m%d")
+        for code in missing_codes:
+            try:
+                df = _adapter.get_stock_data(code, "20240101", _today_str, "daily")
+                if df is not None and not df.empty and "close" in df.columns:
+                    prices[code] = float(df.iloc[0]["close"])
+                    logger.info(f"  获取 {code} 最新价格: {prices[code]}")
+            except Exception as e:
+                logger.warning(f"  获取 {code} 价格失败: {e}")
 
     with _lock:
         portfolio = _get_portfolio()

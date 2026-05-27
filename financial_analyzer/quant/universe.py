@@ -51,6 +51,35 @@ class UniverseManager:
         logger.info(f"选股池 [{pool_name}]: {len(stocks)} 只成分股")
         return stocks
 
+    def get_universe_at_date(self, pool_name: str, trade_date: date) -> list[StockInfo]:
+        """获取指定历史日期的选股池成分股（用于回测避免幸存者偏差）
+
+        Args:
+            pool_name: 选股池名称
+            trade_date: 历史日期
+
+        Returns:
+            该日期的成分股列表，如果历史数据不可用则回退到当前成分股并记录警告
+        """
+        cache_key = f"{pool_name}_{trade_date.strftime('%Y%m%d')}"
+        if cache_key in self._cache:
+            ts, stocks = self._cache[cache_key]
+            if time.time() - ts < self._cache_ttl:
+                logger.debug(f"选股池 [{pool_name}] @{trade_date} 命中缓存, {len(stocks)} 只")
+                return stocks
+
+        stocks = self._fetch_index_members(pool_name, trade_date=trade_date)
+        if not stocks:
+            logger.warning(
+                f"选股池 [{pool_name}] 在 {trade_date} 无历史成分股数据，回退到当前成分股"
+            )
+            stocks = self.get_universe(pool_name)
+        else:
+            logger.info(f"选股池 [{pool_name}] @{trade_date}: {len(stocks)} 只历史成分股")
+
+        self._cache[cache_key] = (time.time(), stocks)
+        return stocks
+
     def refresh(self, pool_name: str):
         """强制刷新指定选股池"""
         self._cache.pop(pool_name, None)
@@ -83,8 +112,14 @@ class UniverseManager:
                     result.append(s)
         return result
 
-    def _fetch_index_members(self, pool_name: str) -> list[StockInfo]:
-        """从Tushare获取指数成分股"""
+    def _fetch_index_members(self, pool_name: str,
+                             trade_date: Optional[date] = None) -> list[StockInfo]:
+        """从Tushare获取指数成分股
+
+        Args:
+            pool_name: 选股池名称
+            trade_date: 指定日期获取历史成分股，默认为当前日期
+        """
         definition = POOL_DEFINITIONS.get(pool_name)
         if definition is None:
             return []
@@ -96,10 +131,10 @@ class UniverseManager:
                 return []
 
             index_code = definition["index_code"]
-            trade_date = date.today().strftime("%Y%m%d")
+            query_date = (trade_date or date.today()).strftime("%Y%m%d")
 
-            # 获取最近交易日成分股（Tushare index_weight 需要 trade_date）
-            df = pro.index_weight(index_code=index_code, trade_date=trade_date)
+            # 获取指定日期的成分股（Tushare index_weight 支持 trade_date 参数）
+            df = pro.index_weight(index_code=index_code, trade_date=query_date)
             if df is None or df.empty:
                 # 回退：尝试不传 trade_date（部分 Tushare 版本行为不同）
                 df = pro.index_weight(index_code=index_code)

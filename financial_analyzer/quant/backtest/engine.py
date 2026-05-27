@@ -215,12 +215,12 @@ class BacktestEngine:
         return month_ends
 
     def _get_universe_at_date(self, pool: str, ref_date: date) -> list[StockInfo]:
-        """获取指定日期的选股池成分股
+        """获取指定日期的选股池成分股（避免幸存者偏差）
 
-        注意: 当前实现使用 Tushare index_weight 获取最新成分股。
-        严格的历史成分股需要按 trade_date 查询，这里做简化处理。
+        使用 Tushare index_weight 的 trade_date 参数查询历史成分股。
+        如果历史数据不可用，回退到当前成分股并记录警告。
         """
-        stocks = self.universe_manager.get_universe(pool)
+        stocks = self.universe_manager.get_universe_at_date(pool, ref_date)
         if not stocks:
             return []
         return list(stocks)
