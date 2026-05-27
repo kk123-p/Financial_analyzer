@@ -157,8 +157,6 @@ class QuantDataFetcher:
         logger.info(f"预估耗时: {total * CALL_INTERVAL / self.max_workers:.0f} 秒")
 
         # 并行获取，共享速率锁
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         tasks = [
             (stock.code, data_type)
             for stock in stocks
