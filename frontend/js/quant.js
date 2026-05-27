@@ -18,6 +18,7 @@
     var factors = [];
     var lastSignalData = null;
     var lastSignalTaskId = null;
+    var activePresetName = null;  // currently loaded preset name
 
     renderShell();
     bindEvents();
@@ -47,6 +48,16 @@
         '    </div>' +
         '    <button class="quant-btn" id="btn-run-signal">生成信号</button>' +
         '  </div>' +
+        '</div>' +
+
+        '<div class="preset-bar" id="preset-bar">' +
+        '  <label>策略预设:</label>' +
+        '  <select id="preset-select" class="preset-select">' +
+        '    <option value="">-- 选择预设 --</option>' +
+        '  </select>' +
+        '  <button class="preset-btn save" id="btn-preset-save">保存当前</button>' +
+        '  <button class="preset-btn delete" id="btn-preset-delete" style="display:none;">删除</button>' +
+        '  <span class="preset-status" id="preset-status"></span>' +
         '</div>' +
 
         '<div id="quant-factor-panel" class="factor-panel">' +
@@ -126,6 +137,13 @@
       $('#btn-init-paper').addEventListener('click', initPaperTrading);
       $('#btn-reset-paper').addEventListener('click', resetPaperTrading);
 
+      // Preset buttons
+      $('#btn-preset-save').addEventListener('click', savePreset);
+      $('#btn-preset-delete').addEventListener('click', deletePreset);
+      $('#preset-select').addEventListener('change', function () {
+        loadPreset(this.value);
+      });
+
       var today = new Date();
       $('#backtest-end').value = today.toISOString().slice(0, 10);
     }
@@ -156,7 +174,9 @@
           if (data.factors && data.factors.length > 0) {
             factors = data.factors;
             var savedWeights = loadWeights();
-            renderFactorPanel(factors, savedWeights);
+            var savedDisabled = loadDisabledFactors();
+            renderFactorPanel(factors, savedWeights, savedDisabled);
+            populatePresetDropdown();
           }
         })
         .catch(function (err) {
@@ -187,7 +207,146 @@
       return weights;
     }
 
-    function renderFactorPanel(factorList, savedWeights) {
+    function loadDisabledFactors() {
+      try {
+        var saved = localStorage.getItem('quant_disabled_factors');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveDisabledFactors(disabledList) {
+      try {
+        localStorage.setItem('quant_disabled_factors', JSON.stringify(disabledList));
+      } catch (e) { /* ignore */ }
+    }
+
+    function getDisabledFactors() {
+      var disabled = [];
+      var checkboxes = container.querySelectorAll('.factor-checkbox');
+      for (var i = 0; i < checkboxes.length; i++) {
+        if (!checkboxes[i].checked) {
+          disabled.push(checkboxes[i].dataset.name);
+        }
+      }
+      return disabled;
+    }
+
+    // ==================== Presets ====================
+
+    function getPresets() {
+      try {
+        var saved = localStorage.getItem('quant_strategy_presets');
+        return saved ? JSON.parse(saved) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function savePresetsToStorage(presets) {
+      try {
+        localStorage.setItem('quant_strategy_presets', JSON.stringify(presets));
+      } catch (e) { /* ignore */ }
+    }
+
+    function populatePresetDropdown() {
+      var presets = getPresets();
+      var select = $('#preset-select');
+      var optionsHtml = '<option value="">-- 选择预设 --</option>';
+      Object.keys(presets).sort().forEach(function (name) {
+        var selected = (activePresetName === name) ? ' selected' : '';
+        optionsHtml += '<option value="' + name + '"' + selected + '>' + name + '</option>';
+      });
+      select.innerHTML = optionsHtml;
+      updatePresetButtons();
+    }
+
+    function updatePresetButtons() {
+      var hasSelection = !!$('#preset-select').value;
+      $('#btn-preset-delete').style.display = hasSelection ? 'inline-block' : 'none';
+    }
+
+    function savePreset() {
+      var name = prompt('请输入预设名称:');
+      if (!name || !name.trim()) return;
+      name = name.trim();
+
+      var weights = saveWeights();
+      var disabled = getDisabledFactors();
+      var presets = getPresets();
+      presets[name] = { weights: weights, disabled: disabled, saved_at: new Date().toISOString() };
+      savePresetsToStorage(presets);
+      activePresetName = name;
+      populatePresetDropdown();
+      $('#preset-status').textContent = '已保存: ' + name;
+      setTimeout(function () { $('#preset-status').textContent = ''; }, 3000);
+    }
+
+    function loadPreset(name) {
+      if (!name) {
+        activePresetName = null;
+        updatePresetButtons();
+        return;
+      }
+      var presets = getPresets();
+      var preset = presets[name];
+      if (!preset) return;
+
+      activePresetName = name;
+      var disabled = preset.disabled || [];
+
+      // Update weights in localStorage and slider values
+      if (preset.weights) {
+        localStorage.setItem('quant_factor_weights', JSON.stringify(preset.weights));
+        var sliders = container.querySelectorAll('.factor-slider');
+        for (var i = 0; i < sliders.length; i++) {
+          var sname = sliders[i].dataset.name;
+          if (preset.weights[sname] !== undefined) {
+            sliders[i].value = preset.weights[sname];
+            var display = container.querySelector('#fv-' + sname);
+            if (display) display.textContent = parseFloat(preset.weights[sname]).toFixed(1);
+          }
+        }
+      }
+
+      // Update disabled state in localStorage and checkboxes
+      saveDisabledFactors(disabled);
+      var checkboxes = container.querySelectorAll('.factor-checkbox');
+      for (var j = 0; j < checkboxes.length; j++) {
+        var cname = checkboxes[j].dataset.name;
+        var isDisabled = disabled.indexOf(cname) !== -1;
+        checkboxes[j].checked = !isDisabled;
+        var row = checkboxes[j].closest('.factor-row');
+        if (row) {
+          if (isDisabled) { row.classList.add('disabled'); }
+          else { row.classList.remove('disabled'); }
+        }
+      }
+
+      updateCategorySummaries();
+      updatePresetButtons();
+      $('#preset-status').textContent = '已加载: ' + name;
+      setTimeout(function () { $('#preset-status').textContent = ''; }, 3000);
+    }
+
+    function deletePreset() {
+      var name = $('#preset-select').value;
+      if (!name) return;
+      if (!confirm('确定删除预设 "' + name + '"?')) return;
+
+      var presets = getPresets();
+      delete presets[name];
+      savePresetsToStorage(presets);
+      if (activePresetName === name) activePresetName = null;
+      populatePresetDropdown();
+      $('#preset-status').textContent = '已删除: ' + name;
+      setTimeout(function () { $('#preset-status').textContent = ''; }, 3000);
+    }
+
+    // ==================== Factor Panel Rendering ====================
+
+    function renderFactorPanel(factorList, savedWeights, savedDisabled) {
       var categories = {};
       var categoryLabels = {
         value: '价值', quality: '质量', growth: '成长',
@@ -199,28 +358,50 @@
         if (!categories[cat]) categories[cat] = [];
         var w = (savedWeights && savedWeights[f.name] !== undefined)
           ? savedWeights[f.name] : f.weight;
-        categories[cat].push({ name: f.name, label: f.label, weight: w });
+        var enabled = !savedDisabled || savedDisabled.indexOf(f.name) === -1;
+        categories[cat].push({ name: f.name, label: f.label, weight: w, enabled: enabled });
       });
 
       var html = '';
       Object.keys(categories).forEach(function (cat) {
         var catLabel = categoryLabels[cat] || cat;
-        html += '<div class="factor-category">';
-        html += '<h4 class="factor-category-title">' + catLabel + '</h4>';
-        categories[cat].forEach(function (f) {
+        var catFactors = categories[cat];
+        var enabledCount = catFactors.filter(function (f) { return f.enabled; }).length;
+        var avgWeight = 0;
+        if (enabledCount > 0) {
+          var sumW = 0;
+          catFactors.forEach(function (f) { if (f.enabled) sumW += f.weight; });
+          avgWeight = sumW / enabledCount;
+        }
+
+        html += '<div class="factor-category" data-cat="' + cat + '">';
+        html += '<div class="factor-category-header" data-cat="' + cat + '">';
+        html += '  <span class="factor-category-title">' + catLabel + '</span>';
+        html += '  <span class="factor-category-summary" id="cat-summary-' + cat + '">';
+        html += '    <span class="cat-stat">启用 ' + enabledCount + '/' + catFactors.length + '</span>';
+        html += '    <span class="cat-stat">均权 ' + avgWeight.toFixed(1) + '</span>';
+        html += '  </span>';
+        html += '  <span class="factor-category-chevron" id="cat-chevron-' + cat + '">&#9660;</span>';
+        html += '</div>';
+        html += '<div class="factor-category-items" id="cat-items-' + cat + '">';
+        catFactors.forEach(function (f) {
+          var disabledClass = f.enabled ? '' : ' disabled';
+          var checkedAttr = f.enabled ? ' checked' : '';
           html +=
-            '<div class="factor-row">' +
+            '<div class="factor-row' + disabledClass + '">' +
+            '  <input type="checkbox" class="factor-checkbox" data-name="' + f.name + '"' + checkedAttr + '>' +
             '  <span class="factor-label">' + f.label + '</span>' +
             '  <input type="range" class="factor-slider" data-name="' + f.name + '"' +
             '    min="0" max="2" step="0.1" value="' + f.weight + '">' +
             '  <span class="factor-value" id="fv-' + f.name + '">' + f.weight.toFixed(1) + '</span>' +
             '</div>';
         });
-        html += '</div>';
+        html += '</div></div>';
       });
 
       $('#factor-grid').innerHTML = html;
 
+      // Bind slider events
       var sliders = container.querySelectorAll('.factor-slider');
       for (var i = 0; i < sliders.length; i++) {
         sliders[i].addEventListener('input', function (e) {
@@ -229,8 +410,81 @@
           var display = container.querySelector('#fv-' + name);
           if (display) display.textContent = val.toFixed(1);
           saveWeights();
+          updateCategorySummaries();
         });
       }
+
+      // Bind checkbox events
+      var checkboxes = container.querySelectorAll('.factor-checkbox');
+      for (var j = 0; j < checkboxes.length; j++) {
+        checkboxes[j].addEventListener('change', function (e) {
+          var name = e.target.dataset.name;
+          var row = e.target.closest('.factor-row');
+          if (row) {
+            if (e.target.checked) { row.classList.remove('disabled'); }
+            else { row.classList.add('disabled'); }
+          }
+          saveDisabledFactors(getDisabledFactors());
+          updateCategorySummaries();
+        });
+      }
+
+      // Bind category collapse/expand
+      var catHeaders = container.querySelectorAll('.factor-category-header');
+      for (var k = 0; k < catHeaders.length; k++) {
+        catHeaders[k].addEventListener('click', function (e) {
+          var cat = this.dataset.cat;
+          var items = container.querySelector('#cat-items-' + cat);
+          var chevron = container.querySelector('#cat-chevron-' + cat);
+          if (items) {
+            if (items.classList.contains('collapsed')) {
+              items.classList.remove('collapsed');
+              items.style.maxHeight = items.scrollHeight + 'px';
+              if (chevron) chevron.innerHTML = '&#9660;';
+            } else {
+              items.classList.add('collapsed');
+              items.style.maxHeight = '0';
+              if (chevron) chevron.innerHTML = '&#9654;';
+            }
+          }
+        });
+      }
+    }
+
+    function updateCategorySummaries() {
+      var categories = {};
+      var factorList = factors;
+      var categoryLabels = {
+        value: '价值', quality: '质量', growth: '成长',
+        momentum: '动量', sentiment: '情绪', low_vol: '低波', risk: '风险'
+      };
+
+      factorList.forEach(function (f) {
+        var cat = f.category || 'other';
+        if (!categories[cat]) categories[cat] = [];
+        var slider = container.querySelector('.factor-slider[data-name="' + f.name + '"]');
+        var checkbox = container.querySelector('.factor-checkbox[data-name="' + f.name + '"]');
+        var w = slider ? parseFloat(slider.value) : f.weight;
+        var enabled = checkbox ? checkbox.checked : true;
+        categories[cat].push({ name: f.name, weight: w, enabled: enabled });
+      });
+
+      Object.keys(categories).forEach(function (cat) {
+        var catFactors = categories[cat];
+        var enabledCount = catFactors.filter(function (f) { return f.enabled; }).length;
+        var avgWeight = 0;
+        if (enabledCount > 0) {
+          var sumW = 0;
+          catFactors.forEach(function (f) { if (f.enabled) sumW += f.weight; });
+          avgWeight = sumW / enabledCount;
+        }
+        var summaryEl = container.querySelector('#cat-summary-' + cat);
+        if (summaryEl) {
+          summaryEl.innerHTML =
+            '<span class="cat-stat">启用 ' + enabledCount + '/' + catFactors.length + '</span>' +
+            '<span class="cat-stat">均权 ' + avgWeight.toFixed(1) + '</span>';
+        }
+      });
     }
 
     function toggleFactorPanel() {
@@ -286,9 +540,21 @@
 
       // Build request body with user-adjusted factor weights from localStorage
       var savedWeights = loadWeights();
+      var disabledFactors = getDisabledFactors();
       var reqBody = {};
       if (savedWeights) {
         reqBody.factor_weights = savedWeights;
+      }
+      if (disabledFactors.length > 0) {
+        reqBody.disabled_factors = disabledFactors;
+        // Set weight=0 for disabled factors so scorer skips them
+        if (!reqBody.factor_weights) reqBody.factor_weights = {};
+        disabledFactors.forEach(function (name) {
+          reqBody.factor_weights[name] = 0;
+        });
+      }
+      if (activePresetName) {
+        reqBody.preset_name = activePresetName;
       }
 
       fetch('/api/v1/quant/run?pool=' + encodeURIComponent(pool) + '&top_n=' + topN, {
