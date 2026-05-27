@@ -1,5 +1,6 @@
 """月频调仓回测引擎"""
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from typing import Optional
 
@@ -227,28 +228,37 @@ class BacktestEngine:
     def _fetch_data_for_date(self,
                              stocks: list[StockInfo],
                              ref_date: date) -> dict[str, dict[str, pd.DataFrame]]:
-        """获取截至 ref_date 的历史数据
-
-        使用 data_fetcher 的 adapter 直接获取，end_date 设为回测日期。
-        """
-        start = self.data_fetcher.start_date
+        """获取截至 ref_date 的历史数据（并行，复用 data_fetcher 速率限制）"""
         end = ref_date.strftime("%Y%m%d")
         result: dict[str, dict[str, pd.DataFrame]] = {}
 
-        for stock in stocks:
-            stock_data: dict[str, pd.DataFrame] = {}
-            for data_type in FACTOR_DATA_TYPES:
-                try:
-                    df = self.data_fetcher.adapter.get_stock_data(
-                        stock.code, start, end, data_type
-                    )
-                    if df is not None and not df.empty:
-                        stock_data[data_type] = df
-                except Exception as e:
-                    logger.debug(f"获取 {stock.code} {data_type} 失败: {e}")
+        tasks = [
+            (stock.code, data_type)
+            for stock in stocks
+            for data_type in FACTOR_DATA_TYPES
+        ]
 
-            if stock_data:
-                result[stock.code] = stock_data
+        fetcher = self.data_fetcher
+
+        def fetch_one(code: str, data_type: str):
+            try:
+                df = fetcher._rate_limited_fetch(code, data_type, end_date=end)
+                return code, data_type, df
+            except Exception as e:
+                logger.debug(f"获取 {code} {data_type} 失败: {e}")
+                return code, data_type, None
+
+        with ThreadPoolExecutor(max_workers=fetcher.max_workers) as executor:
+            futures = {
+                executor.submit(fetch_one, c, d): (c, d)
+                for c, d in tasks
+            }
+            for future in as_completed(futures):
+                code, data_type, df = future.result()
+                if df is not None and not df.empty:
+                    if code not in result:
+                        result[code] = {}
+                    result[code][data_type] = df
 
         return result
 
