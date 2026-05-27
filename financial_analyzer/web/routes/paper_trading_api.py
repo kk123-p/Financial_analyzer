@@ -125,12 +125,13 @@ async def execute_signals(
     missing_codes = [code for code, price in prices.items() if price <= 0]
     if missing_codes:
         logger.info(f"有 {len(missing_codes)} 只股票缺少价格，尝试从数据源获取...")
-        from datetime import date as _date
+        from datetime import date as _date, timedelta as _td
         _adapter = get_adapter()
         _today_str = _date.today().strftime("%Y%m%d")
+        _fallback_start = (_date.today() - _td(days=365)).strftime("%Y%m%d")
         for code in missing_codes:
             try:
-                df = _adapter.get_stock_data(code, "20240101", _today_str, "daily")
+                df = _adapter.get_stock_data(code, _fallback_start, _today_str, "daily")
                 if df is not None and not df.empty and "close" in df.columns:
                     prices[code] = float(df.iloc[0]["close"])
                     logger.info(f"  获取 {code} 最新价格: {prices[code]}")

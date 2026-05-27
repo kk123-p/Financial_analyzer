@@ -1,10 +1,11 @@
 """回测 API 路由"""
 import json
 import logging
+import re
 import threading
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
 from fastapi import APIRouter, Query
@@ -99,6 +100,25 @@ async def run_backtest(
     initial_capital: float = Query(5000.0, description="初始资金"),
 ):
     """启动回测任务（后台线程）"""
+    # Validate date format
+    date_pattern = re.compile(r'^\d{8}$')
+    if not date_pattern.match(start_date):
+        return JSONResponse({"error": "start_date 格式错误，应为 YYYYMMDD"}, status_code=400)
+    if not date_pattern.match(end_date):
+        return JSONResponse({"error": "end_date 格式错误，应为 YYYYMMDD"}, status_code=400)
+
+    try:
+        sd = date(int(start_date[:4]), int(start_date[4:6]), int(start_date[6:8]))
+        ed = date(int(end_date[:4]), int(end_date[4:6]), int(end_date[6:8]))
+    except ValueError as e:
+        return JSONResponse({"error": f"日期无效: {e}"}, status_code=400)
+
+    if sd >= ed:
+        return JSONResponse({"error": "start_date 必须早于 end_date"}, status_code=400)
+
+    if ed > date.today():
+        return JSONResponse({"error": "end_date 不能超过今天"}, status_code=400)
+
     task_id = uuid.uuid4().hex[:12]
 
     import time as _time
