@@ -105,7 +105,6 @@ class BacktestEngine:
             prices = self._extract_prices(stock_data)
 
             # 应用硬过滤
-            from datetime import date as date_type
             stocks = self.universe_manager.apply_filters(
                 stocks, prices=prices, today=rebal_date
             )
@@ -272,7 +271,13 @@ class BacktestEngine:
                 try:
                     close_col = "close" if "close" in daily.columns else None
                     if close_col:
-                        prices[code] = float(daily.iloc[0][close_col])
+                        # Sort by date descending to ensure iloc[0] is the latest
+                        date_col = "trade_date" if "trade_date" in daily.columns else None
+                        if date_col:
+                            daily_sorted = daily.sort_values(date_col, ascending=False)
+                        else:
+                            daily_sorted = daily.sort_index(ascending=False)
+                        prices[code] = float(daily_sorted.iloc[0][close_col])
                 except (ValueError, TypeError, IndexError):
                     pass
         return prices
@@ -292,8 +297,11 @@ class BacktestEngine:
         for signal in trade_list.sells:
             code = signal.stock_code
             if code in holdings:
-                shares = holdings.pop(code)
                 price = prices.get(code, 0)
+                if price <= 0:
+                    logger.warning(f"  跳过卖出 {code}: 价格为 {price}，无法确定合理卖出价")
+                    continue
+                shares = holdings.pop(code)
                 proceeds = shares * price
                 commission = proceeds * self.commission_rate
                 cash += proceeds - commission

@@ -133,8 +133,18 @@ async def run_signal_generation(
     pool: str = Query("沪深300", description="选股池名称"),
     top_n: int = Query(30, description="TOP-N 排名数量"),
     factor_weights: Optional[dict] = Body(None, description="因子权重 {name: weight}"),
+    disabled_factors: Optional[list] = Body(None, description="禁用的因子名称列表"),
 ):
     """启动信号生成（后台线程 + 进度轮询）"""
+    # Validate top_n
+    if top_n < 1 or top_n > 50:
+        return JSONResponse({"error": "top_n 必须在 1-50 之间"}, status_code=400)
+
+    # Validate pool
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中，可选: {', '.join(allowed_pools)}"}, status_code=400)
+
     task_id = uuid.uuid4().hex[:12]
 
     import time as _time
@@ -206,12 +216,14 @@ async def run_signal_generation(
             matrix = normalizer.normalize(matrix)
 
             # Use user-adjusted weights if provided, otherwise defaults
-            if factor_weights:
+            if factor_weights or disabled_factors:
+                disabled_set = set(disabled_factors) if disabled_factors else set()
                 custom_configs = [
                     FactorConfig(
                         name=c.name, label=c.label, category=c.category,
-                        direction=c.direction, enabled=c.enabled,
-                        weight=float(factor_weights.get(c.name, c.weight)),
+                        direction=c.direction,
+                        enabled=False if c.name in disabled_set else c.enabled,
+                        weight=float(factor_weights.get(c.name, c.weight)) if factor_weights else c.weight,
                     )
                     for c in DEFAULT_FACTOR_CONFIGS
                 ]
