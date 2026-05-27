@@ -127,7 +127,7 @@ class BacktestEngine:
             # 3d. 标准化 → 打分 → 排名 → 优化
             matrix = self.normalizer.normalize(matrix)
             scores = self.scorer.score(matrix)
-            ranked = self.ranker.rank(matrix, scores, stocks, prices=prices)
+            ranked = self.ranker.rank(scores, stocks, prices=prices)
             optimized = self.optimizer.optimize(ranked, scores)
 
             # 3e. 生成调仓信号
