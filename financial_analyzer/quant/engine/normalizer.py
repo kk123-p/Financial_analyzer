@@ -30,7 +30,8 @@ class CrossSectionalNormalizer:
                 continue
 
             if self.method == "zscore":
-                normalized = self._zscore(values)
+                winsorized = self._winsorize(values)
+                normalized = self._zscore(winsorized)
             elif self.method == "rank":
                 normalized = self._rank_normalize(values)
             else:
@@ -56,3 +57,10 @@ class CrossSectionalNormalizer:
             return [0.0] * n
         ranks = np.argsort(np.argsort(arr)).astype(float)
         return (2 * ranks / (n - 1) - 1).tolist()
+
+    @staticmethod
+    def _winsorize(values: list[float], limits: float = 0.05) -> list[float]:
+        arr = np.array(values)
+        lower = np.percentile(arr, limits * 100)
+        upper = np.percentile(arr, (1 - limits) * 100)
+        return np.clip(arr, lower, upper).tolist()

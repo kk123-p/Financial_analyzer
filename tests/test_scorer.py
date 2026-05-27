@@ -36,8 +36,8 @@ class TestWeightedScorer:
         ]
         scorer = WeightedScorer(configs)
         scores = scorer.score(make_matrix())
-        # A: 2*0.5 + 0.5*1.0 = 1.5
-        assert abs(scores["A"] - 1.5) < 1e-10
+        # A: (2*0.5 + 0.5*1.0) / (2.0+0.5) = 1.5/2.5 = 0.6
+        assert abs(scores["A"] - 0.6) < 1e-10
 
     def test_disabled_factor(self):
         configs = [

@@ -44,3 +44,46 @@ class CurrentRatioFactor(BaseFactor):
         ratio = assets / liab
         optimal = 2.0
         return self._validate_result(-abs(ratio - optimal))
+
+
+class LogMarketCap(BaseFactor):
+    name = "log_market_cap"
+    category = "risk"
+    label = "对数市值"
+    direction = "negative"
+
+    def compute(self, input_data: FactorInput) -> Optional[float]:
+        total_mv = _safe_val(input_data.daily, "total_mv")
+        if total_mv is None or total_mv <= 0:
+            return None
+        return self._validate_result(-np.log(total_mv))
+
+
+class AvgTurnover(BaseFactor):
+    name = "avg_turnover"
+    category = "risk"
+    label = "20日平均换手率"
+    direction = "positive"
+
+    def compute(self, input_data: FactorInput) -> Optional[float]:
+        daily = input_data.daily
+        if daily is None or daily.empty:
+            return None
+        turnover_col = next(
+            (c for c in ["turnover_rate", "turn"] if c in daily.columns), None
+        )
+        if turnover_col is not None:
+            vals = daily[turnover_col].dropna()
+            if len(vals) < 1:
+                return None
+            return self._validate_result(float(vals.iloc[:20].mean()))
+        # fallback: compute from vol / total_mv
+        if "vol" not in daily.columns or "total_mv" not in daily.columns:
+            return None
+        vol = daily["vol"].dropna().iloc[:20]
+        mv = daily["total_mv"].dropna().iloc[:20]
+        count = min(len(vol), len(mv))
+        if count < 1:
+            return None
+        ratio = vol.iloc[:count].values / mv.iloc[:count].values
+        return self._validate_result(float(np.mean(ratio)))

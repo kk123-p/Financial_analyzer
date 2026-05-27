@@ -51,3 +51,20 @@ class MaxDrawdown120D(BaseFactor):
             if dd < max_dd:
                 max_dd = dd
         return self._validate_result(max_dd)
+
+
+class DownsideDeviation(BaseFactor):
+    name = "downside_deviation"
+    category = "low_vol"
+    label = "下行偏差"
+    direction = "negative"
+
+    def compute(self, input_data: FactorInput) -> Optional[float]:
+        rets = _daily_returns(input_data.daily)
+        if rets is None or len(rets) < 120:
+            return None
+        recent = rets[-120:]
+        negative = recent[recent < 0]
+        if len(negative) < 2:
+            return None
+        return self._validate_result(-float(np.std(negative)))

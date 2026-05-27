@@ -18,8 +18,9 @@ class FactorMatrixBuilder:
         self.factors.append(factor)
 
     def build(self, stocks: list[StockInfo],
-              stock_data: dict[str, dict[str, pd.DataFrame]]) -> FactorMatrix:
-        matrix = FactorMatrix(date=date.today())
+              stock_data: dict[str, dict[str, pd.DataFrame]],
+              ref_date: Optional[date] = None) -> FactorMatrix:
+        matrix = FactorMatrix(date=ref_date or date.today())
         matrix.stocks = [s.code for s in stocks]
         matrix.industries = {s.code: s.industry for s in stocks}
 

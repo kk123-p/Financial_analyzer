@@ -23,13 +23,14 @@ class SignalGenerator:
         )
 
         optimized_codes = {s.code for s in optimized_stocks}
+        stock_name_map = {s.code: s.name for s in optimized_stocks}
 
         # 卖出：当前持有但不在优化结果中的
         for code in current_holdings - optimized_codes:
             score = scores.get(code, -999)
             trade_list.signals.append(SignalResult(
                 stock_code=code,
-                stock_name=code,
+                stock_name=stock_name_map.get(code, code),
                 action="sell",
                 composite_score=score,
                 target_weight=0.0,
@@ -42,11 +43,10 @@ class SignalGenerator:
             return trade_list
 
         invest_weight = (1 - self.cash_reserve) / n
+        sorted_codes = sorted(scores.keys(), key=lambda c: scores.get(c, -999), reverse=True)
 
         for stock in optimized_stocks:
             score = scores.get(stock.code, 0)
-            # 计算排名
-            sorted_codes = sorted(scores.keys(), key=lambda c: scores.get(c, -999), reverse=True)
             try:
                 rank = sorted_codes.index(stock.code) + 1
             except ValueError:

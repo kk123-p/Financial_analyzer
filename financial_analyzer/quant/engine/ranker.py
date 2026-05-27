@@ -1,6 +1,6 @@
 """排名与硬过滤"""
 from typing import Optional
-from ..models import StockInfo, FactorMatrix
+from ..models import StockInfo
 
 
 class Ranker:
@@ -10,7 +10,7 @@ class Ranker:
         self.top_n = top_n
         self.max_price = max_price
 
-    def rank(self, matrix: FactorMatrix, composite_scores: dict[str, float],
+    def rank(self, composite_scores: dict[str, float],
              stocks: list[StockInfo],
              prices: Optional[dict[str, float]] = None) -> list[StockInfo]:
         """按综合得分排名，应用硬过滤，返回TOP-N"""

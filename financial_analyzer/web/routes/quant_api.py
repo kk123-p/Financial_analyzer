@@ -12,14 +12,18 @@ from fastapi.responses import JSONResponse
 from financial_analyzer.quant.universe import UniverseManager
 from financial_analyzer.quant.data_fetcher import QuantDataFetcher
 from financial_analyzer.quant.factors.value import (
-    PEFactor, PBFactor, PSFactor, DividendYieldFactor, FCFYieldFactor,
+    PEFactor, PBFactor, PSFactor, DividendYieldFactor, FCFYieldFactor, EV_EBITDA,
 )
-from financial_analyzer.quant.factors.quality import ROEFactor, ROICFactor, GrossMarginFactor, NetMarginFactor
-from financial_analyzer.quant.factors.growth import RevenueGrowthFactor, NetProfitGrowthFactor, CashflowGrowthFactor
+from financial_analyzer.quant.factors.quality import (
+    ROEFactor, ROICFactor, GrossMarginFactor, NetMarginFactor, PiotroskiFScore, AccrualsRatio,
+)
+from financial_analyzer.quant.factors.growth import (
+    RevenueGrowthFactor, NetProfitGrowthFactor, CashflowGrowthFactor, ROETrend,
+)
 from financial_analyzer.quant.factors.momentum import PriceMomentum3M, PriceMomentum6M, PriceMomentum12M
 from financial_analyzer.quant.factors.sentiment import NorthBoundFlowFactor, MarginChangeFactor
-from financial_analyzer.quant.factors.low_vol import Volatility60D, MaxDrawdown120D
-from financial_analyzer.quant.factors.risk import DebtRatioFactor, CurrentRatioFactor
+from financial_analyzer.quant.factors.low_vol import Volatility60D, MaxDrawdown120D, DownsideDeviation
+from financial_analyzer.quant.factors.risk import DebtRatioFactor, CurrentRatioFactor, LogMarketCap, AvgTurnover
 from financial_analyzer.quant.engine.factor_matrix import FactorMatrixBuilder
 from financial_analyzer.quant.engine.normalizer import CrossSectionalNormalizer
 from financial_analyzer.quant.engine.scorer import WeightedScorer
@@ -60,16 +64,23 @@ DEFAULT_FACTOR_CONFIGS = [
     FactorConfig(name="max_drawdown_120d", label="最大回撤", category="low_vol", weight=0.5),
     FactorConfig(name="debt_ratio", label="负债率", category="risk", weight=1.0),
     FactorConfig(name="current_ratio", label="流动比率", category="risk", weight=0.5),
+    FactorConfig(name="ev_ebitda", label="EV/EBITDA", category="value", weight=0.5),
+    FactorConfig(name="piotroski_fscore", label="Piotroski F-Score", category="quality", weight=1.0),
+    FactorConfig(name="accruals_ratio", label="应计比率", category="quality", weight=0.5),
+    FactorConfig(name="roe_trend", label="ROE趋势", category="growth", weight=1.0),
+    FactorConfig(name="downside_deviation", label="下行偏差", category="low_vol", weight=0.5),
+    FactorConfig(name="log_market_cap", label="对数市值", category="risk", weight=0.5),
+    FactorConfig(name="avg_turnover", label="平均换手率", category="risk", weight=0.5),
 ]
 
 ALL_FACTORS = [
-    PEFactor(), PBFactor(), PSFactor(), FCFYieldFactor(), DividendYieldFactor(),
-    ROEFactor(), ROICFactor(), GrossMarginFactor(), NetMarginFactor(),
-    RevenueGrowthFactor(), NetProfitGrowthFactor(), CashflowGrowthFactor(),
+    PEFactor(), PBFactor(), PSFactor(), FCFYieldFactor(), DividendYieldFactor(), EV_EBITDA(),
+    ROEFactor(), ROICFactor(), GrossMarginFactor(), NetMarginFactor(), PiotroskiFScore(), AccrualsRatio(),
+    RevenueGrowthFactor(), NetProfitGrowthFactor(), CashflowGrowthFactor(), ROETrend(),
     PriceMomentum3M(), PriceMomentum6M(), PriceMomentum12M(),
     NorthBoundFlowFactor(), MarginChangeFactor(),
-    Volatility60D(), MaxDrawdown120D(),
-    DebtRatioFactor(), CurrentRatioFactor(),
+    Volatility60D(), MaxDrawdown120D(), DownsideDeviation(),
+    DebtRatioFactor(), CurrentRatioFactor(), LogMarketCap(), AvgTurnover(),
 ]
 
 
@@ -123,12 +134,14 @@ async def run_signal_generation(
     """启动信号生成（后台线程 + 进度轮询）"""
     task_id = uuid.uuid4().hex[:12]
 
+    import time as _time
     with _task_lock:
         _task_store[task_id] = {
             "status": "starting",
             "progress": 0,
             "message": "正在初始化...",
             "started_at": datetime.now().isoformat(),
+            "started_ts": _time.time(),
             "pool": pool,
         }
 
@@ -204,7 +217,7 @@ async def run_signal_generation(
             # 取折中：max_price=10, min 5只
             max_price = 10.0
             ranker = Ranker(top_n=top_n, max_price=max_price)
-            ranked = ranker.rank(matrix, composite_scores, stocks_with_data,
+            ranked = ranker.rank(composite_scores, stocks_with_data,
                                  prices=prices_from_data)
 
             if not ranked:

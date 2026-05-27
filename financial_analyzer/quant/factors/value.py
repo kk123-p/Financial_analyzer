@@ -87,3 +87,29 @@ class FCFYieldFactor(BaseFactor):
         if not ocf or not total_mv or total_mv <= 0:
             return None
         return self._validate_result(ocf / total_mv)
+
+
+class EV_EBITDA(BaseFactor):
+    name = "ev_ebitda"
+    category = "value"
+    label = "EV/EBITDA"
+    direction = "negative"
+
+    def compute(self, input_data: FactorInput) -> Optional[float]:
+        total_mv = _safe_get(input_data.daily, "total_mv")
+        total_liab = _safe_get(input_data.balance, "total_liab")
+        monetary = _safe_get(input_data.balance, "monetary_assets")
+        if monetary is None:
+            monetary = _safe_get(input_data.balance, "total_assets")
+        operate_profit = _safe_get(input_data.income, "operate_profit")
+        if total_mv is None or total_liab is None or monetary is None:
+            return None
+        if operate_profit is None or operate_profit <= 0:
+            return None
+        ev = total_mv + total_liab - monetary
+        if ev <= 0:
+            return None
+        ratio = ev / operate_profit
+        if ratio <= 0:
+            return None
+        return self._validate_result(-1.0 / ratio)

@@ -1,0 +1,57 @@
+# LiteLLM Unified API Gateway Config
+# Start: litellm --config proxy_config.yaml --port 4000
+#
+# All backends speak Anthropic natively - no format translation needed.
+# LiteLLM uses anthropic/ provider for pure passthrough routing.
+
+general_settings:
+  master_key: sk-gateway-master-key-2026
+
+model_list:
+  # Opus / Sonnet -> DeepSeek V4 Pro (top-level design)
+  - model_name: deepseek-v4-pro[1m]
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_base: https://api.deepseek.com/anthropic
+      api_key: sk-d99fc231908a40c9bac5dc04601b4857
+
+  - model_name: deepseek-v4-pro
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_base: https://api.deepseek.com/anthropic
+      api_key: sk-d99fc231908a40c9bac5dc04601b4857
+
+  - model_name: deepseek-v4-flash
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_base: https://api.deepseek.com/anthropic
+      api_key: sk-d99fc231908a40c9bac5dc04601b4857
+
+  - model_name: claude-opus-4-7
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_base: https://api.deepseek.com/anthropic
+      api_key: sk-d99fc231908a40c9bac5dc04601b4857
+
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_base: https://api.deepseek.com/anthropic
+      api_key: sk-d99fc231908a40c9bac5dc04601b4857
+
+  # Haiku -> Mimo V2.5 Pro (execution)
+  - model_name: mimo-v2.5-pro
+    litellm_params:
+      model: anthropic/mimo-v2.5-pro
+      api_base: https://token-plan-cn.xiaomimimo.com/anthropic
+      api_key: tp-cjkvbys5ocjm25eanbxata8l3mcb3b3f0r3tc24o4dueoi2x
+
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: anthropic/mimo-v2.5-pro
+      api_base: https://token-plan-cn.xiaomimimo.com/anthropic
+      api_key: tp-cjkvbys5ocjm25eanbxata8l3mcb3b3f0r3tc24o4dueoi2x
+
+litellm_settings:
+  set_verbose: false
+  drop_params: true

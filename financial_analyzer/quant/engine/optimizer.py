@@ -19,12 +19,13 @@ class ConstraintOptimizer:
         self.cash_reserve = cash_reserve
 
     def optimize(self, ranked_stocks: list[StockInfo],
-                 scores: dict[str, float]) -> list[StockInfo]:
+                 scores: Optional[dict[str, float]] = None) -> list[StockInfo]:
         """从排序后的TOP-N中选择满足约束的子集"""
         if not ranked_stocks:
             return []
 
         result: list[StockInfo] = []
+        result_codes: set[str] = set()
         industry_counts: dict[str, int] = {}
 
         for stock in ranked_stocks:
@@ -39,17 +40,21 @@ class ConstraintOptimizer:
                 continue
 
             result.append(stock)
+            result_codes.add(stock.code)
             industry_counts[industry] = current_count + 1
 
         # 检查行业数约束
         if len(set(s.industry for s in result)) < self.min_industries:
             existing_industries = set(s.industry for s in result)
             for stock in ranked_stocks:
-                if stock in result:
+                if stock.code in result_codes:
                     continue
+                if len(result) >= self.max_stocks:
+                    break
                 industry = stock.industry or "其他"
-                if industry not in existing_industries and len(result) < self.max_stocks:
+                if industry not in existing_industries:
                     result.append(stock)
+                    result_codes.add(stock.code)
                     existing_industries.add(industry)
                     if len(existing_industries) >= self.min_industries:
                         break
@@ -57,8 +62,9 @@ class ConstraintOptimizer:
         # 确保最少持仓数
         if len(result) < self.min_stocks and len(ranked_stocks) >= self.min_stocks:
             for stock in ranked_stocks:
-                if stock not in result:
+                if stock.code not in result_codes:
                     result.append(stock)
+                    result_codes.add(stock.code)
                     if len(result) >= self.min_stocks:
                         break
 

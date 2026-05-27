@@ -2,7 +2,7 @@
 import pytest
 from datetime import date
 from financial_analyzer.quant.engine.ranker import Ranker
-from financial_analyzer.quant.models import StockInfo, FactorMatrix
+from financial_analyzer.quant.models import StockInfo
 
 
 @pytest.fixture
@@ -22,12 +22,8 @@ def scores():
 class TestRanker:
     def test_rank_and_filter_top_n(self, stocks, scores):
         ranker = Ranker(top_n=3)
-        matrix = FactorMatrix(date=date(2026, 5, 29))
-        matrix.stocks = [s.code for s in stocks]
-        matrix.scores = {s: {"_composite": v} for s, v in scores.items()}
-        matrix.industries = {s.code: s.industry for s in stocks}
 
-        ranked = ranker.rank(matrix, scores, stocks)
+        ranked = ranker.rank(scores, stocks)
         assert len(ranked) <= 3
         codes = [s.code for s in ranked]
         assert "B" not in codes  # ST
@@ -37,16 +33,12 @@ class TestRanker:
     def test_max_price_filter(self, stocks, scores):
         ranker = Ranker(top_n=5, max_price=15.0)
         prices = {"A": 10.0, "B": 8.0, "C": 20.0, "D": 12.0, "E": 14.0}
-        matrix = FactorMatrix(date=date(2026, 5, 29))
-        matrix.stocks = [s.code for s in stocks]
-        matrix.scores = {s: {"_composite": v} for s, v in scores.items()}
 
-        ranked = ranker.rank(matrix, scores, stocks, prices=prices)
+        ranked = ranker.rank(scores, stocks, prices=prices)
         codes = [s.code for s in ranked]
         assert "C" not in codes  # 20 > 15
 
     def test_empty_scores(self, stocks):
         ranker = Ranker()
-        matrix = FactorMatrix(date=date(2026, 5, 29))
-        ranked = ranker.rank(matrix, {}, stocks)
+        ranked = ranker.rank({}, stocks)
         assert ranked == []

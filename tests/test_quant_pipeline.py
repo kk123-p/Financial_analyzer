@@ -62,7 +62,7 @@ class TestQuantPipeline:
         assert len(scores) >= 1
 
         ranker = Ranker(top_n=30)
-        ranked = ranker.rank(matrix, scores, stocks)
+        ranked = ranker.rank(scores, stocks)
         assert len(ranked) >= 1
 
         optimizer = ConstraintOptimizer(min_industries=1)
@@ -117,7 +117,7 @@ class TestQuantPipeline:
         optimizer = ConstraintOptimizer(min_industries=1, min_stocks=1, max_stocks=2)
         gen = SignalGenerator()
 
-        ranked = ranker.rank(matrix, scores, stocks)
+        ranked = ranker.rank(scores, stocks)
         optimized = optimizer.optimize(ranked, scores)
         trade_list = gen.generate(optimized, scores, set(), "小池")
 
