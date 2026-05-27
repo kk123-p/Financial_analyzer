@@ -284,8 +284,17 @@
       var controller = new AbortController();
       var timeout = setTimeout(function () { controller.abort(); }, 600000);
 
+      // Build request body with user-adjusted factor weights from localStorage
+      var savedWeights = loadWeights();
+      var reqBody = {};
+      if (savedWeights) {
+        reqBody.factor_weights = savedWeights;
+      }
+
       fetch('/api/v1/quant/run?pool=' + encodeURIComponent(pool) + '&top_n=' + topN, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reqBody),
         signal: controller.signal,
       })
         .then(function (r) { return r.json(); })
@@ -556,7 +565,7 @@
         '</div>';
 
       // 月度收益柱状图
-      var monthlyHTML = renderMonthlyBars(m.monthly_returns || []);
+      var monthlyHTML = renderMonthlyBars(m.monthly_returns || [], data.start_date, data.end_date);
 
       // 调仓记录表
       var tradesHTML = renderBacktestTrades(data.trades || []);
@@ -610,12 +619,36 @@
       return html;
     }
 
-    function renderMonthlyBars(monthlyReturns) {
+    function renderMonthlyBars(monthlyReturns, startDate, endDate) {
       if (!monthlyReturns || monthlyReturns.length === 0) return '';
 
+      // Generate month labels from backtest date range
+      // monthlyReturns is a flat list of floats (N-1 returns for N portfolio snapshots)
+      var labels = [];
+      if (startDate && endDate) {
+        var sy = parseInt(startDate.substring(0, 4), 10);
+        var sm = parseInt(startDate.substring(4, 6), 10);
+        var ey = parseInt(endDate.substring(0, 4), 10);
+        var em = parseInt(endDate.substring(4, 6), 10);
+        var y = sy, m = sm;
+        while (y < ey || (y === ey && m <= em)) {
+          labels.push(y + '-' + (m < 10 ? '0' + m : '' + m));
+          m++;
+          if (m > 12) { m = 1; y++; }
+        }
+        // First return corresponds to the 2nd month (transition from month 1 to month 2)
+        if (labels.length > monthlyReturns.length) {
+          labels = labels.slice(labels.length - monthlyReturns.length);
+        }
+      }
+      // Fallback labels if date range didn't produce enough
+      while (labels.length < monthlyReturns.length) {
+        labels.push('#' + (labels.length + 1));
+      }
+
       var maxAbs = 0;
-      monthlyReturns.forEach(function (m) {
-        var abs = Math.abs(m.return_pct);
+      monthlyReturns.forEach(function (r) {
+        var abs = Math.abs(r);
         if (abs > maxAbs) maxAbs = abs;
       });
       if (maxAbs === 0) maxAbs = 0.1;
@@ -624,13 +657,13 @@
       barsHTML += '<div class="monthly-return-title">月度收益率</div>';
       barsHTML += '<div class="monthly-return-bars">';
 
-      monthlyReturns.forEach(function (m) {
-        var pct = m.return_pct;
+      monthlyReturns.forEach(function (r, i) {
+        var pct = r;
         var isPositive = pct >= 0;
         var barHeight = Math.min(Math.abs(pct) / maxAbs * 100, 100);
         var barBottom = isPositive ? 50 : (50 - barHeight);
         var color = isPositive ? 'var(--success)' : 'var(--danger)';
-        var label = m.month.length > 5 ? m.month.slice(5) : m.month;
+        var label = labels[i] && labels[i].length > 5 ? labels[i].slice(5) : labels[i];
 
         barsHTML +=
           '<div class="monthly-return-bar">' +
