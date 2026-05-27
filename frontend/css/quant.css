@@ -369,6 +369,66 @@
   color: var(--text-secondary);
 }
 
+/* Backtest Summary */
+.backtest-summary {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  font-size: 0.85rem; color: var(--text-secondary);
+  margin-bottom: 16px; padding: 10px 14px;
+  background: var(--surface-elevated); border-radius: 8px;
+}
+
+/* Backtest Trades */
+.backtest-trades { margin-top: 20px; }
+.backtest-trades h4 { margin: 0 0 12px; font-size: 0.9rem; color: var(--text-secondary); }
+.backtest-trade-period {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--border-light);
+  flex-wrap: wrap;
+}
+.backtest-trade-date {
+  font-family: var(--font-mono); font-size: 0.8rem;
+  color: var(--text-secondary); min-width: 80px;
+}
+.backtest-trade-signals {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.backtest-trade-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.8rem;
+}
+
+/* Backtest Attribution */
+.backtest-attribution { margin-top: 20px; }
+.backtest-attribution h4 { margin: 0 0 12px; font-size: 0.9rem; color: var(--text-secondary); }
+.attribution-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.attribution-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; background: var(--surface-elevated);
+  border-radius: 6px; font-size: 0.8rem;
+}
+.attribution-name { color: var(--text-secondary); }
+.attribution-value { font-family: var(--font-mono); font-weight: 600; }
+
+/* Paper Trading Summary */
+.paper-summary {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  font-size: 0.85rem; color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.paper-pnl-summary {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: 0.85rem; color: var(--text-secondary);
+  margin-bottom: 12px; padding: 10px 14px;
+  background: var(--surface-elevated); border-radius: 8px;
+}
+.paper-pnl-summary .positive { color: var(--success); }
+.paper-pnl-summary .negative { color: var(--danger); }
+.paper-holdings-table .positive { color: var(--success); }
+.paper-holdings-table .negative { color: var(--danger); }
+
 /* Responsive: single column on small screens */
 @media (max-width: 768px) {
   .quant-grid { grid-template-columns: 1fr; }

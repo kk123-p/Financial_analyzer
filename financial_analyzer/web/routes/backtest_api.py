@@ -101,12 +101,14 @@ async def run_backtest(
     """启动回测任务（后台线程）"""
     task_id = uuid.uuid4().hex[:12]
 
+    import time as _time
     with _task_lock:
         _task_store[task_id] = {
             "status": "starting",
             "progress": 0,
             "message": "正在初始化...",
             "started_at": datetime.now().isoformat(),
+            "started_ts": _time.time(),
             "pool": pool,
             "start_date": start_date,
             "end_date": end_date,
@@ -121,7 +123,7 @@ async def run_backtest(
             _update_task(task_id, progress=10, message="构建回测引擎组件...")
 
             mgr = UniverseManager(adapter)
-            fetcher = QuantDataFetcher(adapter, start_date="20230101")
+            fetcher = QuantDataFetcher(adapter, start_date=start_date)
             builder = FactorMatrixBuilder(factors=ALL_FACTORS)
             normalizer = CrossSectionalNormalizer(method="zscore")
             scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)

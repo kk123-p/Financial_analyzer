@@ -17,6 +17,7 @@
     var pools = [];
     var factors = [];
     var lastSignalData = null;
+    var lastSignalTaskId = null;
 
     renderShell();
     bindEvents();
@@ -25,6 +26,8 @@
       if (data.view === 'quant' || (data.detail && data.detail.view === 'quant')) {
         loadPools();
         loadFactors();
+        loadPaperPortfolio();
+        loadPaperLedger();
       }
     });
 
@@ -94,10 +97,14 @@
         '<div class="paper-panel" id="paper-panel">' +
         '  <div class="paper-header">' +
         '    <h3>模拟交易</h3>' +
-        '    <button class="quant-btn" id="btn-execute-signals" style="display:none;">执行信号</button>' +
+        '    <div style="display:flex;gap:8px;">' +
+        '      <button class="quant-btn" id="btn-init-paper" style="font-size:0.8rem;padding:6px 14px;">初始化</button>' +
+        '      <button class="quant-btn" id="btn-reset-paper" style="font-size:0.8rem;padding:6px 14px;background:#f44336;">重置</button>' +
+        '      <button class="quant-btn" id="btn-execute-signals" style="display:none;">执行信号</button>' +
+        '    </div>' +
         '  </div>' +
         '  <div class="paper-holdings" id="paper-holdings">' +
-        '    <p class="quant-status">生成信号后可执行模拟交易</p>' +
+        '    <p class="quant-status">点击「初始化」开始模拟交易</p>' +
         '  </div>' +
         '  <div class="paper-trades" id="paper-trades" style="display:none;">' +
         '    <h4>交易记录</h4>' +
@@ -116,6 +123,8 @@
       $('#btn-toggle-factors').addEventListener('click', toggleFactorPanel);
       $('#btn-run-backtest').addEventListener('click', runBacktest);
       $('#btn-execute-signals').addEventListener('click', executeSignals);
+      $('#btn-init-paper').addEventListener('click', initPaperTrading);
+      $('#btn-reset-paper').addEventListener('click', resetPaperTrading);
 
       var today = new Date();
       $('#backtest-end').value = today.toISOString().slice(0, 10);
@@ -327,6 +336,7 @@
               hideProgress();
               var result = task.result || {};
               lastSignalData = result;
+              lastSignalTaskId = taskId;
               renderResults(result);
               loading = false;
               var btn = $('#btn-run-signal');
@@ -417,7 +427,6 @@
       if (loading) return;
 
       var pool = $('#quant-pool-select').value;
-      var topN = getTopN();
       var startDate = $('#backtest-start').value.replace(/-/g, '');
       var endDate = $('#backtest-end').value.replace(/-/g, '');
       var btn = $('#btn-run-backtest');
@@ -432,75 +441,91 @@
       btn.disabled = true;
       btn.textContent = '回测中...';
       $('#backtest-content').innerHTML =
-        '<p class="quant-status">正在运行回测...</p>';
+        '<p class="quant-status">正在启动回测...</p>';
 
-      fetch('/api/v1/quant/backtest?pool=' + encodeURIComponent(pool) +
-        '&top_n=' + topN + '&start_date=' + startDate + '&end_date=' + endDate, {
+      var controller = new AbortController();
+      var timeout = setTimeout(function () { controller.abort(); }, 600000);
+
+      fetch('/api/v1/backtest/run?pool=' + encodeURIComponent(pool) +
+        '&start_date=' + startDate + '&end_date=' + endDate, {
         method: 'POST',
+        signal: controller.signal,
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (data.success) {
-            renderBacktestResults(data);
+          if (data.task_id) {
+            pollBacktestTask(data.task_id, controller.signal);
           } else {
+            clearTimeout(timeout);
+            loading = false;
+            btn.disabled = false;
+            btn.textContent = '运行回测';
             $('#backtest-content').innerHTML =
               '<p class="quant-status" style="color:#f44336;">' +
-              (data.error || '回测失败') + '</p>';
+              (data.error || '回测启动失败') + '</p>';
           }
         })
-        .catch(function () {
-          renderBacktestMockResults();
-        })
-        .then(function () {
+        .catch(function (err) {
+          clearTimeout(timeout);
           loading = false;
           btn.disabled = false;
           btn.textContent = '运行回测';
+          if (err.name === 'AbortError') {
+            $('#backtest-content').innerHTML =
+              '<p class="quant-status" style="color:#f44336;">回测超时，请缩短日期范围后重试</p>';
+          } else {
+            $('#backtest-content').innerHTML =
+              '<p class="quant-status" style="color:#f44336;">请求失败: ' + err.message + '</p>';
+          }
         });
     }
 
-    function renderBacktestMockResults() {
-      var startVal = $('#backtest-start').value;
-      var endVal = $('#backtest-end').value;
-      var start = new Date(startVal);
-      var end = new Date(endVal);
-      var months = [];
-      var d = new Date(start.getFullYear(), start.getMonth(), 1);
-      while (d <= end) {
-        months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
-        d.setMonth(d.getMonth() + 1);
-      }
-      if (months.length === 0) months.push(startVal.slice(0, 7));
-
-      var totalReturn = (Math.random() * 0.4 - 0.1);
-      var monthlyReturns = [];
-      var cumProduct = 1;
-      for (var i = 0; i < months.length; i++) {
-        var mr = (Math.random() * 0.16 - 0.06);
-        if (i === months.length - 1) {
-          mr = totalReturn / months.length;
+    function pollBacktestTask(taskId, signal) {
+      var btn = $('#btn-run-backtest');
+      var pollInterval = setInterval(function () {
+        if (signal && signal.aborted) {
+          clearInterval(pollInterval);
+          return;
         }
-        mr = Math.max(-0.15, Math.min(0.15, mr));
-        monthlyReturns.push({ month: months[i], return_pct: mr });
-        cumProduct *= (1 + mr);
-      }
-
-      var metrics = {
-        total_return: totalReturn,
-        annualized_return: totalReturn * (12 / Math.max(months.length, 1)),
-        sharpe_ratio: totalReturn > 0 ? 0.5 + Math.random() * 1.5 : -0.5 + Math.random() * 1.0,
-        max_drawdown: Math.random() * 0.2 + 0.05,
-        win_rate: 0.4 + Math.random() * 0.3,
-      };
-
-      renderBacktestResults({
-        success: true,
-        metrics: metrics,
-        monthly_returns: monthlyReturns,
-      });
+        fetch('/api/v1/backtest/status/' + taskId)
+          .then(function (r) { return r.json(); })
+          .then(function (task) {
+            if (task.progress !== undefined) {
+              $('#backtest-content').innerHTML =
+                '<p class="quant-status">' + (task.message || '回测中...') + ' (' + task.progress + '%)</p>';
+            }
+            if (task.status === 'done') {
+              clearInterval(pollInterval);
+              loading = false;
+              btn.disabled = false;
+              btn.textContent = '运行回测';
+              fetch('/api/v1/backtest/result/' + taskId)
+                .then(function (r) { return r.json(); })
+                .then(function (result) { renderBacktestResults(result); });
+            } else if (task.status === 'error') {
+              clearInterval(pollInterval);
+              loading = false;
+              btn.disabled = false;
+              btn.textContent = '运行回测';
+              $('#backtest-content').innerHTML =
+                '<p class="quant-status" style="color:#f44336;">' + (task.message || '回测失败') + '</p>';
+            }
+          })
+          .catch(function () { /* ignore poll errors */ });
+      }, 3000);
     }
 
     function renderBacktestResults(data) {
       var m = data.metrics || {};
+
+      // 资金曲线概览
+      var summaryHTML =
+        '<div class="backtest-summary">' +
+        '  <span>初始资金: &yen;' + (data.initial_capital || 5000).toFixed(2) + '</span>' +
+        '  <span>最终市值: &yen;' + (data.final_value || 0).toFixed(2) + '</span>' +
+        '  <span>' + (data.start_date || '') + ' ~ ' + (data.end_date || '') + '</span>' +
+        '</div>';
+
       var metricsHTML =
         '<div class="backtest-metrics">' +
         '  <div class="backtest-metric">' +
@@ -530,9 +555,59 @@
         '  </div>' +
         '</div>';
 
-      var monthlyHTML = renderMonthlyBars(data.monthly_returns || []);
+      // 月度收益柱状图
+      var monthlyHTML = renderMonthlyBars(m.monthly_returns || []);
 
-      $('#backtest-content').innerHTML = metricsHTML + monthlyHTML;
+      // 调仓记录表
+      var tradesHTML = renderBacktestTrades(data.trades || []);
+
+      // 因子归因
+      var attrHTML = renderAttribution(data.attribution || {});
+
+      $('#backtest-content').innerHTML = summaryHTML + metricsHTML + monthlyHTML + tradesHTML + attrHTML;
+    }
+
+    function renderBacktestTrades(trades) {
+      if (!trades || trades.length === 0) return '';
+      var actionLabels = { buy: '买入', sell: '卖出', hold: '持有' };
+      var html = '<div class="backtest-trades"><h4>调仓记录</h4>';
+
+      trades.forEach(function (period) {
+        html += '<div class="backtest-trade-period">';
+        html += '<div class="backtest-trade-date">' + (period.date || '') + '</div>';
+        html += '<div class="backtest-trade-signals">';
+        (period.signals || []).forEach(function (s) {
+          var label = actionLabels[s.action] || s.action;
+          html +=
+            '<span class="backtest-trade-tag">' +
+            '  <span class="signal-code">' + s.code + '</span> ' +
+            '  <span class="signal-action ' + s.action + '">' + label + '</span>' +
+            '  <span style="font-size:0.75rem;color:var(--text-secondary);">' + (s.weight * 100).toFixed(1) + '%</span>' +
+            '</span>';
+        });
+        html += '</div></div>';
+      });
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderAttribution(attribution) {
+      var keys = Object.keys(attribution);
+      if (keys.length === 0) return '';
+      var html = '<div class="backtest-attribution"><h4>因子归因</h4>';
+      html += '<div class="attribution-grid">';
+      keys.forEach(function (k) {
+        var val = attribution[k];
+        var color = val >= 0 ? 'var(--success)' : 'var(--danger)';
+        html +=
+          '<div class="attribution-item">' +
+          '  <span class="attribution-name">' + k + '</span>' +
+          '  <span class="attribution-value" style="color:' + color + ';">' + (val * 100).toFixed(2) + '%</span>' +
+          '</div>';
+      });
+      html += '</div></div>';
+      return html;
     }
 
     function renderMonthlyBars(monthlyReturns) {
@@ -575,17 +650,8 @@
     // ==================== Paper Trading ====================
 
     function executeSignals() {
-      if (!lastSignalData || !lastSignalData.signals || lastSignalData.signals.length === 0) {
-        alert('没有可执行的信号');
-        return;
-      }
-
-      var buySignals = lastSignalData.signals.filter(function (s) {
-        return s.action === 'buy';
-      });
-
-      if (buySignals.length === 0) {
-        alert('没有买入信号');
+      if (!lastSignalTaskId) {
+        alert('请先生成信号');
         return;
       }
 
@@ -593,62 +659,154 @@
       btn.disabled = true;
       btn.textContent = '执行中...';
 
-      // Simulate execution
-      setTimeout(function () {
-        renderHoldings(buySignals);
-        renderTradeHistory(buySignals);
-
-        btn.textContent = '已执行';
-        setTimeout(function () {
-          btn.textContent = '执行信号';
+      fetch('/api/v1/paper/execute?task_id=' + encodeURIComponent(lastSignalTaskId), {
+        method: 'POST',
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) {
+            alert('执行失败: ' + data.error);
+          } else {
+            loadPaperPortfolio();
+            loadPaperLedger();
+          }
+        })
+        .catch(function (err) {
+          alert('请求失败: ' + err.message);
+        })
+        .then(function () {
           btn.disabled = false;
-        }, 2000);
-      }, 500);
+          btn.textContent = '执行信号';
+        });
     }
 
-    function renderHoldings(signals) {
+    function loadPaperPortfolio() {
+      fetch('/api/v1/paper/portfolio')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          renderHoldings(data);
+        })
+        .catch(function () {});
+    }
+
+    function loadPaperLedger() {
+      fetch('/api/v1/paper/ledger')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          renderTradeHistory(data.trades || []);
+        })
+        .catch(function () {});
+    }
+
+    function loadPaperPnl() {
+      fetch('/api/v1/paper/pnl')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          renderPnlSummary(data);
+        })
+        .catch(function () {});
+    }
+
+    function initPaperTrading() {
+      fetch('/api/v1/paper/init?capital=5000', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status === 'ok') {
+            loadPaperPortfolio();
+            loadPaperLedger();
+          }
+        })
+        .catch(function (err) { alert('初始化失败: ' + err.message); });
+    }
+
+    function resetPaperTrading() {
+      if (!confirm('确定要重置模拟盘？所有持仓和交易记录将被清除。')) return;
+      fetch('/api/v1/paper/reset', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status === 'ok') {
+            $('#paper-holdings').innerHTML = '<p class="quant-status">已重置，点击「初始化」重新开始</p>';
+            $('#paper-trades').style.display = 'none';
+          }
+        })
+        .catch(function (err) { alert('重置失败: ' + err.message); });
+    }
+
+    function renderHoldings(data) {
+      var holdings = data.holdings || [];
       var html =
-        '<table class="paper-holdings-table">' +
-        '<thead><tr>' +
-        '  <th>代码</th><th>名称</th><th>权重</th><th>价格</th><th>状态</th>' +
-        '</tr></thead><tbody>';
+        '<div class="paper-summary">' +
+        '  <span>现金: &yen;' + (data.cash || 0).toFixed(2) + '</span>' +
+        '  <span>总市值: &yen;' + (data.total_value || 0).toFixed(2) + '</span>' +
+        '</div>';
 
-      signals.forEach(function (s) {
+      if (holdings.length === 0) {
+        html += '<p class="quant-status">暂无持仓</p>';
+      } else {
         html +=
-          '<tr class="holding-row">' +
-          '  <td class="signal-code">' + s.code + '</td>' +
-          '  <td>' + (s.name || '--') + '</td>' +
-          '  <td>' + (s.weight * 100).toFixed(1) + '%</td>' +
-          '  <td>&yen;' + (s.price || '--') + '</td>' +
-          '  <td><span class="signal-action buy">持仓</span></td>' +
-          '</tr>';
-      });
+          '<table class="paper-holdings-table">' +
+          '<thead><tr>' +
+          '  <th>代码</th><th>名称</th><th>数量</th><th>成本</th><th>现价</th><th>市值</th><th>盈亏</th>' +
+          '</tr></thead><tbody>';
 
-      html += '</tbody></table>';
+        holdings.forEach(function (h) {
+          var pnlClass = h.unrealized_pnl >= 0 ? 'positive' : 'negative';
+          html +=
+            '<tr class="holding-row">' +
+            '  <td class="signal-code">' + h.code + '</td>' +
+            '  <td>' + (h.name || '--') + '</td>' +
+            '  <td>' + h.shares + '</td>' +
+            '  <td>&yen;' + h.avg_cost.toFixed(2) + '</td>' +
+            '  <td>&yen;' + h.last_price.toFixed(2) + '</td>' +
+            '  <td>&yen;' + h.market_value.toFixed(2) + '</td>' +
+            '  <td class="' + pnlClass + '">&yen;' + h.unrealized_pnl.toFixed(2) + '</td>' +
+            '</tr>';
+        });
+
+        html += '</tbody></table>';
+      }
       $('#paper-holdings').innerHTML = html;
     }
 
-    function renderTradeHistory(signals) {
-      var today = new Date().toISOString().slice(0, 10);
+    function renderTradeHistory(trades) {
+      if (!trades || trades.length === 0) {
+        $('#paper-trades').style.display = 'none';
+        return;
+      }
+
       var tbody = $('#paper-trade-body');
       var html = '';
+      var actionLabels = { buy: '买入', sell: '卖出' };
 
-      signals.forEach(function (s) {
-        var amount = ((s.weight || 0) * 10000 * (s.price || 0)).toFixed(2);
+      trades.slice(-20).forEach(function (t) {
+        var actionClass = t.action === 'buy' ? 'buy' : 'sell';
         html +=
           '<tr class="trade-row">' +
-          '  <td>' + today + '</td>' +
-          '  <td class="signal-code">' + s.code + '</td>' +
-          '  <td>' + (s.name || '--') + '</td>' +
-          '  <td><span class="signal-action buy">买入</span></td>' +
-          '  <td>100</td>' +
-          '  <td>&yen;' + (s.price || '--') + '</td>' +
-          '  <td>&yen;' + amount + '</td>' +
+          '  <td>' + t.date + '</td>' +
+          '  <td class="signal-code">' + t.stock_code + '</td>' +
+          '  <td>' + (t.stock_name || '--') + '</td>' +
+          '  <td><span class="signal-action ' + actionClass + '">' + (actionLabels[t.action] || t.action) + '</span></td>' +
+          '  <td>' + t.shares + '</td>' +
+          '  <td>&yen;' + t.price.toFixed(2) + '</td>' +
+          '  <td>&yen;' + t.total_cost.toFixed(2) + '</td>' +
           '</tr>';
       });
 
       tbody.innerHTML = html;
       $('#paper-trades').style.display = 'block';
+    }
+
+    function renderPnlSummary(data) {
+      if (!data || !data.latest) return;
+      var latest = data.latest;
+      var pnlClass = latest.total_pnl >= 0 ? 'positive' : 'negative';
+      var pnlHTML =
+        '<div class="paper-pnl-summary">' +
+        '  <span>累计盈亏: <span class="' + pnlClass + '">&yen;' + latest.total_pnl.toFixed(2) + '</span></span>' +
+        '  <span>收益率: <span class="' + pnlClass + '">' + (latest.return_pct * 100).toFixed(2) + '%</span></span>' +
+        '  <span>已实现盈亏: &yen;' + (data.realized_pnl || 0).toFixed(2) + '</span>' +
+        '</div>';
+      $('#paper-holdings').insertAdjacentHTML('afterbegin', pnlHTML);
     }
 
     // ==================== Utilities ====================
