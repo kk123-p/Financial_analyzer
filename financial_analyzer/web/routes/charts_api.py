@@ -362,6 +362,437 @@ async def chart_bar(request: Request, days: int = Query(60)):
     )
 
 
+@router.get("/dupont_waterfall")
+async def chart_dupont_waterfall(request: Request):
+    """杜邦瀑布图 — ECharts waterfall bar chart"""
+    from financial_analyzer.ai.report_builder import ReportBuilder
+
+    session = _get_session(request)
+    data = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+    if not data:
+        return _empty_chart()
+
+    try:
+        report = ReportBuilder.build(data, stock_code)
+        three_factor = report.get("dupont_analysis", {}).get("three_factor", [])
+        if len(three_factor) < 2:
+            return _empty_chart()
+
+        new_p, old_p = three_factor[0], three_factor[1]
+        old_nm = float(old_p["net_margin"])
+        new_nm = float(new_p["net_margin"])
+        old_at = float(old_p["asset_turnover"])
+        new_at = float(new_p["asset_turnover"])
+        old_em = float(old_p["equity_multiplier"])
+        new_em = float(new_p["equity_multiplier"])
+
+        old_roe = old_nm * old_at * old_em
+        step1 = new_nm * old_at * old_em
+        step2 = new_nm * new_at * old_em
+        new_roe = new_nm * new_at * new_em
+
+        nm_contrib = step1 - old_roe
+        at_contrib = step2 - step1
+        em_contrib = new_roe - step2
+
+        categories = [
+            f"ROE({old_p['end_date']})",
+            "净利率贡献",
+            "周转率贡献",
+            "杠杆贡献",
+            f"ROE({new_p['end_date']})",
+        ]
+
+        # Transparent base bars for waterfall positioning
+        base_vals = [0, old_roe, old_roe + nm_contrib,
+                     old_roe + nm_contrib + at_contrib, 0]
+
+        # Visible bars
+        bar_vals = [old_roe, nm_contrib, at_contrib, em_contrib, new_roe]
+
+        def _bar_color(idx, val):
+            if idx in (0, 4):
+                return "#D29922"
+            return "#3FB950" if val >= 0 else "#F85149"
+
+        bar_colors = [_bar_color(i, v) for i, v in enumerate(bar_vals)]
+
+        def _label_fmt(idx, val):
+            if idx in (0, 4):
+                return f"{val:.2f}%"
+            return f"+{val:.2f}pp" if val >= 0 else f"{val:.2f}pp"
+
+        option = {
+            "animation": False,
+            "tooltip": {
+                "trigger": "axis",
+                "backgroundColor": "rgba(13,17,23,0.92)",
+                "borderColor": "#30363D",
+                "textStyle": {"color": "#E6EDF3", "fontSize": 12},
+                "formatter": "function(p){return p[1]?p[1].name+': '+p[1].value:''}",
+            },
+            "grid": {"left": 60, "right": 30, "top": 40, "bottom": 50},
+            "xAxis": {
+                "type": "category",
+                "data": categories,
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "axisLabel": {"color": "#8B949E", "rotate": 0},
+            },
+            "yAxis": {
+                "type": "value",
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "splitLine": {"lineStyle": {"color": "#21262D"}},
+                "axisLabel": {"color": "#8B949E", "formatter": "{value}%"},
+            },
+            "series": [
+                {
+                    "name": "base",
+                    "type": "bar",
+                    "stack": "waterfall",
+                    "itemStyle": {
+                        "color": "transparent",
+                        "borderColor": "transparent",
+                    },
+                    "emphasis": {"itemStyle": {"color": "transparent", "borderColor": "transparent"}},
+                    "data": base_vals,
+                },
+                {
+                    "name": "value",
+                    "type": "bar",
+                    "stack": "waterfall",
+                    "data": [
+                        {
+                            "value": round(v, 4),
+                            "itemStyle": {"color": bar_colors[i]},
+                            "label": {
+                                "show": True,
+                                "position": "top" if i in (0, 4) or v >= 0 else "bottom",
+                                "formatter": _label_fmt(i, v),
+                                "color": "#E6EDF3",
+                                "fontSize": 11,
+                            },
+                        }
+                        for i, v in enumerate(bar_vals)
+                    ],
+                },
+            ],
+        }
+
+        return Response(
+            content=json.dumps(option, ensure_ascii=False),
+            media_type="application/json",
+        )
+    except Exception as e:
+        logger.error(f"Dupont waterfall chart failed: {e}")
+        return _empty_chart()
+
+
+@router.get("/valuation_dashboard")
+async def chart_valuation_dashboard(request: Request):
+    """估值仪表盘 — PE/PB 双 gauge"""
+    from financial_analyzer.ai.report_builder import ReportBuilder
+
+    session = _get_session(request)
+    data = session.get("data", {})
+    stock_code = session.get("stock_code", "")
+    if not data:
+        return _empty_chart()
+
+    try:
+        report = ReportBuilder.build(data, stock_code)
+        valuation = report.get("valuation", {})
+        pe_pct = valuation.get("pe_percentile", {})
+        pb_pct = valuation.get("pb_percentile", {})
+        snap = report.get("company_snapshot", {})
+
+        if not pe_pct and not pb_pct:
+            return _empty_chart()
+
+        pe_current = pe_pct.get("current", 0) or 0
+        pe_percentile = pe_pct.get("percentile", 50) or 50
+        pe_avg = pe_pct.get("avg", 0) or 0
+
+        pb_current = pb_pct.get("current", 0) or 0
+        pb_percentile = pb_pct.get("percentile", 50) or 50
+        pb_avg = pb_pct.get("avg", 0) or 0
+
+        def _gauge_axisline():
+            return {
+                "lineStyle": {
+                    "width": 20,
+                    "color": [
+                        [0.3, "#3FB950"],
+                        [0.7, "#D29922"],
+                        [1, "#F85149"],
+                    ],
+                },
+            }
+
+        def _gauge_series(name, value, percentile, avg_val, center_x):
+            return {
+                "name": name,
+                "type": "gauge",
+                "center": [center_x, "55%"],
+                "radius": "80%",
+                "min": 0,
+                "max": 100,
+                "splitNumber": 10,
+                "axisLine": _gauge_axisline(),
+                "axisTick": {"show": False},
+                "splitLine": {"length": 8, "lineStyle": {"color": "#30363D"}},
+                "axisLabel": {"color": "#8B949E", "fontSize": 10, "distance": 16},
+                "pointer": {
+                    "length": "60%",
+                    "width": 4,
+                    "itemStyle": {"color": "#E6EDF3"},
+                },
+                "anchor": {"show": True, "size": 8, "itemStyle": {"color": "#E6EDF3"}},
+                "title": {
+                    "show": True,
+                    "offsetCenter": [0, "75%"],
+                    "color": "#E6EDF3",
+                    "fontSize": 14,
+                    "fontWeight": "bold",
+                },
+                "detail": {
+                    "valueAnimation": False,
+                    "color": "#E6EDF3",
+                    "fontSize": 20,
+                    "fontWeight": "bold",
+                    "offsetCenter": [0, "45%"],
+                    "formatter": "{value}%",
+                },
+                "data": [{
+                    "value": round(float(percentile), 1),
+                    "name": f"{name}\n当前: {value:.2f}  均值: {avg_val:.2f}",
+                }],
+            }
+
+        option = {
+            "animation": False,
+            "tooltip": {"show": False},
+            "series": [
+                _gauge_series("PE", pe_current, pe_percentile, pe_avg, "25%"),
+                _gauge_series("PB", pb_current, pb_percentile, pb_avg, "75%"),
+            ],
+        }
+
+        return Response(
+            content=json.dumps(option, ensure_ascii=False),
+            media_type="application/json",
+        )
+    except Exception as e:
+        logger.error(f"Valuation dashboard chart failed: {e}")
+        return _empty_chart()
+
+
+@router.get("/tech_panel")
+async def chart_tech_panel(request: Request, days: int = Query(120)):
+    """技术指标多面板 — MACD / RSI / KDJ"""
+    session = _get_session(request)
+    df = _get_daily(session)
+    if df is None:
+        return _empty_chart()
+
+    days = min(max(days, 30), 500)
+    df = df.tail(days).copy()
+    df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    df = df.sort_values("trade_date").reset_index(drop=True)
+    dates = df["trade_date"].dt.strftime("%Y-%m-%d").tolist()
+
+    close = df["close"].astype(float)
+    high = df["high"].astype(float)
+    low = df["low"].astype(float)
+
+    # --- MACD ---
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    macd_bar = (dif - dea) * 2
+
+    # --- RSI(14) ---
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(span=14, adjust=False).mean()
+    avg_loss = loss.ewm(span=14, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - 100 / (1 + rs)
+
+    # --- KDJ(9,3,3) ---
+    low9 = low.rolling(9).min()
+    high9 = high.rolling(9).max()
+    rsv = (close - low9) / (high9 - low9).replace(0, np.nan) * 100
+    k_val = rsv.ewm(com=2, adjust=False).mean()  # SMA(RSV,3) ≈ EWM(com=2)
+    d_val = k_val.ewm(com=2, adjust=False).mean()
+    j_val = 3 * k_val - 2 * d_val
+
+    # --- MA lines ---
+    ma5 = close.rolling(5).mean()
+    ma10 = close.rolling(10).mean()
+    ma20 = close.rolling(20).mean()
+
+    close_data = [_safe_float(v) for v in close.tolist()]
+    ma5_data = [_safe_float(v) for v in ma5.tolist()]
+    ma10_data = [_safe_float(v) for v in ma10.tolist()]
+    ma20_data = [_safe_float(v) for v in ma20.tolist()]
+
+    dif_data = [_safe_float(v) for v in dif.tolist()]
+    dea_data = [_safe_float(v) for v in dea.tolist()]
+    macd_data = []
+    for v in macd_bar.tolist():
+        fv = _safe_float(v)
+        macd_data.append({
+            "value": fv if fv is not None else 0,
+            "itemStyle": {"color": "#3FB950" if (fv or 0) >= 0 else "#F85149"},
+        })
+
+    rsi_data = [_safe_float(v) for v in rsi.tolist()]
+    k_data = [_safe_float(v) for v in k_val.tolist()]
+    d_data = [_safe_float(v) for v in d_val.tolist()]
+    j_data = [_safe_float(v) for v in j_val.tolist()]
+
+    grid_style = {
+        "axisLine": {"lineStyle": {"color": "#30363D"}},
+        "splitLine": {"lineStyle": {"color": "#21262D"}},
+        "axisLabel": {"color": "#8B949E"},
+    }
+    xaxis_style = {
+        "axisLine": {"lineStyle": {"color": "#30363D"}},
+        "splitLine": {"show": False},
+        "axisLabel": {"color": "#8B949E"},
+    }
+
+    option = {
+        "animation": False,
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross", "link": [{"xAxisIndex": "all"}]},
+            "backgroundColor": "rgba(13,17,23,0.92)",
+            "borderColor": "#30363D",
+            "textStyle": {"color": "#E6EDF3", "fontSize": 12},
+        },
+        "legend": {
+            "data": ["收盘价", "MA5", "MA10", "MA20", "DIF", "DEA", "MACD", "RSI", "K", "D", "J"],
+            "textStyle": {"color": "#8B949E"},
+            "top": 0,
+            "left": 0,
+            "type": "scroll",
+        },
+        "axisPointer": {"link": [{"xAxisIndex": "all"}]},
+        "grid": [
+            {"left": 55, "right": 15, "top": 35, "height": "28%"},
+            {"left": 55, "right": 15, "top": "40%", "height": "14%"},
+            {"left": 55, "right": 15, "top": "58%", "height": "14%"},
+            {"left": 55, "right": 15, "top": "76%", "height": "14%"},
+        ],
+        "xAxis": [
+            {**{"type": "category", "data": dates, "gridIndex": 0, "boundaryGap": True, "axisLabel": {"show": False}}, **xaxis_style},
+            {**{"type": "category", "data": dates, "gridIndex": 1, "boundaryGap": True, "axisLabel": {"show": False}}, **xaxis_style},
+            {**{"type": "category", "data": dates, "gridIndex": 2, "boundaryGap": True, "axisLabel": {"show": False}}, **xaxis_style},
+            {**{"type": "category", "data": dates, "gridIndex": 3, "boundaryGap": True}, **xaxis_style},
+        ],
+        "yAxis": [
+            {**{"scale": True, "gridIndex": 0, "splitNumber": 4}, **grid_style},
+            {**{"scale": True, "gridIndex": 1, "splitNumber": 3}, **grid_style},
+            {**{"scale": True, "gridIndex": 2, "splitNumber": 3, "min": 0, "max": 100}, **grid_style},
+            {**{"scale": True, "gridIndex": 3, "splitNumber": 3}, **grid_style},
+        ],
+        "dataZoom": [
+            {
+                "type": "inside",
+                "xAxisIndex": [0, 1, 2, 3],
+                "start": 50,
+                "end": 100,
+            },
+            {
+                "type": "slider",
+                "xAxisIndex": [0, 1, 2, 3],
+                "top": "93%",
+                "height": 16,
+                "start": 50,
+                "end": 100,
+                "borderColor": "#30363D",
+                "backgroundColor": "#060912",
+                "fillerColor": "rgba(63,185,80,0.15)",
+                "handleStyle": {"color": "#3FB950"},
+                "textStyle": {"color": "#8B949E"},
+            },
+        ],
+        "series": [
+            {
+                "name": "收盘价", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": close_data, "symbol": "none",
+                "lineStyle": {"color": "#F0F6FC", "width": 1.5},
+            },
+            {
+                "name": "MA5", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": ma5_data, "symbol": "none", "smooth": True,
+                "lineStyle": {"color": "#F85149", "width": 1},
+            },
+            {
+                "name": "MA10", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": ma10_data, "symbol": "none", "smooth": True,
+                "lineStyle": {"color": "#39D2C0", "width": 1},
+            },
+            {
+                "name": "MA20", "type": "line", "xAxisIndex": 0, "yAxisIndex": 0,
+                "data": ma20_data, "symbol": "none", "smooth": True,
+                "lineStyle": {"color": "#D29922", "width": 1},
+            },
+            {
+                "name": "DIF", "type": "line", "xAxisIndex": 1, "yAxisIndex": 1,
+                "data": dif_data, "symbol": "none",
+                "lineStyle": {"color": "#39D2C0", "width": 1},
+            },
+            {
+                "name": "DEA", "type": "line", "xAxisIndex": 1, "yAxisIndex": 1,
+                "data": dea_data, "symbol": "none",
+                "lineStyle": {"color": "#D29922", "width": 1},
+            },
+            {
+                "name": "MACD", "type": "bar", "xAxisIndex": 1, "yAxisIndex": 1,
+                "data": macd_data,
+            },
+            {
+                "name": "RSI", "type": "line", "xAxisIndex": 2, "yAxisIndex": 2,
+                "data": rsi_data, "symbol": "none",
+                "lineStyle": {"color": "#BC8CFF", "width": 1.5},
+                "markLine": {
+                    "silent": True,
+                    "data": [
+                        {"yAxis": 30, "lineStyle": {"color": "#3FB950", "type": "dashed", "width": 1}},
+                        {"yAxis": 70, "lineStyle": {"color": "#F85149", "type": "dashed", "width": 1}},
+                    ],
+                    "label": {"show": False},
+                },
+            },
+            {
+                "name": "K", "type": "line", "xAxisIndex": 3, "yAxisIndex": 3,
+                "data": k_data, "symbol": "none",
+                "lineStyle": {"color": "#39D2C0", "width": 1},
+            },
+            {
+                "name": "D", "type": "line", "xAxisIndex": 3, "yAxisIndex": 3,
+                "data": d_data, "symbol": "none",
+                "lineStyle": {"color": "#D29922", "width": 1},
+            },
+            {
+                "name": "J", "type": "line", "xAxisIndex": 3, "yAxisIndex": 3,
+                "data": j_data, "symbol": "none",
+                "lineStyle": {"color": "#BC8CFF", "width": 1},
+            },
+        ],
+    }
+
+    return Response(
+        content=json.dumps(option, ensure_ascii=False),
+        media_type="application/json",
+    )
+
+
 @router.get("/img/{chart_type}")
 async def chart_img(request: Request, chart_type: str):
     """服务端 matplotlib 渲染 PNG（瀑布图、雷达图等复杂图表）"""
