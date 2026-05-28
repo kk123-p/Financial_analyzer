@@ -338,7 +338,126 @@
     return s;
   }
 
-  // ---- 5. Link all backtest charts for cross-highlighting ----
+  // ---- 5. Sensitivity heatmap ----
+
+  function renderSensitivityHeatmap(data) {
+    var domId = 'sens-chart-heatmap';
+    var el = document.getElementById(domId);
+    if (!el || !data || !data.grid) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var xRange = data.x_range || [];
+    var yRange = data.y_range || [];
+    var grid = data.grid || [];
+    var fxLabel = (data.factor_x && data.factor_x.label) || 'Factor X';
+    var fyLabel = (data.factor_y && data.factor_y.label) || 'Factor Y';
+    var bl = data.baseline || {};
+
+    var heatData = [];
+    var minVal = Infinity, maxVal = -Infinity;
+    for (var yi = 0; yi < grid.length; yi++) {
+      for (var xi = 0; xi < grid[yi].length; xi++) {
+        var v = grid[yi][xi];
+        heatData.push([xi, yi, v]);
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+    }
+
+    // Baseline markPoint
+    var baselineMarkData = [];
+    if (bl.x_weight != null && bl.y_weight != null) {
+      var blXi = -1, blYi = -1;
+      for (var i = 0; i < xRange.length; i++) {
+        if (Math.abs(xRange[i] - bl.x_weight) < 0.001) { blXi = i; break; }
+      }
+      for (var j = 0; j < yRange.length; j++) {
+        if (Math.abs(yRange[j] - bl.y_weight) < 0.001) { blYi = j; break; }
+      }
+      if (blXi >= 0 && blYi >= 0) {
+        baselineMarkData.push({
+          name: '基准',
+          coord: [blXi, blYi],
+          itemStyle: { color: '#D29922', borderColor: '#F0F6FC', borderWidth: 2 },
+          symbol: 'diamond',
+          symbolSize: 16,
+          label: { show: true, formatter: '基准', color: '#F0F6FC', fontSize: 11, position: 'top' },
+        });
+      }
+    }
+
+    var xLabels = xRange.map(function(v) { return v.toFixed(2); });
+    var yLabels = yRange.map(function(v) { return v.toFixed(2); });
+
+    if (minVal === maxVal) { minVal -= 1; maxVal += 1; }
+
+    var option = {
+      tooltip: {
+        formatter: function (params) {
+          var xi = params.value[0], yi = params.value[1];
+          return fxLabel + ' 权重: <b>' + xLabels[xi] + '</b><br/>' +
+            fyLabel + ' 权重: <b>' + yLabels[yi] + '</b><br/>' +
+            '指标值: <b>' + params.value[2].toFixed(4) + '</b>';
+        },
+      },
+      grid: { left: 80, right: 40, top: 20, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: xLabels,
+        name: fxLabel + ' 权重',
+        nameLocation: 'center',
+        nameGap: 36,
+        nameTextStyle: { color: '#8B949E', fontSize: 12 },
+        axisLabel: { color: '#8B949E', fontSize: 10 },
+        axisLine: { lineStyle: { color: '#30363D' } },
+      },
+      yAxis: {
+        type: 'category',
+        data: yLabels,
+        name: fyLabel + ' 权重',
+        nameLocation: 'center',
+        nameGap: 50,
+        nameTextStyle: { color: '#8B949E', fontSize: 12 },
+        axisLabel: { color: '#8B949E', fontSize: 10 },
+        axisLine: { lineStyle: { color: '#30363D' } },
+      },
+      visualMap: {
+        min: minVal,
+        max: maxVal,
+        calculable: false,
+        orient: 'vertical',
+        right: 0,
+        top: 'center',
+        inRange: {
+          color: ['#F85149', '#21262D', '#3FB950'],
+        },
+        textStyle: { color: '#8B949E', fontSize: 10 },
+      },
+      series: [{
+        type: 'heatmap',
+        data: heatData,
+        label: {
+          show: true,
+          fontSize: 10,
+          color: '#E6EDF3',
+          formatter: function (params) {
+            return params.value[2].toFixed(2);
+          },
+        },
+        emphasis: {
+          itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.4)' },
+        },
+        markPoint: baselineMarkData.length > 0 ? { data: baselineMarkData } : undefined,
+      }],
+    };
+
+    EchartsUtils.setOption(chart, option);
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 6. Link all backtest charts for cross-highlighting ----
 
   function linkAllCharts() {
     InteractionUtils.linkCharts([
@@ -347,7 +466,7 @@
     ]);
   }
 
-  // ---- Resize all backtest charts ----
+  // ---- 7. Resize all backtest charts ----
 
   function resizeAll() {
     for (var key in CHART_IDS) {
@@ -363,6 +482,7 @@
     renderDrawdownCurve: renderDrawdownCurve,
     renderMonthlyHeatmap: renderMonthlyHeatmap,
     renderTradeDistribution: renderTradeDistribution,
+    renderSensitivityHeatmap: renderSensitivityHeatmap,
     linkAllCharts: linkAllCharts,
     resizeAll: resizeAll,
   };
