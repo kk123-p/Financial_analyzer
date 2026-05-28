@@ -191,3 +191,149 @@
         height: 360px;
     }
 }
+
+/* ---- Drill-down modal ---- */
+
+.drilldown-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+}
+
+.drilldown-modal {
+    background: #0D1117;
+    border: 1px solid rgba(48, 54, 61, 0.6);
+    border-radius: 12px;
+    width: min(800px, 92vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.drilldown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    flex-shrink: 0;
+}
+
+.drilldown-header h3 {
+    margin: 0;
+    font-size: var(--text-md, 14px);
+    color: var(--text-primary, #E6EDF3);
+    font-weight: 600;
+}
+
+.drilldown-close {
+    background: none;
+    border: none;
+    color: var(--text-muted, #8B949E);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    border-radius: 4px;
+    transition: color 150ms, background 150ms;
+}
+
+.drilldown-close:hover {
+    color: var(--text-primary, #E6EDF3);
+    background: rgba(48, 54, 61, 0.4);
+}
+
+.drilldown-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+    color: var(--text-primary, #E6EDF3);
+    font-size: var(--text-sm, 13px);
+    line-height: 1.6;
+}
+
+.drilldown-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs, 12px);
+    margin-top: 12px;
+}
+
+.drilldown-body th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--text-muted, #8B949E);
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    font-weight: 600;
+}
+
+.drilldown-body td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.2);
+}
+
+/* ---- Chart zoom / export controls ---- */
+
+.chart-zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 200ms;
+}
+
+.chart-container:hover .chart-zoom-controls,
+.backtest-chart-echart:hover .chart-zoom-controls {
+    opacity: 1;
+}
+
+.chart-zoom-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    background: rgba(13, 17, 23, 0.85);
+    color: var(--text-secondary, #8B949E);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 150ms, border-color 150ms, background 150ms;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    padding: 0;
+    line-height: 1;
+}
+
+.chart-zoom-btn:hover {
+    color: var(--accent-primary, #3FB950);
+    border-color: rgba(63, 185, 80, 0.4);
+    background: rgba(63, 185, 80, 0.08);
+}
+
+.chart-zoom-btn:active {
+    transform: scale(0.92);
+}
+
+@media (max-width: 600px) {
+    .chart-zoom-controls {
+        opacity: 1;
+    }
+    .chart-zoom-btn {
+        width: 32px;
+        height: 32px;
+    }
+}
