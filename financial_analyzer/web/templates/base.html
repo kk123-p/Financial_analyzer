@@ -573,6 +573,7 @@
             statusEl.textContent = '[' + pct + '%] ' + msg;
 
             if (task.status === 'done') {
+                var doneTaskId = _quantTaskId;
                 _quantTimer = null;
                 _quantTaskId = null;
                 btn.disabled = false;
@@ -580,10 +581,7 @@
                 stopBtn.style.display = 'none';
                 statusEl.textContent = '[' + pct + '%] 完成！';
                 statusEl.style.color = '#4caf50';
-                if (task.result) {
-                    renderQuantResult(task.result);
-                    resultEl.style.display = 'block';
-                }
+                fetchQuantResult(doneTaskId);
             } else if (task.status === 'error') {
                 _quantTimer = null;
                 _quantTaskId = null;
@@ -614,6 +612,22 @@
         stopBtn.style.display = 'none';
         statusEl.textContent = '已停止';
         statusEl.style.color = 'var(--text-muted)';
+    }
+
+    function fetchQuantResult(taskId) {
+        fetch('/api/v1/quant/result/' + taskId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var resultEl = document.getElementById('quant-result');
+            var emptyEl = document.getElementById('quant-empty');
+            renderQuantResult(data);
+            resultEl.style.display = 'block';
+        })
+        .catch(function(err) {
+            var statusEl = document.getElementById('quant-status-text');
+            statusEl.textContent = '获取结果失败: ' + err.message;
+            statusEl.style.color = '#f44336';
+        });
     }
 
     function renderQuantResult(data) {
