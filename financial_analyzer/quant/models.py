@@ -107,3 +107,23 @@ class ICSummary:
     ic_positive_pct: float
     t_stat: float
     n_months: int
+
+
+@dataclass
+class ICDecayRecord:
+    """单月、单持仓周期的 IC 记录"""
+    date: date
+    factor_name: str
+    horizon: int
+    ic_value: float
+    n_stocks: int
+
+
+@dataclass
+class DecayCurve:
+    """因子衰减曲线 — 不同持仓周期的 IC 均值"""
+    factor_name: str
+    horizons: list[int]
+    mean_ic_by_horizon: list[float]
+    ic_positive_pct_by_horizon: list[float]
+    n_months_by_horizon: list[int]

@@ -154,6 +154,95 @@ class TestReset:
         assert len(analyzer._ic_history) == 0
 
 
+class TestComputeMultiHorizonIC:
+    def test_basic(self):
+        """多周期 IC 计算正确：单调递增数据 IC 接近 1.0"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {s: {"pe": float(i)} for i, s in enumerate(stocks)}
+        fwd_returns = {
+            1: {s: float(i) * 0.01 for i, s in enumerate(stocks)},
+            3: {s: float(i) * 0.02 for i, s in enumerate(stocks)},
+        }
+        result = analyzer.compute_multi_horizon_ic(
+            factor_values, fwd_returns, ref_date=date(2025, 1, 31)
+        )
+        assert 1 in result and 3 in result
+        assert result[1]["pe"] > 0.95
+        assert result[3]["pe"] > 0.95
+        # decay_history should have 2 records
+        assert len(analyzer._decay_history["pe"]) == 2
+
+    def test_different_factors(self):
+        """不同因子独立计算"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {
+            s: {"pe": float(i), "pb": -float(i)} for i, s in enumerate(stocks)
+        }
+        fwd_returns = {1: {s: float(i) * 0.01 for i, s in enumerate(stocks)}}
+        result = analyzer.compute_multi_horizon_ic(
+            factor_values, fwd_returns, ref_date=date(2025, 1, 31)
+        )
+        assert result[1]["pe"] > 0.95
+        assert result[1]["pb"] < -0.95
+
+
+class TestComputeDecayCurve:
+    def test_basic(self):
+        """衰减曲线汇总正确"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        # Run 3 months of data
+        for month in range(1, 4):
+            factor_values = {s: {"pe": float(i)} for i, s in enumerate(stocks)}
+            fwd_returns = {
+                1: {s: float(i) * 0.01 for i, s in enumerate(stocks)},
+                3: {s: float(i) * 0.005 for i, s in enumerate(stocks)},
+            }
+            analyzer.compute_multi_horizon_ic(
+                factor_values, fwd_returns, ref_date=date(2025, month, 28)
+            )
+
+        curves = analyzer.compute_decay_curve()
+        assert "pe" in curves
+        dc = curves["pe"]
+        assert dc.factor_name == "pe"
+        assert dc.horizons == [1, 3]
+        assert len(dc.mean_ic_by_horizon) == 2
+        assert dc.n_months_by_horizon == [3, 3]
+        # IC should be high for both horizons
+        assert dc.mean_ic_by_horizon[0] > 0.9
+        assert dc.mean_ic_by_horizon[1] > 0.9
+        assert dc.ic_positive_pct_by_horizon[0] == 1.0
+
+    def test_empty(self):
+        """无历史时返回空字典"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        curves = analyzer.compute_decay_curve()
+        assert curves == {}
+
+
+class TestDecayReset:
+    def test_reset(self):
+        """reset 清除衰减历史"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {s: {"pe": float(i)} for i, s in enumerate(stocks)}
+        fwd_returns = {1: {s: float(i) * 0.01 for i, s in enumerate(stocks)}}
+        analyzer.compute_multi_horizon_ic(
+            factor_values, fwd_returns, ref_date=date(2025, 1, 31)
+        )
+        assert len(analyzer._decay_history) == 1
+        analyzer.reset()
+        assert len(analyzer._decay_history) == 0
+
+
 class TestGetICTimeseries:
     def test_timeseries_format(self):
         """时序数据格式正确"""
