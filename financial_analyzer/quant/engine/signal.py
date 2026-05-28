@@ -16,7 +16,14 @@ class SignalGenerator:
                  scores: dict[str, float],
                  current_holdings: set[str],
                  universe: str,
-                 ref_date: Optional[date] = None) -> TradeList:
+                 ref_date: Optional[date] = None,
+                 weights: Optional[dict[str, float]] = None) -> TradeList:
+        """生成调仓信号
+
+        Args:
+            weights: 可选的自定义权重 {stock_code: weight}，
+                     若未提供则均等分配
+        """
         trade_list = TradeList(
             date=ref_date or date.today(),
             universe=universe,
@@ -42,7 +49,7 @@ class SignalGenerator:
         if n == 0:
             return trade_list
 
-        invest_weight = (1 - self.cash_reserve) / n
+        default_weight = (1 - self.cash_reserve) / n
         sorted_codes = sorted(scores.keys(), key=lambda c: scores.get(c, -999), reverse=True)
 
         for stock in optimized_stocks:
@@ -51,6 +58,11 @@ class SignalGenerator:
                 rank = sorted_codes.index(stock.code) + 1
             except ValueError:
                 rank = n
+
+            if weights and stock.code in weights:
+                invest_weight = weights[stock.code] * (1 - self.cash_reserve)
+            else:
+                invest_weight = default_weight
 
             if stock.code in current_holdings:
                 action = "hold"
