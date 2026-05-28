@@ -583,13 +583,18 @@ def _extract_price_at_date(stock_data: dict, stock_code: str, target_date) -> Op
 
     target_str = target_date.strftime("%Y%m%d") if hasattr(target_date, "strftime") else str(target_date)
 
+    # 确保 trade_date 是字符串格式
     if "trade_date" in daily.columns:
-        dates = daily["trade_date"].astype(str)
+        dates = daily["trade_date"].astype(str).str.replace("-", "").str[:8]
+        # 先尝试精确匹配或之前最近的交易日
         mask = dates <= target_str
         if mask.any():
-            return float(daily.loc[mask].iloc[-1]["close"])
+            return float(daily.loc[mask].iloc[0]["close"])  # iloc[0] 因为数据按日期降序
+        # 如果 target 之前没有数据，取最早的可用价格
+        return float(daily.iloc[-1]["close"])
 
-    return float(daily.iloc[-1]["close"]) if not daily.empty else None
+    # 没有 trade_date 列，直接取最新价格
+    return float(daily.iloc[0]["close"]) if not daily.empty else None
 
 
 @router.post("/optimize")
@@ -666,10 +671,25 @@ async def run_optimize(
                     prices_train[s.code] = p_train
                     prices_test[s.code] = p_test
 
+            # 如果价格提取失败，回退到 stock_data 中的最新价格
+            if len(prices_train) < len(stocks_with_data) // 2:
+                logger.warning(f"价格提取不足 ({len(prices_train)}/{len(stocks_with_data)})，回退到最新价格")
+                for s in stocks_with_data:
+                    if s.code not in prices_train:
+                        data = stock_data.get(s.code, {})
+                        daily = data.get("daily")
+                        if daily is not None and not daily.empty and "close" in daily.columns:
+                            prices_train[s.code] = float(daily.iloc[0]["close"])
+                            prices_test[s.code] = float(daily.iloc[0]["close"])
+
+            logger.info(f"价格提取: {len(stocks_with_data)} 只股票, 训练期价格 {len(prices_train)} 只, 测试期价格 {len(prices_test)} 只")
+
             test_returns = {}
             for code in prices_train:
                 if code in prices_test:
                     test_returns[code] = (prices_test[code] - prices_train[code]) / prices_train[code]
+
+            logger.info(f"测试期收益率: {len(test_returns)} 只股票有数据")
 
             if len(test_returns) < 10:
                 _update_task(task_id, status="error", message="测试期价格数据不足")

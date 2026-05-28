@@ -20,7 +20,7 @@ class Ranker:
         for s in stocks:
             if s.is_st or s.is_suspended:
                 continue
-            if prices and prices.get(s.code, 999) > self.max_price:
+            if prices and s.code in prices and prices[s.code] > self.max_price:
                 continue
             if s.code in composite_scores:
                 valid_codes.add(s.code)
