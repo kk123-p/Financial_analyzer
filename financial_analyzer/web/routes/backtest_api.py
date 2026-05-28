@@ -111,6 +111,7 @@ async def run_backtest(
     benchmark_code: str = Query("", description="基准指数代码（如 000300.SH）"),
     slippage_pct: float = Query(0.1, description="滑点百分比（默认 0.1%）"),
     stamp_tax: bool = Query(True, description="是否收取印花税"),
+    position_sizer: str = Query("equal", description="仓位分配策略: equal/risk_parity/min_variance/kelly/market_cap"),
 ):
     """启动回测任务（后台线程）"""
     # Validate date format
@@ -177,6 +178,7 @@ async def run_backtest(
                 benchmark_code=benchmark_code or None,
                 slippage_pct=slippage_pct,
                 stamp_tax=stamp_tax,
+                position_sizer_name=position_sizer,
             )
 
             _update_task(task_id, progress=20, message=f"开始回测 {start_date} ~ {end_date}...")
