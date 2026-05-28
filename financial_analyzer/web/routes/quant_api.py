@@ -1,4 +1,5 @@
 """量化策略 API 路由"""
+import copy
 import json
 import logging
 import threading
@@ -7,6 +8,8 @@ from pathlib import Path
 from datetime import datetime
 
 from typing import Optional
+
+import numpy as np
 
 from fastapi import APIRouter, Body, Query
 from fastapi.responses import JSONResponse
@@ -306,6 +309,208 @@ async def task_status(task_id: str):
 @router.get("/result/{task_id}")
 async def task_result(task_id: str):
     """获取任务结果"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    if task["status"] == "done":
+        return JSONResponse(task.get("result", {}))
+    return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})
+
+
+@router.post("/sensitivity")
+async def run_sensitivity(
+    pool: str = Query("沪深300", description="选股池名称"),
+    factor_x: str = Query(..., description="X 轴因子 name"),
+    factor_y: str = Query(..., description="Y 轴因子 name"),
+    grid_size: int = Query(5, description="网格大小", ge=3, le=9),
+    weight_min: float = Query(0.2, description="权重最小值"),
+    weight_max: float = Query(1.8, description="权重最大值"),
+):
+    """启动敏感性分析（后台线程 + 进度轮询）"""
+    allowed_names = {c.name for c in DEFAULT_FACTOR_CONFIGS}
+    if factor_x not in allowed_names:
+        return JSONResponse({"error": f"factor_x '{factor_x}' 不在因子列表中"}, status_code=400)
+    if factor_y not in allowed_names:
+        return JSONResponse({"error": f"factor_y '{factor_y}' 不在因子列表中"}, status_code=400)
+    if factor_x == factor_y:
+        return JSONResponse({"error": "factor_x 和 factor_y 不能相同"}, status_code=400)
+    if weight_min >= weight_max:
+        return JSONResponse({"error": "weight_min 必须小于 weight_max"}, status_code=400)
+
+    task_id = "sens_" + uuid.uuid4().hex[:12]
+
+    import time as _time
+    with _task_lock:
+        _task_store[task_id] = {
+            "status": "starting",
+            "progress": 0,
+            "message": "正在初始化敏感性分析...",
+            "started_at": datetime.now().isoformat(),
+            "started_ts": _time.time(),
+            "pool": pool,
+            "is_sensitivity": True,
+        }
+
+    def _run_sensitivity():
+        try:
+            _update_task(task_id, status="running", progress=5, message="加载 Tushare 连接...")
+            adapter = get_adapter()
+            _load_token(adapter)
+
+            _update_task(task_id, progress=10, message=f"获取 {pool} 成分股...")
+            mgr = UniverseManager(adapter)
+            stocks = mgr.get_universe(pool)
+            if not stocks:
+                _update_task(task_id, status="error", message=f"选股池 [{pool}] 无可用股票")
+                return
+
+            MAX_STOCKS = 500
+            if len(stocks) > MAX_STOCKS:
+                stocks = stocks[:MAX_STOCKS]
+            _update_task(task_id, progress=15, message=f"成分股: {len(stocks)} 只，补充基本信息...")
+
+            def progress_cb(stage, current, total, msg):
+                base = 15
+                pct = base + int(45 * current / total) if total > 0 else base
+                _update_task(task_id, progress=pct, message=msg)
+
+            fetcher = QuantDataFetcher(adapter, start_date="20230101",
+                                       progress_callback=progress_cb)
+            stocks = fetcher.enrich_stock_info(stocks)
+            stocks = mgr.apply_filters(stocks)
+            stock_data = fetcher.fetch_all(stocks)
+
+            stocks_with_data = [s for s in stocks if s.code in stock_data]
+            n_valid = len(stocks_with_data)
+            if n_valid < 5:
+                _update_task(task_id, status="error",
+                             message=f"有效数据不足: {n_valid}/{len(stocks)} 只")
+                return
+
+            _update_task(task_id, progress=60, message=f"构建因子矩阵 ({n_valid} 只)...")
+
+            builder = FactorMatrixBuilder(factors=ALL_FACTORS)
+            matrix = builder.build(stocks_with_data, stock_data)
+            if len(matrix.stocks) < 5:
+                _update_task(task_id, status="error",
+                             message=f"因子计算后不足: {len(matrix.stocks)} 只")
+                return
+
+            _update_task(task_id, progress=70, message="截面标准化...")
+            normalizer = CrossSectionalNormalizer(method="zscore")
+            matrix = normalizer.normalize(matrix)
+
+            # Extract prices
+            prices_from_data = {}
+            for code, data in stock_data.items():
+                daily = data.get("daily")
+                if daily is not None and not daily.empty and "close" in daily.columns:
+                    prices_from_data[code] = float(daily["close"].iloc[0])
+
+            # Look up factor configs
+            fx_cfg = next(c for c in DEFAULT_FACTOR_CONFIGS if c.name == factor_x)
+            fy_cfg = next(c for c in DEFAULT_FACTOR_CONFIGS if c.name == factor_y)
+
+            # Build weight grid
+            weights = np.linspace(weight_min, weight_max, grid_size).tolist()
+            weights = [round(w, 4) for w in weights]
+
+            # Baseline: run with original weights
+            _update_task(task_id, progress=75, message="计算基准指标...")
+            baseline_scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
+            baseline_scores = baseline_scorer.score(matrix)
+            baseline_ranked = Ranker(top_n=30, max_price=10.0).rank(
+                baseline_scores, stocks_with_data, prices=prices_from_data)
+            baseline_metric = 0.0
+            if baseline_ranked:
+                baseline_opt = ConstraintOptimizer().optimize(baseline_ranked, baseline_scores)
+                if baseline_opt:
+                    opt_codes = [s.stock_code for s in baseline_opt]
+                    baseline_metric = float(np.mean([
+                        baseline_scores.get(c, 0.0) for c in opt_codes
+                    ]))
+
+            # Grid search
+            total_cells = grid_size * grid_size
+            grid_values = []
+            done_cells = 0
+
+            for wy in weights:
+                row = []
+                for wx in weights:
+                    custom_configs = []
+                    for c in DEFAULT_FACTOR_CONFIGS:
+                        new_w = c.weight
+                        if c.name == factor_x:
+                            new_w = wx
+                        elif c.name == factor_y:
+                            new_w = wy
+                        custom_configs.append(FactorConfig(
+                            name=c.name, label=c.label, category=c.category,
+                            direction=c.direction, weight=new_w, enabled=c.enabled,
+                        ))
+
+                    scorer = WeightedScorer(custom_configs)
+                    scores = scorer.score(matrix)
+                    ranked = Ranker(top_n=30, max_price=10.0).rank(
+                        scores, stocks_with_data, prices=prices_from_data)
+                    metric = 0.0
+                    if ranked:
+                        optimized = ConstraintOptimizer().optimize(ranked, scores)
+                        if optimized:
+                            opt_codes = [s.stock_code for s in optimized]
+                            metric = float(np.mean([
+                                scores.get(c, 0.0) for c in opt_codes
+                            ]))
+                    row.append(round(metric, 6))
+                    done_cells += 1
+
+                grid_values.append(row)
+                pct = 75 + int(20 * done_cells / total_cells)
+                _update_task(task_id, progress=pct,
+                             message=f"网格计算 {done_cells}/{total_cells}...")
+
+            result = {
+                "factor_x": {"name": fx_cfg.name, "label": fx_cfg.label, "category": fx_cfg.category},
+                "factor_y": {"name": fy_cfg.name, "label": fy_cfg.label, "category": fy_cfg.category},
+                "x_range": weights,
+                "y_range": weights,
+                "grid": grid_values,
+                "baseline": {
+                    "x_weight": fx_cfg.weight,
+                    "y_weight": fy_cfg.weight,
+                    "metric": round(baseline_metric, 6),
+                },
+                "pool": pool,
+                "valid_stocks": n_valid,
+                "metric_label": "Top-N 平均综合分数",
+            }
+
+            _update_task(task_id, status="done", progress=100,
+                         message="敏感性分析完成", result=result)
+
+        except Exception as e:
+            logger.error(f"敏感性分析失败: {e}", exc_info=True)
+            _update_task(task_id, status="error", message=str(e))
+
+    threading.Thread(target=_run_sensitivity, daemon=True).start()
+    return JSONResponse({"task_id": task_id})
+
+
+@router.get("/sensitivity/status/{task_id}")
+async def sensitivity_status(task_id: str):
+    """查询敏感性分析任务进度"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse({k: v for k, v in task.items() if k != "result"})
+
+
+@router.get("/sensitivity/result/{task_id}")
+async def sensitivity_result(task_id: str):
+    """获取敏感性分析结果"""
     with _task_lock:
         task = _task_store.get(task_id)
     if not task:
