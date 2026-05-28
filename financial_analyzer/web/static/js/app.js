@@ -178,27 +178,6 @@ function loadChart(chartType, btn) {
         });
 }
 
-function loadChartImg(chartType, btn) {
-    if (btn) {
-        btn.parentElement.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-    }
-
-    const container = document.getElementById('chart-container');
-    if (!container) return;
-    container.innerHTML = '<div class="result-empty">加载中...</div>';
-
-    fetch('/chart/img/' + chartType)
-        .then(r => r.blob())
-        .then(blob => {
-            const url = URL.createObjectURL(blob);
-            container.innerHTML = `<img src="${url}" style="max-width:100%;height:auto;" onload="URL.revokeObjectURL(this.src)">`;
-        })
-        .catch(() => {
-            container.innerHTML = '<div class="result-empty">图表加载失败</div>';
-        });
-}
-
 function loadAnalysisChart(chartType, btn) {
     if (btn) {
         btn.parentElement.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));

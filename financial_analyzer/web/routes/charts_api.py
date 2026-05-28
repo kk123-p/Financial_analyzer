@@ -41,7 +41,7 @@ async def chart_candlestick(request: Request, days: int = Query(120)):
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
@@ -209,7 +209,7 @@ async def chart_ma(request: Request, days: int = Query(250)):
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
@@ -300,7 +300,7 @@ async def chart_bar(request: Request, days: int = Query(60)):
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
@@ -371,13 +371,13 @@ async def chart_dupont_waterfall(request: Request):
     data = session.get("data", {})
     stock_code = session.get("stock_code", "")
     if not data:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     try:
         report = ReportBuilder.build(data, stock_code)
         three_factor = report.get("dupont_analysis", {}).get("three_factor", [])
         if len(three_factor) < 2:
-            return _empty_chart()
+            return _empty_chart("财务数据不足，需要至少2期数据")
 
         new_p, old_p = three_factor[0], three_factor[1]
         old_nm = float(old_p["net_margin"])
@@ -485,7 +485,7 @@ async def chart_dupont_waterfall(request: Request):
         )
     except Exception as e:
         logger.error(f"Dupont waterfall chart failed: {e}")
-        return _empty_chart()
+        return _empty_chart("图表渲染失败")
 
 
 @router.get("/valuation_dashboard")
@@ -497,7 +497,7 @@ async def chart_valuation_dashboard(request: Request):
     data = session.get("data", {})
     stock_code = session.get("stock_code", "")
     if not data:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     try:
         report = ReportBuilder.build(data, stock_code)
@@ -507,7 +507,7 @@ async def chart_valuation_dashboard(request: Request):
         snap = report.get("company_snapshot", {})
 
         if not pe_pct and not pb_pct:
-            return _empty_chart()
+            return _empty_chart("估值数据不足，需要更长的历史数据")
 
         pe_current = pe_pct.get("current", 0) or 0
         pe_percentile = pe_pct.get("percentile", 50) or 50
@@ -584,7 +584,7 @@ async def chart_valuation_dashboard(request: Request):
         )
     except Exception as e:
         logger.error(f"Valuation dashboard chart failed: {e}")
-        return _empty_chart()
+        return _empty_chart("图表渲染失败")
 
 
 @router.get("/tech_panel")
@@ -593,7 +593,7 @@ async def chart_tech_panel(request: Request, days: int = Query(120)):
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
-        return _empty_chart()
+        return _empty_chart("请先获取数据")
 
     days = min(max(days, 30), 500)
     df = df.tail(days).copy()
@@ -850,10 +850,10 @@ async def chart_img(request: Request, chart_type: str):
         return Response(content=b"", media_type="image/png")
 
 
-def _empty_chart():
+def _empty_chart(message: str = "无数据"):
     return Response(
         content=json.dumps({
-            "title": {"text": "无数据", "left": "center", "textStyle": {"color": "#8B949E"}},
+            "title": {"text": message, "left": "center", "textStyle": {"color": "#8B949E"}},
             "series": [],
         }, ensure_ascii=False),
         media_type="application/json",
