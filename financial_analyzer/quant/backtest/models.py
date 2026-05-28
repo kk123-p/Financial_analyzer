@@ -28,3 +28,5 @@ class BacktestResult:
     factor_ic: dict = field(default_factory=dict)  # factor IC/IR analysis
     factor_decay: dict = field(default_factory=dict)  # factor decay curves
     correlation_matrix: dict = field(default_factory=dict)  # {labels, matrix}
+    annual_performance: dict = field(default_factory=dict)  # {factor: [{year, q1..q5, long_short}]}
+    composite_score: list = field(default_factory=list)  # [{factor, ic_mean, ir, max_corr, score}]
