@@ -514,12 +514,6 @@
 
     <script src="/static/js/app.js"></script>
     <script>
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     // ========== 量化策略面板（异步 + 进度轮询） ==========
     var _quantTimer = null;
     var _quantTaskId = null;
