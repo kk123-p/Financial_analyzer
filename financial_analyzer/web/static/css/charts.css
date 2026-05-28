@@ -39,3 +39,126 @@
     border-color: rgba(63, 185, 80, 0.4);
     background: rgba(63, 185, 80, 0.08);
 }
+
+/* ---- Backtest chart containers ---- */
+
+.backtest-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 0;
+}
+
+.backtest-controls select,
+.backtest-controls input {
+    padding: 6px 10px;
+    font-size: var(--text-xs, 12px);
+    color: var(--text-primary, #E6EDF3);
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    border-radius: 6px;
+}
+
+.backtest-charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.backtest-chart-card {
+    background: rgba(6, 9, 18, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.4);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.backtest-chart-card h4 {
+    margin: 0 0 12px;
+    font-size: var(--text-sm, 13px);
+    color: var(--text-secondary, #8B949E);
+    font-weight: 600;
+}
+
+.backtest-chart-echart {
+    width: 100%;
+    height: 280px;
+}
+
+.backtest-chart-card--full {
+    grid-column: 1 / -1;
+}
+
+.backtest-chart-card--full .backtest-chart-echart {
+    height: 320px;
+}
+
+.backtest-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.backtest-metric-item {
+    background: rgba(6, 9, 18, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.4);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.backtest-metric-item .metric-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary, #E6EDF3);
+    font-family: var(--font-mono, monospace);
+}
+
+.backtest-metric-item .metric-label {
+    font-size: var(--text-xs, 11px);
+    color: var(--text-muted, #8B949E);
+    margin-top: 4px;
+}
+
+.backtest-progress {
+    text-align: center;
+    padding: 20px;
+    color: var(--text-muted, #8B949E);
+}
+
+.backtest-progress .progress-pct {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-primary, #3FB950);
+    font-family: var(--font-mono, monospace);
+}
+
+.backtest-trades-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs, 12px);
+}
+
+.backtest-trades-table th {
+    text-align: left;
+    padding: 6px 8px;
+    color: var(--text-muted, #8B949E);
+    border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+    font-weight: 600;
+}
+
+.backtest-trades-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.2);
+    color: var(--text-primary, #E6EDF3);
+}
+
+@media (max-width: 900px) {
+    .backtest-charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
