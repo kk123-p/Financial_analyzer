@@ -40,3 +40,4 @@ class BacktestResult:
     rolling_alpha: list = field(default_factory=list)
     rolling_beta: list = field(default_factory=list)
     cost_breakdown: dict = field(default_factory=dict)
+    risk_events: list = field(default_factory=list)

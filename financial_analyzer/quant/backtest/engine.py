@@ -17,6 +17,7 @@ from ..engine.optimizer import ConstraintOptimizer
 from ..engine.signal import SignalGenerator
 from ..engine.position_sizer import SIZERS, EqualWeightSizer
 from ..engine.factor_analyzer import FactorAnalyzer
+from ..risk import DrawdownController, StopLossManager
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .attribution import FactorAttribution
 from .benchmark import BenchmarkComparator
@@ -46,7 +47,12 @@ class BacktestEngine:
                  benchmark_code: Optional[str] = None,
                  slippage_pct: float = 0.1,
                  stamp_tax: bool = True,
-                 position_sizer_name: str = "equal"):
+                 position_sizer_name: str = "equal",
+                 max_drawdown_pct: float = 15.0,
+                 stop_loss_pct: float = -10.0,
+                 take_profit_pct: float = 30.0,
+                 enable_t_plus_1: bool = False,
+                 enable_limit_check: bool = False):
         self.universe_manager = universe_manager
         self.data_fetcher = data_fetcher
         self.factor_matrix_builder = factor_matrix_builder
@@ -61,10 +67,19 @@ class BacktestEngine:
         self.slippage_pct = slippage_pct
         self.stamp_tax = stamp_tax
         self.position_sizer_name = position_sizer_name
+        self.enable_t_plus_1 = enable_t_plus_1
+        self.enable_limit_check = enable_limit_check
 
         # 将仓位策略注入优化器
         sizer_cls = SIZERS.get(position_sizer_name, EqualWeightSizer)
         self.optimizer.position_sizer = sizer_cls()
+
+        # 风控组件
+        self.drawdown_controller = DrawdownController(max_drawdown_pct=max_drawdown_pct)
+        self.stop_loss_manager = StopLossManager(
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+        )
 
     def _reset_cost_tracking(self):
         self._total_commission = 0.0
@@ -111,6 +126,12 @@ class BacktestEngine:
         factor_matrix_history: list[FactorMatrix] = []
         factor_scores_history: list[tuple[date, dict[str, dict[str, float]]]] = []
         monthly_forward_returns: list[tuple[date, dict[str, float]]] = []
+
+        # 风控状态
+        cost_prices: dict[str, float] = {}  # {stock_code: 成本价}
+        buy_dates: dict[str, date] = {}  # {stock_code: 最近买入日期}
+        peak_value = initial_capital  # 组合历史最高值
+        risk_events: list[dict] = []  # 风控触发事件记录
 
         # 2.5 预取全量数据（一次性获取，后续按日期切片）
         logger.info("预取全量数据（一次性获取，避免逐月重复调用 API）...")
@@ -208,16 +229,83 @@ class BacktestEngine:
                 optimized, scores, current_codes, pool, ref_date=rebal_date,
                 weights=weights,
             )
+
+            # 3e-risk. 风控检查：止盈止损 + T+1 + 涨跌停
+            risk_forced_sells = self._check_risk_controls(
+                holdings, cost_prices, buy_dates, prices, rebal_date, risk_events,
+            )
+            # 合并强制卖出信号（去重）
+            existing_sell_codes = {s.stock_code for s in trade_list.sells}
+            for sig in risk_forced_sells:
+                if sig.stock_code not in existing_sell_codes:
+                    trade_list.sells.append(sig)
+
+            # T+1 过滤：不允许卖出当天买入的股票
+            if self.enable_t_plus_1:
+                filtered_sells = []
+                for sig in trade_list.sells:
+                    if sig.stock_code in buy_dates and buy_dates[sig.stock_code] >= rebal_date:
+                        risk_events.append({
+                            "type": "t_plus_1_block",
+                            "date": rebal_date.strftime("%Y%m%d"),
+                            "stock_code": sig.stock_code,
+                        })
+                        continue
+                    filtered_sells.append(sig)
+                trade_list.sells = filtered_sells
+
+            # 涨跌停检查：过滤触及涨停的买入信号
+            if self.enable_limit_check:
+                filtered_buys = []
+                for sig in trade_list.buys:
+                    if self._is_at_limit(sig.stock_code, prices, rebal_date):
+                        risk_events.append({
+                            "type": "limit_up_block",
+                            "date": rebal_date.strftime("%Y%m%d"),
+                            "stock_code": sig.stock_code,
+                        })
+                        continue
+                    filtered_buys.append(sig)
+                trade_list.buys = filtered_buys
+
             all_trades.append(trade_list)
 
-            # 3f. 执行交易
+            # 3f. 计算回撤控制缩放
+            current_value_est = self._calc_portfolio_value(holdings, cash, prices, rebal_date)
+            current_drawdown_pct = 0.0
+            if peak_value > 0:
+                current_drawdown_pct = max(0.0, (peak_value - current_value_est) / peak_value * 100)
+            position_scale = self.drawdown_controller.compute_position_scale(current_drawdown_pct)
+            if position_scale < 1.0:
+                risk_events.append({
+                    "type": "drawdown_reduce",
+                    "date": rebal_date.strftime("%Y%m%d"),
+                    "drawdown_pct": round(current_drawdown_pct, 2),
+                    "position_scale": round(position_scale, 4),
+                })
+
+            # 3g. 执行交易（传入 position_scale 缩放买入资金）
             cash = self._execute_trades(
-                trade_list, holdings, cash, prices, rebal_date
+                trade_list, holdings, cash, prices, rebal_date,
+                cost_prices=cost_prices,
+                buy_dates=buy_dates,
+                position_scale=position_scale,
             )
 
-            # 3g. 记录组合快照
+            # 3h. 记录组合快照
             total_value = self._calc_portfolio_value(holdings, cash, prices, rebal_date)
             portfolio_values.append(total_value)
+            peak_value = max(peak_value, total_value)
+
+            # 组合止损检查
+            if peak_value > 0:
+                dd_pct = (peak_value - total_value) / peak_value * 100
+                if self.stop_loss_manager.check_portfolio_stop(dd_pct):
+                    risk_events.append({
+                        "type": "portfolio_stop",
+                        "date": rebal_date.strftime("%Y%m%d"),
+                        "drawdown_pct": round(dd_pct, 2),
+                    })
 
             weights = self._calc_weights(holdings, cash, prices, total_value)
             snapshots.append(PortfolioSnapshot(
@@ -414,6 +502,7 @@ class BacktestEngine:
             rolling_alpha=rolling_result.get("rolling_alpha", []),
             rolling_beta=rolling_result.get("rolling_beta", []),
             cost_breakdown=cost_breakdown,
+            risk_events=risk_events,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
@@ -597,10 +686,18 @@ class BacktestEngine:
                         holdings: dict[str, float],
                         cash: float,
                         prices: dict[str, float],
-                        ref_date: date) -> float:
+                        ref_date: date,
+                        cost_prices: Optional[dict[str, float]] = None,
+                        buy_dates: Optional[dict[str, date]] = None,
+                        position_scale: float = 1.0) -> float:
         """执行交易，更新持仓和现金
 
         应用滑点、佣金、印花税，并累计成本明细。
+
+        Args:
+            cost_prices: 成本价追踪（会原地更新）
+            buy_dates: 买入日期追踪（会原地更新）
+            position_scale: 回撤控制的仓位缩放比例（0~1）
 
         Returns:
             更新后的现金余额
@@ -625,6 +722,11 @@ class BacktestEngine:
                 self._total_commission += commission
                 self._total_slippage_cost += slippage_cost
                 self._total_stamp_tax += stamp
+                # 清理风控追踪
+                if cost_prices is not None:
+                    cost_prices.pop(code, None)
+                if buy_dates is not None:
+                    buy_dates.pop(code, None)
                 logger.debug(
                     f"  卖出 {code}: {shares}股 x {exec_price:.4f} = {proceeds:.2f}, "
                     f"佣金 {commission:.2f}, 滑点 {slippage_cost:.2f}, 印花税 {stamp:.2f}"
@@ -635,8 +737,8 @@ class BacktestEngine:
         if not buys:
             return cash
 
-        # 可用资金（扣除现金储备后）
-        available_cash = cash * (1 - self.signal_generator.cash_reserve)
+        # 可用资金（扣除现金储备后，再乘以回撤缩放比例）
+        available_cash = cash * (1 - self.signal_generator.cash_reserve) * position_scale
         per_stock_budget = available_cash / len(buys) if buys else 0
 
         for signal in buys:
@@ -664,16 +766,102 @@ class BacktestEngine:
                 total_cost = cost + commission
 
             slippage_cost = shares * (exec_price - price)
-            holdings[code] = holdings.get(code, 0) + shares
+            prev_shares = holdings.get(code, 0)
+            holdings[code] = prev_shares + shares
             cash -= total_cost
             self._total_commission += commission
             self._total_slippage_cost += slippage_cost
+
+            # 更新成本价（加权平均）
+            if cost_prices is not None:
+                if prev_shares > 0 and code in cost_prices:
+                    old_cost = cost_prices[code] * prev_shares
+                    cost_prices[code] = (old_cost + exec_price * shares) / (prev_shares + shares)
+                else:
+                    cost_prices[code] = exec_price
+
+            # 记录买入日期
+            if buy_dates is not None:
+                buy_dates[code] = ref_date
+
             logger.debug(
                 f"  买入 {code}: {shares}股 x {exec_price:.4f} = {cost:.2f}, "
                 f"佣金 {commission:.2f}, 滑点 {slippage_cost:.2f}"
             )
 
         return cash
+
+    def _check_risk_controls(
+        self,
+        holdings: dict[str, float],
+        cost_prices: dict[str, float],
+        buy_dates: dict[str, date],
+        prices: dict[str, float],
+        ref_date: date,
+        risk_events: list[dict],
+    ) -> list:
+        """检查止盈止损，返回需要强制卖出的信号列表"""
+        from ..models import SignalResult
+        forced_sells = []
+        for code in list(holdings.keys()):
+            cost = cost_prices.get(code, 0)
+            price = prices.get(code, 0)
+            if cost <= 0 or price <= 0:
+                continue
+            result = self.stop_loss_manager.check_stock_stop(cost, price)
+            if result:
+                risk_events.append({
+                    "type": result,
+                    "date": ref_date.strftime("%Y%m%d"),
+                    "stock_code": code,
+                    "cost_price": round(cost, 4),
+                    "current_price": round(price, 4),
+                })
+                forced_sells.append(SignalResult(
+                    stock_code=code,
+                    stock_name="",
+                    action="sell",
+                    composite_score=0.0,
+                    target_weight=0.0,
+                    reason=f"风控触发: {result}",
+                ))
+        return forced_sells
+
+    def _is_at_limit(self,
+                     code: str,
+                     prices: dict[str, float],
+                     ref_date: date) -> bool:
+        """检查股票当日是否触及涨停（涨幅 >= 9.9%）
+
+        使用预取的日线数据比较前一日收盘价。
+        """
+        if not hasattr(self, '_prefetched_data') or not self._prefetched_data:
+            return False
+        stock_data = self._prefetched_data.get(code)
+        if not stock_data:
+            return False
+        daily = stock_data.get("daily")
+        if daily is None or daily.empty or "close" not in daily.columns:
+            return False
+        try:
+            if "trade_date" in daily.columns:
+                dates = daily["trade_date"].astype(str).str.replace("-", "").str[:8]
+                ref_str = ref_date.strftime("%Y%m%d")
+                prev_mask = dates < ref_str
+                if not prev_mask.any():
+                    return False
+                prev_close = float(daily.loc[prev_mask].iloc[-1]["close"])
+            else:
+                if len(daily) < 2:
+                    return False
+                prev_close = float(daily.iloc[1]["close"])
+            current_price = prices.get(code, 0)
+            if prev_close <= 0:
+                return False
+            change_pct = (current_price - prev_close) / prev_close
+            return change_pct >= 0.099
+        except (ValueError, TypeError, IndexError):
+            return False
 
     def _calc_portfolio_value(self,
                               holdings: dict[str, float],

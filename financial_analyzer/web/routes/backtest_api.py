@@ -99,6 +99,7 @@ def _serialize_result(result):
         "rolling_alpha": result.rolling_alpha,
         "rolling_beta": result.rolling_beta,
         "cost_breakdown": result.cost_breakdown,
+        "risk_events": result.risk_events,
     }
 
 
@@ -112,6 +113,11 @@ async def run_backtest(
     slippage_pct: float = Query(0.1, description="滑点百分比（默认 0.1%）"),
     stamp_tax: bool = Query(True, description="是否收取印花税"),
     position_sizer: str = Query("equal", description="仓位分配策略: equal/risk_parity/min_variance/kelly/market_cap"),
+    max_drawdown_pct: float = Query(15.0, description="最大回撤阈值（百分比，超过后逐步减仓）"),
+    stop_loss_pct: float = Query(-10.0, description="个股止损百分比（负数，如 -10）"),
+    take_profit_pct: float = Query(30.0, description="个股止盈百分比"),
+    enable_t_plus_1: bool = Query(False, description="是否启用 T+1 限制"),
+    enable_limit_check: bool = Query(False, description="是否启用涨跌停检查"),
 ):
     """启动回测任务（后台线程）"""
     # Validate date format
@@ -179,6 +185,11 @@ async def run_backtest(
                 slippage_pct=slippage_pct,
                 stamp_tax=stamp_tax,
                 position_sizer_name=position_sizer,
+                max_drawdown_pct=max_drawdown_pct,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct,
+                enable_t_plus_1=enable_t_plus_1,
+                enable_limit_check=enable_limit_check,
             )
 
             _update_task(task_id, progress=20, message=f"开始回测 {start_date} ~ {end_date}...")
