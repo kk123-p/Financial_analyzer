@@ -342,3 +342,187 @@ class TestComputeCorrelationMatrix:
         assert len(analyzer._monthly_matrices) == 1
         analyzer.reset()
         assert len(analyzer._monthly_matrices) == 0
+
+
+class TestComputeAnnualPerformance:
+    def test_basic(self):
+        """验证年度分组和多空收益：单调递增因子应产生正 long_short"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 100
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        # 3 months of data in the same year
+        for month in range(1, 4):
+            factor_values = {s: {"momentum": float(i)} for i, s in enumerate(stocks)}
+            # Returns correlated with factor (higher factor -> higher return)
+            fwd_returns = {s: float(i) * 0.001 for i, s in enumerate(stocks)}
+            analyzer.store_monthly_matrix(
+                factor_values,
+                ref_date=date(2025, month * 2 + 1, 28),
+                market_returns=fwd_returns,
+            )
+
+        monthly_returns = [
+            (date(2025, 3, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+            (date(2025, 5, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+            (date(2025, 7, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+        ]
+
+        result = analyzer.compute_annual_performance(monthly_returns)
+        assert "momentum" in result
+        assert len(result["momentum"]) == 1
+        entry = result["momentum"][0]
+        assert entry["year"] == 2025
+        # Q5 (top) should have higher return than Q1 (bottom)
+        assert entry["q5_return"] > entry["q1_return"]
+        assert entry["long_short_return"] > 0
+
+    def test_empty_returns(self):
+        """无收益率数据时返回空"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {s: {"pe": float(i)} for i, s in enumerate(stocks)}
+        analyzer.store_monthly_matrix(factor_values, ref_date=date(2025, 1, 31))
+
+        result = analyzer.compute_annual_performance([])
+        assert result == {}
+
+    def test_multi_year(self):
+        """多年数据应按年度分别计算"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 60
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        for year in [2024, 2025]:
+            for month in [3, 6]:
+                factor_values = {s: {"pe": float(i)} for i, s in enumerate(stocks)}
+                fwd_returns = {s: float(i) * 0.001 for i, s in enumerate(stocks)}
+                analyzer.store_monthly_matrix(
+                    factor_values,
+                    ref_date=date(year, month, 28),
+                    market_returns=fwd_returns,
+                )
+
+        monthly_returns = [
+            (date(2024, 3, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+            (date(2024, 6, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+            (date(2025, 3, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+            (date(2025, 6, 28), {s: float(i) * 0.001 for i, s in enumerate(stocks)}),
+        ]
+
+        result = analyzer.compute_annual_performance(monthly_returns)
+        assert "pe" in result
+        assert len(result["pe"]) == 2
+        years = [e["year"] for e in result["pe"]]
+        assert 2024 in years
+        assert 2025 in years
+
+    def test_quintile_monotonic(self):
+        """正相关因子的 quintile 收益应单调递增"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 100
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {s: {"alpha": float(i)} for i, s in enumerate(stocks)}
+        fwd_returns = {s: float(i) * 0.002 for i, s in enumerate(stocks)}
+
+        analyzer.store_monthly_matrix(
+            factor_values, ref_date=date(2025, 6, 30), market_returns=fwd_returns,
+        )
+        monthly_returns = [(date(2025, 6, 30), fwd_returns)]
+
+        result = analyzer.compute_annual_performance(monthly_returns)
+        entry = result["alpha"][0]
+        q_returns = [entry[f"q{i}_return"] for i in range(1, 6)]
+        for i in range(len(q_returns) - 1):
+            assert q_returns[i] <= q_returns[i + 1], (
+                f"Q{i+1} return {q_returns[i]} > Q{i+2} return {q_returns[i+1]}"
+            )
+
+
+class TestComputeCompositeScore:
+    def test_basic(self):
+        """验证综合评分计算和排序"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        # Set up IC history for two factors
+        from financial_analyzer.quant.models import ICRecord
+
+        ic_values_a = [0.08, 0.10, 0.06, 0.09, 0.07]
+        ic_values_b = [0.02, 0.03, 0.01, 0.02, 0.03]
+
+        for i, (ica, icb) in enumerate(zip(ic_values_a, ic_values_b)):
+            analyzer._ic_history.setdefault("factor_a", []).append(
+                ICRecord(date=date(2025, i + 1, 28), factor_name="factor_a",
+                         ic_value=ica, n_stocks=n)
+            )
+            analyzer._ic_history.setdefault("factor_b", []).append(
+                ICRecord(date=date(2025, i + 1, 28), factor_name="factor_b",
+                         ic_value=icb, n_stocks=n)
+            )
+
+        # Store monthly matrices with low correlation between factors
+        # factor_a is linear, factor_b is sinusoidal -> low Spearman correlation
+        for month in range(1, 6):
+            factor_values = {}
+            for i, s in enumerate(stocks):
+                factor_values[s] = {
+                    "factor_a": float(i),
+                    "factor_b": float(np.sin(i * 0.628) * 25 + 25),  # oscillating, low corr
+                }
+            analyzer.store_monthly_matrix(
+                factor_values, ref_date=date(2025, month, 28)
+            )
+
+        result = analyzer.compute_composite_score()
+        assert len(result) == 2
+
+        # factor_a has higher IC, should rank first
+        assert result[0]["factor"] == "factor_a"
+        assert result[0]["score"] > result[1]["score"]
+
+        # Verify fields exist
+        for entry in result:
+            assert "factor" in entry
+            assert "ic_mean" in entry
+            assert "ir" in entry
+            assert "max_corr" in entry
+            assert "score" in entry
+
+    def test_empty_ic_history(self):
+        """无 IC 历史时返回空列表"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        result = analyzer.compute_composite_score()
+        assert result == []
+
+    def test_high_corr_penalizes_score(self):
+        """高相关因子应被惩罚（score 降低）"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+        from financial_analyzer.quant.models import ICRecord
+
+        # Two factors with identical IC stats
+        for i in range(5):
+            analyzer._ic_history.setdefault("x", []).append(
+                ICRecord(date=date(2025, i + 1, 28), factor_name="x",
+                         ic_value=0.06, n_stocks=n)
+            )
+            analyzer._ic_history.setdefault("y", []).append(
+                ICRecord(date=date(2025, i + 1, 28), factor_name="y",
+                         ic_value=0.06, n_stocks=n)
+            )
+
+        # x and y are perfectly correlated
+        for month in range(1, 6):
+            factor_values = {s: {"x": float(i), "y": float(i)} for i, s in enumerate(stocks)}
+            analyzer.store_monthly_matrix(factor_values, ref_date=date(2025, month, 28))
+
+        result = analyzer.compute_composite_score()
+        # Both should have max_corr close to 1.0, penalizing the score
+        for entry in result:
+            assert entry["max_corr"] > 0.9
+            # score = IC_mean * IR * (1 - max_corr) should be near 0
+            assert abs(entry["score"]) < 0.01
