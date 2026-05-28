@@ -651,6 +651,200 @@
             '<div>日期: ' + data.date + '</div>' +
             '</div>';
     }
+
+    // ========== 回测异步轮询 ==========
+    var _btTimer = null;
+    var _btTaskId = null;
+
+    function runBacktest() {
+        var pool = document.getElementById('quant-pool').value;
+        var startDate = document.getElementById('bt-start-date').value.trim();
+        var endDate = document.getElementById('bt-end-date').value.trim();
+        var capital = document.getElementById('bt-capital').value.trim();
+        var btn = document.getElementById('btn-bt-run');
+        var stopBtn = document.getElementById('btn-bt-stop');
+        var statusEl = document.getElementById('bt-status-text');
+        var progressEl = document.getElementById('bt-progress');
+        var resultEl = document.getElementById('bt-result');
+
+        btn.disabled = true;
+        btn.textContent = '提交中...';
+        stopBtn.style.display = 'inline-block';
+        statusEl.textContent = '';
+        progressEl.style.display = 'block';
+        resultEl.style.display = 'none';
+        document.getElementById('bt-progress-pct').textContent = '0%';
+        document.getElementById('bt-progress-msg').textContent = '正在提交...';
+
+        var url = '/api/v1/backtest/run?pool=' + encodeURIComponent(pool) +
+            '&start_date=' + startDate + '&end_date=' + endDate +
+            '&initial_capital=' + (parseFloat(capital) || 5000);
+
+        fetch(url, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                btn.disabled = false;
+                btn.textContent = '运行回测';
+                stopBtn.style.display = 'none';
+                progressEl.style.display = 'none';
+                statusEl.textContent = data.error;
+                statusEl.style.color = '#f44336';
+                return;
+            }
+            _btTaskId = data.task_id;
+            btn.textContent = '回测中...';
+            pollBacktestProgress();
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '运行回测';
+            stopBtn.style.display = 'none';
+            progressEl.style.display = 'none';
+            statusEl.textContent = '提交失败: ' + err.message;
+            statusEl.style.color = '#f44336';
+        });
+    }
+
+    function pollBacktestProgress() {
+        if (!_btTaskId) return;
+        fetch('/api/v1/backtest/status/' + _btTaskId)
+        .then(function(r) { return r.json(); })
+        .then(function(task) {
+            var pct = task.progress || 0;
+            var msg = task.message || '';
+            document.getElementById('bt-progress-pct').textContent = pct + '%';
+            document.getElementById('bt-progress-msg').textContent = msg;
+
+            if (task.status === 'done') {
+                _btTimer = null;
+                fetchBacktestResult(_btTaskId);
+                _btTaskId = null;
+            } else if (task.status === 'error') {
+                _btTimer = null;
+                _btTaskId = null;
+                var btn = document.getElementById('btn-bt-run');
+                var stopBtn = document.getElementById('btn-bt-stop');
+                btn.disabled = false;
+                btn.textContent = '运行回测';
+                stopBtn.style.display = 'none';
+                document.getElementById('bt-progress').style.display = 'none';
+                var statusEl = document.getElementById('bt-status-text');
+                statusEl.textContent = msg || '回测失败';
+                statusEl.style.color = '#f44336';
+            } else {
+                _btTimer = setTimeout(pollBacktestProgress, 2000);
+            }
+        })
+        .catch(function() {
+            _btTimer = setTimeout(pollBacktestProgress, 3000);
+        });
+    }
+
+    function fetchBacktestResult(taskId) {
+        fetch('/api/v1/backtest/result/' + taskId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var btn = document.getElementById('btn-bt-run');
+            var stopBtn = document.getElementById('btn-bt-stop');
+            var statusEl = document.getElementById('bt-status-text');
+            btn.disabled = false;
+            btn.textContent = '运行回测';
+            stopBtn.style.display = 'none';
+            document.getElementById('bt-progress').style.display = 'none';
+            statusEl.textContent = '回测完成';
+            statusEl.style.color = '#3FB950';
+            renderBacktestResult(data);
+        })
+        .catch(function(err) {
+            var btn = document.getElementById('btn-bt-run');
+            btn.disabled = false;
+            btn.textContent = '运行回测';
+            document.getElementById('bt-progress').style.display = 'none';
+            document.getElementById('bt-status-text').textContent = '获取结果失败: ' + err.message;
+        });
+    }
+
+    function stopBacktest() {
+        if (_btTimer) { clearTimeout(_btTimer); _btTimer = null; }
+        _btTaskId = null;
+        var btn = document.getElementById('btn-bt-run');
+        var stopBtn = document.getElementById('btn-bt-stop');
+        var statusEl = document.getElementById('bt-status-text');
+        btn.disabled = false;
+        btn.textContent = '运行回测';
+        stopBtn.style.display = 'none';
+        document.getElementById('bt-progress').style.display = 'none';
+        statusEl.textContent = '已停止';
+        statusEl.style.color = 'var(--text-muted)';
+    }
+
+    function renderBacktestResult(data) {
+        var resultEl = document.getElementById('bt-result');
+        resultEl.style.display = 'block';
+
+        // Metrics cards
+        var m = data.metrics || {};
+        var metricsHtml = '';
+        var metricItems = [
+            { label: '总收益', value: pct(m.total_return), color: m.total_return >= 0 ? '#3FB950' : '#F85149' },
+            { label: '年化收益', value: pct(m.annualized_return), color: m.annualized_return >= 0 ? '#3FB950' : '#F85149' },
+            { label: '夏普比率', value: (m.sharpe_ratio || 0).toFixed(2), color: '#64B5F6' },
+            { label: '最大回撤', value: pct(m.max_drawdown), color: '#F85149' },
+            { label: '胜率', value: pct(m.win_rate), color: '#D29922' },
+            { label: '波动率', value: pct(m.volatility), color: '#BC8CFF' },
+            { label: 'Calmar比率', value: (m.calmar_ratio || 0).toFixed(2), color: '#39D2C0' },
+        ];
+        for (var i = 0; i < metricItems.length; i++) {
+            var it = metricItems[i];
+            metricsHtml += '<div class="backtest-metric-item">' +
+                '<div class="metric-value" style="color:' + it.color + ';">' + it.value + '</div>' +
+                '<div class="metric-label">' + it.label + '</div></div>';
+        }
+        document.getElementById('bt-metrics-grid').innerHTML = metricsHtml;
+
+        // Charts
+        var snapshots = data.snapshots || [];
+        var initialCapital = data.initial_capital || 5000;
+        var monthlyReturns = m.monthly_returns || [];
+        var trades = data.trades || [];
+
+        setTimeout(function() {
+            QuantCharts.renderEquityCurve(snapshots, initialCapital);
+            QuantCharts.renderDrawdownCurve(snapshots, initialCapital);
+            QuantCharts.renderMonthlyHeatmap(monthlyReturns, snapshots);
+            QuantCharts.renderTradeDistribution(trades);
+        }, 50);
+
+        // Trades table
+        var tableHtml = '<table class="backtest-trades-table"><thead><tr>' +
+            '<th>日期</th><th>代码</th><th>名称</th><th>操作</th><th>权重</th><th>原因</th>' +
+            '</tr></thead><tbody>';
+        var actionColors = { buy: '#3FB950', sell: '#F85149', hold: '#64B5F6' };
+        var actionLabels = { buy: '买入', sell: '卖出', hold: '持有' };
+        for (var ti = 0; ti < trades.length; ti++) {
+            var period = trades[ti];
+            for (var si = 0; si < period.signals.length; si++) {
+                var sig = period.signals[si];
+                var ac = actionColors[sig.action] || '#E6EDF3';
+                tableHtml += '<tr>' +
+                    '<td>' + period.date + '</td>' +
+                    '<td style="font-family:monospace;">' + sig.code + '</td>' +
+                    '<td>' + (sig.name || '') + '</td>' +
+                    '<td style="color:' + ac + ';font-weight:600;">' + (actionLabels[sig.action] || sig.action) + '</td>' +
+                    '<td style="font-family:monospace;">' + (sig.weight * 100).toFixed(1) + '%</td>' +
+                    '<td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (sig.reason || '') + '</td>' +
+                    '</tr>';
+            }
+        }
+        tableHtml += '</tbody></table>';
+        document.getElementById('bt-trades-table').innerHTML = tableHtml;
+    }
+
+    function pct(v) {
+        if (v === undefined || v === null) return '--';
+        return (v * 100).toFixed(2) + '%';
+    }
     </script>
 </body>
 </html>
