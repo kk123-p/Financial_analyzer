@@ -15,6 +15,7 @@ from ..engine.scorer import WeightedScorer
 from ..engine.ranker import Ranker
 from ..engine.optimizer import ConstraintOptimizer
 from ..engine.signal import SignalGenerator
+from ..engine.position_sizer import SIZERS, EqualWeightSizer
 from ..engine.factor_analyzer import FactorAnalyzer
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .attribution import FactorAttribution
@@ -44,7 +45,8 @@ class BacktestEngine:
                  factor_analyzer: Optional[FactorAnalyzer] = None,
                  benchmark_code: Optional[str] = None,
                  slippage_pct: float = 0.1,
-                 stamp_tax: bool = True):
+                 stamp_tax: bool = True,
+                 position_sizer_name: str = "equal"):
         self.universe_manager = universe_manager
         self.data_fetcher = data_fetcher
         self.factor_matrix_builder = factor_matrix_builder
@@ -58,6 +60,11 @@ class BacktestEngine:
         self.benchmark_code = benchmark_code
         self.slippage_pct = slippage_pct
         self.stamp_tax = stamp_tax
+        self.position_sizer_name = position_sizer_name
+
+        # 将仓位策略注入优化器
+        sizer_cls = SIZERS.get(position_sizer_name, EqualWeightSizer)
+        self.optimizer.position_sizer = sizer_cls()
 
     def _reset_cost_tracking(self):
         self._total_commission = 0.0
@@ -194,10 +201,12 @@ class BacktestEngine:
             ranked = self.ranker.rank(scores, stocks, prices=prices)
             optimized = self.optimizer.optimize(ranked, scores)
 
-            # 3e. 生成调仓信号
+            # 3e. 计算仓位权重并生成调仓信号
             current_codes = set(holdings.keys())
+            weights = self.optimizer.compute_weights(optimized, scores)
             trade_list = self.signal_generator.generate(
-                optimized, scores, current_codes, pool, ref_date=rebal_date
+                optimized, scores, current_codes, pool, ref_date=rebal_date,
+                weights=weights,
             )
             all_trades.append(trade_list)
 
