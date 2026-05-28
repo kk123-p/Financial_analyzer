@@ -221,6 +221,39 @@ class BacktestEngine:
                 factor_matrix_history, metrics.monthly_returns
             )
 
+        # 5b. 多因子回归归因 + 行业归因
+        if factor_matrix_history and len(factor_matrix_history) >= 2:
+            # 构建每期个股前瞻收益
+            stock_monthly_returns: list[dict[str, float]] = []
+            for t in range(len(factor_matrix_history)):
+                if t + 1 < len(month_ends):
+                    rets = self._compute_forward_returns(
+                        self._prefetched_stocks if hasattr(self, '_prefetched_stocks') else [],
+                        month_ends[t], month_ends[t + 1],
+                    )
+                    stock_monthly_returns.append(rets)
+                else:
+                    stock_monthly_returns.append({})
+
+            # 多因子回归归因
+            mf = fa.multi_factor_attribution(
+                factor_matrix_history, stock_monthly_returns
+            )
+            if mf:
+                attribution["_multi_factor"] = mf
+
+            # 行业归因 — 从最近一期因子矩阵提取行业信息
+            industry_map = factor_matrix_history[-1].industries
+            if industry_map:
+                holdings_by_ind: dict[str, list[str]] = {}
+                for code, ind in industry_map.items():
+                    holdings_by_ind.setdefault(ind, []).append(code)
+                ind_attr = fa.industry_attribution(
+                    holdings_by_ind, stock_monthly_returns
+                )
+                if ind_attr:
+                    attribution["_industry"] = ind_attr
+
         # 6. 因子 IC 汇总
         factor_ic = {}
         if self.factor_analyzer:
