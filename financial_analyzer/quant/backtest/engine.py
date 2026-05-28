@@ -15,6 +15,7 @@ from ..engine.scorer import WeightedScorer
 from ..engine.ranker import Ranker
 from ..engine.optimizer import ConstraintOptimizer
 from ..engine.signal import SignalGenerator
+from ..engine.factor_analyzer import FactorAnalyzer
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .attribution import FactorAttribution
 from .models import BacktestResult, PortfolioSnapshot
@@ -37,7 +38,8 @@ class BacktestEngine:
                  ranker: Ranker,
                  optimizer: ConstraintOptimizer,
                  signal_generator: SignalGenerator,
-                 commission_rate: float = DEFAULT_COMMISSION_RATE):
+                 commission_rate: float = DEFAULT_COMMISSION_RATE,
+                 factor_analyzer: Optional[FactorAnalyzer] = None):
         self.universe_manager = universe_manager
         self.data_fetcher = data_fetcher
         self.factor_matrix_builder = factor_matrix_builder
@@ -47,6 +49,7 @@ class BacktestEngine:
         self.optimizer = optimizer
         self.signal_generator = signal_generator
         self.commission_rate = commission_rate
+        self.factor_analyzer = factor_analyzer
 
     def run(self,
             start_date: str,
@@ -146,6 +149,18 @@ class BacktestEngine:
 
             # 3d. 标准化 → 打分 → 排名 → 优化
             matrix = self.normalizer.normalize(matrix)
+
+            # 3d-ic. 因子 IC 分析（如果启用了 FactorAnalyzer）
+            if self.factor_analyzer and i + 1 < len(month_ends):
+                next_date = month_ends[i + 1]
+                fwd_returns = self._compute_forward_returns(
+                    stocks, rebal_date, next_date
+                )
+                if fwd_returns:
+                    self.factor_analyzer.compute_monthly_ic(
+                        matrix, fwd_returns, ref_date=rebal_date
+                    )
+
             scores = self.scorer.score(matrix)
             ranked = self.ranker.rank(scores, stocks, prices=prices)
             optimized = self.optimizer.optimize(ranked, scores)
@@ -187,6 +202,23 @@ class BacktestEngine:
                 factor_matrix_history, metrics.monthly_returns
             )
 
+        # 6. 因子 IC 汇总
+        factor_ic = {}
+        if self.factor_analyzer:
+            ic_summaries = self.factor_analyzer.compute_ic_summary()
+            factor_ic = {
+                name: {
+                    "mean_ic": round(s.mean_ic, 6),
+                    "std_ic": round(s.std_ic, 6),
+                    "ir": round(s.ir, 4),
+                    "ic_positive_pct": round(s.ic_positive_pct, 4),
+                    "t_stat": round(s.t_stat, 4),
+                    "n_months": s.n_months,
+                }
+                for name, s in ic_summaries.items()
+            }
+            factor_ic["_timeseries"] = self.factor_analyzer.get_ic_timeseries()
+
         final_value = portfolio_values[-1] if portfolio_values else initial_capital
 
         logger.info(
@@ -205,6 +237,7 @@ class BacktestEngine:
             snapshots=snapshots,
             trades=all_trades,
             attribution=attribution,
+            factor_ic=factor_ic,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
@@ -311,6 +344,56 @@ class BacktestEngine:
                     result[code][data_type] = df
 
         return result
+
+    def _compute_forward_returns(
+        self,
+        stocks: list[StockInfo],
+        current_date: date,
+        next_date: date,
+    ) -> dict[str, float]:
+        """计算从 current_date 到 next_date 的收益率。
+
+        Returns:
+            {stock_code: 收益率}，无数据的股票会被跳过
+        """
+        returns: dict[str, float] = {}
+        if not hasattr(self, '_prefetched_data') or not self._prefetched_data:
+            return returns
+
+        current_str = current_date.strftime("%Y%m%d")
+        next_str = next_date.strftime("%Y%m%d")
+
+        for stock in stocks:
+            stock_data = self._prefetched_data.get(stock.code)
+            if not stock_data:
+                continue
+            daily = stock_data.get("daily")
+            if daily is None or daily.empty or "close" not in daily.columns:
+                continue
+
+            try:
+                if "trade_date" in daily.columns:
+                    dates = daily["trade_date"].astype(str).str.replace("-", "").str[:8]
+                    # current_date 当日或之前最近的价格
+                    mask_cur = dates <= current_str
+                    mask_next = dates <= next_str
+                    if not mask_cur.any() or not mask_next.any():
+                        continue
+                    p_cur = float(daily.loc[mask_cur].iloc[0]["close"])
+                    p_next = float(daily.loc[mask_next].iloc[0]["close"])
+                else:
+                    # 无日期列，取最新和次新
+                    if len(daily) < 2:
+                        continue
+                    p_cur = float(daily.iloc[0]["close"])
+                    p_next = float(daily.iloc[1]["close"])
+
+                if p_cur > 0:
+                    returns[stock.code] = (p_next - p_cur) / p_cur
+            except (ValueError, TypeError, IndexError):
+                continue
+
+        return returns
 
     def _extract_prices(self,
                         stock_data: dict[str, dict[str, pd.DataFrame]]) -> dict[str, float]:
