@@ -328,6 +328,11 @@ async def run_sensitivity(
     weight_max: float = Query(1.8, description="权重最大值"),
 ):
     """启动敏感性分析（后台线程 + 进度轮询）"""
+    # Validate pool
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中，可选: {', '.join(allowed_pools)}"}, status_code=400)
+
     allowed_names = {c.name for c in DEFAULT_FACTOR_CONFIGS}
     if factor_x not in allowed_names:
         return JSONResponse({"error": f"factor_x '{factor_x}' 不在因子列表中"}, status_code=400)

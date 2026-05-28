@@ -10,6 +10,7 @@
     drawdown: 'bt-chart-drawdown',
     heatmap: 'bt-chart-heatmap',
     trades: 'bt-chart-trades',
+    sensitivity: 'sens-chart-heatmap',
   };
 
   // ---- 1. Equity curve ----
