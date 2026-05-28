@@ -199,6 +199,14 @@ function loadChartImg(chartType, btn) {
         });
 }
 
+function loadAnalysisChart(chartType, btn) {
+    if (btn) {
+        btn.parentElement.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    AnalysisCharts.loadAnalysisChart(chartType);
+}
+
 // ---- 导出 ----
 function exportData(format) {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || 'data';
