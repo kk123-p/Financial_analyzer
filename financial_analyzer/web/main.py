@@ -108,14 +108,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app_root = _get_app_dir()
-
-    # 新前端 — 纯 HTML/CSS/JS SPA（挂载在 /static/frontend）
-    # 必须先挂载更具体的路径，否则 /static 会抢先捕获 /static/frontend/* 请求
-    frontend_dir = app_root / "frontend"
-    frontend_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/static/frontend", StaticFiles(directory=str(frontend_dir)), name="frontend_static")
-
     # 静态文件
     static_dir = Path(__file__).parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
