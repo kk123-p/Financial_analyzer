@@ -164,11 +164,16 @@ async def run_backtest(
 
             _update_task(task_id, progress=20, message=f"开始回测 {start_date} ~ {end_date}...")
 
+            def _bt_progress(pct):
+                mapped = 20 + int(70 * pct)
+                _update_task(task_id, progress=mapped, message=f"回测中... {int(pct*100)}%")
+
             result = engine.run(
                 start_date=start_date,
                 end_date=end_date,
                 pool=pool,
                 initial_capital=initial_capital,
+                progress_callback=_bt_progress,
             )
 
             _update_task(task_id, progress=90, message="序列化结果...")
