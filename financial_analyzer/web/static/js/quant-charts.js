@@ -252,12 +252,13 @@
       var ret = params.value[2];
       var year = years[yearIdx];
       var month = monthNames[monthIdx];
+      var esc = InteractionUtils.escapeHtml;
       var color = ret >= 0 ? '#3FB950' : '#F85149';
       var html = '<div style="text-align:center;padding:20px;">' +
-        '<div style="font-size:2rem;font-weight:700;color:' + color + ';">' + ret + '%</div>' +
-        '<div style="color:var(--text-muted);margin-top:8px;">' + year + ' ' + month + ' 月度收益率</div>' +
+        '<div style="font-size:2rem;font-weight:700;color:' + color + ';">' + esc(ret) + '%</div>' +
+        '<div style="color:var(--text-muted);margin-top:8px;">' + esc(year) + ' ' + esc(month) + ' 月度收益率</div>' +
         '</div>';
-      InteractionUtils.showDrillDownModal(year + ' ' + month + ' 详情', html);
+      InteractionUtils.showDrillDownModal(esc(year) + ' ' + esc(month) + ' 详情', html);
     });
     InteractionUtils.addZoomControls(domId, chart);
   }

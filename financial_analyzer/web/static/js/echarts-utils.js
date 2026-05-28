@@ -141,7 +141,19 @@
       });
     }
 
-    // ---- 2. Drill-down modal ----
+    // ---- 2. HTML escaping ----
+
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ---- 3. Drill-down modal ----
 
     function showDrillDownModal(title, bodyHtml) {
       var overlay = document.getElementById('drilldown-overlay');
@@ -177,7 +189,7 @@
       if (e.key === 'Escape') closeDrillDownModal();
     });
 
-    // ---- 3. Zoom controls (buttons injected into container) ----
+    // ---- 4. Zoom controls (buttons injected into container) ----
 
     function addZoomControls(containerId, chart) {
       if (!chart) return;
@@ -242,7 +254,7 @@
       });
     }
 
-    // ---- 4. Cross-chart axis highlighting (linked tooltips) ----
+    // ---- 5. Cross-chart axis highlighting (linked tooltips) ----
 
     var _linkedCharts = [];
     var _linkHandlerAttached = false;
@@ -268,7 +280,7 @@
       }
     }
 
-    // ---- 5. Export chart as PNG ----
+    // ---- 6. Export chart as PNG ----
 
     function exportChart(chart) {
       if (!chart || chart.isDisposed()) return;
@@ -289,6 +301,7 @@
 
     return {
       enableZoom: enableZoom,
+      escapeHtml: escapeHtml,
       showDrillDownModal: showDrillDownModal,
       closeDrillDownModal: closeDrillDownModal,
       enableDrillDown: enableDrillDown,
