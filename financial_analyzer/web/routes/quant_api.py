@@ -37,6 +37,7 @@ from financial_analyzer.quant.engine.optimizer import ConstraintOptimizer
 from financial_analyzer.quant.engine.signal import SignalGenerator
 from financial_analyzer.quant.models import FactorConfig
 from ..dependencies import get_adapter
+from financial_analyzer.quant.engine.strategy_template import TemplateManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/quant", tags=["quant"])
@@ -961,3 +962,34 @@ async def factor_analysis_result(task_id: str):
     if task["status"] == "done":
         return JSONResponse(task.get("result", {}))
     return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})
+
+
+# ========== 策略模板 API ==========
+
+@router.get("/templates")
+async def list_templates():
+    """列出所有策略模板"""
+    mgr = TemplateManager()
+    return JSONResponse({"templates": mgr.list_templates()})
+
+
+@router.get("/templates/{name}")
+async def get_template(name: str):
+    """获取单个模板详情"""
+    mgr = TemplateManager()
+    try:
+        t = mgr.load_template(name)
+        return JSONResponse(t.to_dict())
+    except FileNotFoundError:
+        return JSONResponse({"error": f"模板 {name} 不存在"}, status_code=404)
+
+
+@router.post("/templates/{name}/clone")
+async def clone_template_endpoint(name: str, new_name: str = Query(...), body: dict = Body({})):
+    """克隆模板"""
+    mgr = TemplateManager()
+    try:
+        cloned = mgr.clone_template(name, new_name, body)
+        return JSONResponse({"success": True, "template": cloned.to_dict()})
+    except FileNotFoundError:
+        return JSONResponse({"error": f"模板 {name} 不存在"}, status_code=404)
