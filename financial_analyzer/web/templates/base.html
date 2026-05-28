@@ -500,6 +500,12 @@
 
     <script src="/static/js/app.js"></script>
     <script>
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     // ========== 量化策略面板（异步 + 进度轮询） ==========
     var _quantTimer = null;
     var _quantTaskId = null;
@@ -617,9 +623,9 @@
                 var label = actionLabels[s.action] || s.action;
                 var color = actionColors[s.action] || 'var(--fg-primary)';
                 html += '<tr style="border-bottom:1px solid var(--border-color);">' +
-                    '<td style="padding:8px;font-family:monospace;">' + s.code + '</td>' +
-                    '<td style="padding:8px;">' + (s.name || '') + '</td>' +
-                    '<td style="padding:8px;color:' + color + ';font-weight:600;">' + label + '</td>' +
+                    '<td style="padding:8px;font-family:monospace;">' + escapeHtml(s.code) + '</td>' +
+                    '<td style="padding:8px;">' + escapeHtml(s.name || '') + '</td>' +
+                    '<td style="padding:8px;color:' + color + ';font-weight:600;">' + escapeHtml(label) + '</td>' +
                     '<td style="padding:8px;text-align:right;font-family:monospace;">' + (s.price ? '¥' + s.price : '--') + '</td>' +
                     '<td style="padding:8px;text-align:right;font-family:monospace;">' + (s.weight * 100).toFixed(1) + '%</td>' +
                     '</tr>';
@@ -645,10 +651,10 @@
             '<div style="font-size:var(--text-xs);color:var(--text-muted);">持有</div></div>' +
             '</div>' +
             '<div style="font-size:var(--text-xs);color:var(--text-muted);line-height:1.8;">' +
-            '<div>选股池: ' + data.universe + '</div>' +
+            '<div>选股池: ' + escapeHtml(data.universe) + '</div>' +
             '<div>分析股票: ' + data.total_stocks_analyzed + ' 只</div>' +
             '<div>有效数据: ' + (data.valid_stocks || 0) + ' 只</div>' +
-            '<div>日期: ' + data.date + '</div>' +
+            '<div>日期: ' + escapeHtml(data.date) + '</div>' +
             '</div>';
     }
 
@@ -828,12 +834,12 @@
                 var sig = period.signals[si];
                 var ac = actionColors[sig.action] || '#E6EDF3';
                 tableHtml += '<tr>' +
-                    '<td>' + period.date + '</td>' +
-                    '<td style="font-family:monospace;">' + sig.code + '</td>' +
-                    '<td>' + (sig.name || '') + '</td>' +
-                    '<td style="color:' + ac + ';font-weight:600;">' + (actionLabels[sig.action] || sig.action) + '</td>' +
+                    '<td>' + escapeHtml(period.date) + '</td>' +
+                    '<td style="font-family:monospace;">' + escapeHtml(sig.code) + '</td>' +
+                    '<td>' + escapeHtml(sig.name || '') + '</td>' +
+                    '<td style="color:' + ac + ';font-weight:600;">' + escapeHtml(actionLabels[sig.action] || sig.action) + '</td>' +
                     '<td style="font-family:monospace;">' + (sig.weight * 100).toFixed(1) + '%</td>' +
-                    '<td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (sig.reason || '') + '</td>' +
+                    '<td style="color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(sig.reason || '') + '</td>' +
                     '</tr>';
             }
         }
