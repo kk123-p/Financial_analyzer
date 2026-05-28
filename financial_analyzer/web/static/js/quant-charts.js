@@ -165,7 +165,8 @@
     var yearMonthMap = {};
     var years = [];
     for (var i = 0; i < monthlyReturns.length; i++) {
-      var snapIdx = Math.min(i + 1, snapshots.length - 1);
+      var snapIdx = i + 1;
+      if (snapIdx >= snapshots.length) continue;
       var dt = snapshots[snapIdx] ? snapshots[snapIdx].date : '';
       var year = dt.substring(0, 4);
       var month = parseInt(dt.substring(4, 6), 10);
