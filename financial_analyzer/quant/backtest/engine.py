@@ -19,6 +19,7 @@ from ..engine.factor_analyzer import FactorAnalyzer
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .attribution import FactorAttribution
 from .benchmark import BenchmarkComparator
+from .rolling_metrics import RollingMetricsCalculator
 from .models import BacktestResult, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
@@ -320,6 +321,14 @@ class BacktestEngine:
             f"最大回撤={metrics.max_drawdown:.2%}"
         )
 
+        # 10. 滚动绩效指标
+        rolling_calc = RollingMetricsCalculator(window=12)
+        rolling_result = rolling_calc.compute_all(
+            monthly_returns=metrics.monthly_returns,
+            equity_curve=portfolio_values,
+            benchmark_returns=benchmark_returns_list if benchmark_returns_list else None,
+        )
+
         return BacktestResult(
             start_date=start_date,
             end_date=end_date,
@@ -339,6 +348,10 @@ class BacktestEngine:
             information_ratio=information_ratio,
             tracking_error=tracking_error,
             benchmark_code=benchmark_code_str,
+            rolling_sharpe=rolling_result.get("rolling_sharpe", []),
+            rolling_drawdown=rolling_result.get("rolling_drawdown", []),
+            rolling_alpha=rolling_result.get("rolling_alpha", []),
+            rolling_beta=rolling_result.get("rolling_beta", []),
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
