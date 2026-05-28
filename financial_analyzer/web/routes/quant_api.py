@@ -926,6 +926,8 @@ async def run_factor_analysis(
                 "monthly_ic": timeseries,
                 "decay_curves": result.factor_decay,
                 "correlation_matrix": result.correlation_matrix,
+                "annual_performance": result.annual_performance,
+                "composite_score": result.composite_score,
             }
 
             _update_task(task_id, status="done", progress=100,
