@@ -98,6 +98,7 @@ def _serialize_result(result):
         "rolling_drawdown": result.rolling_drawdown,
         "rolling_alpha": result.rolling_alpha,
         "rolling_beta": result.rolling_beta,
+        "cost_breakdown": result.cost_breakdown,
     }
 
 
@@ -108,6 +109,8 @@ async def run_backtest(
     end_date: str = Query("20251231", description="回测结束日期 YYYYMMDD"),
     initial_capital: float = Query(5000.0, description="初始资金"),
     benchmark_code: str = Query("", description="基准指数代码（如 000300.SH）"),
+    slippage_pct: float = Query(0.1, description="滑点百分比（默认 0.1%）"),
+    stamp_tax: bool = Query(True, description="是否收取印花税"),
 ):
     """启动回测任务（后台线程）"""
     # Validate date format
@@ -172,6 +175,8 @@ async def run_backtest(
                 optimizer=optimizer,
                 signal_generator=signal_gen,
                 benchmark_code=benchmark_code or None,
+                slippage_pct=slippage_pct,
+                stamp_tax=stamp_tax,
             )
 
             _update_task(task_id, progress=20, message=f"开始回测 {start_date} ~ {end_date}...")
