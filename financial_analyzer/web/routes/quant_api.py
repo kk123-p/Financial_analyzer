@@ -300,7 +300,7 @@ async def task_status(task_id: str):
         task = _task_store.get(task_id)
     if not task:
         return JSONResponse({"error": "任务不存在"}, status_code=404)
-    return JSONResponse(task)
+    return JSONResponse({k: v for k, v in task.items() if k != "result"})
 
 
 @router.get("/result/{task_id}")
