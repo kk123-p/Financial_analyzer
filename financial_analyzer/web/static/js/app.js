@@ -91,6 +91,9 @@ function switchTab(tabName, btn) {
         loadChart('candlestick', document.querySelector('.chart-type-btn.active') || document.querySelector('.chart-type-btn'));
     }
     if (tabName === 'ai') { loadTemplates(); }
+    if (tabName === 'quant') {
+        setTimeout(function() { QuantCharts.resizeAll(); }, 220);
+    }
 }
 
 // ---- 侧边栏 — 平滑展开/折叠 + 高度动画 ----
