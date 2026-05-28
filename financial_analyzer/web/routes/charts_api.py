@@ -1,11 +1,11 @@
-"""图表 API — Plotly JSON / matplotlib PNG"""
+"""图表 API — ECharts JSON / matplotlib PNG"""
 import io
+import json
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import Response
 
@@ -24,8 +24,20 @@ def _get_daily(session: dict) -> pd.DataFrame | None:
     return pd.DataFrame(daily_records)
 
 
+def _safe_float(v):
+    """安全转换为 float，NaN/None 返回 None"""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if np.isnan(f) else round(f, 4)
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/candlestick")
 async def chart_candlestick(request: Request, days: int = Query(120)):
+    """K线图 + 成交量 — 返回 ECharts option JSON"""
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
@@ -33,68 +45,167 @@ async def chart_candlestick(request: Request, days: int = Query(120)):
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    dates = df["trade_date"].dt.strftime("%Y-%m-%d").tolist()
 
-    fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True,
-        vertical_spacing=0.03, row_heights=[0.7, 0.3],
-    )
-
-    # K线
-    fig.add_trace(go.Candlestick(
-        x=df["trade_date"],
-        open=df["open"], high=df["high"],
-        low=df["low"], close=df["close"],
-        name="K线",
-        increasing_line_color="#3FB950",
-        decreasing_line_color="#F85149",
-        increasing_fillcolor="#3FB950",
-        decreasing_fillcolor="#F85149",
-    ), row=1, col=1)
+    # K线数据 [open, close, low, high]
+    candle_data = []
+    for _, row in df.iterrows():
+        candle_data.append([
+            _safe_float(row.get("open")),
+            _safe_float(row.get("close")),
+            _safe_float(row.get("low")),
+            _safe_float(row.get("high")),
+        ])
 
     # 均线
+    ma_series = {}
     for period, color in [(5, "#F85149"), (10, "#39D2C0"), (20, "#D29922")]:
         if len(df) >= period:
-            df[f"ma{period}"] = df["close"].rolling(period).mean()
-            fig.add_trace(go.Scatter(
-                x=df["trade_date"], y=df[f"ma{period}"],
-                mode="lines", name=f"MA{period}",
-                line=dict(color=color, width=1),
-            ), row=1, col=1)
+            ma = df["close"].rolling(period).mean()
+            ma_series[period] = {
+                "values": [_safe_float(v) for v in ma.tolist()],
+                "color": color,
+            }
 
-    # 成交量
-    colors = ["#3FB950" if c >= o else "#F85149"
-              for c, o in zip(df["close"], df["open"])]
-    fig.add_trace(go.Bar(
-        x=df["trade_date"], y=df["vol"],
-        name="成交量", marker_color=colors,
-        opacity=0.5,
-    ), row=2, col=1)
+    # 成交量颜色
+    vol_colors = []
+    for _, row in df.iterrows():
+        c, o = row.get("close", 0), row.get("open", 0)
+        vol_colors.append("#3FB950" if c >= o else "#F85149")
 
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#060912",
-        plot_bgcolor="#0C1017",
-        font=dict(color="#8B949E", size=11),
-        height=500,
-        margin=dict(l=10, r=10, t=30, b=10),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="top", y=1.12, xanchor="left", x=0),
-        xaxis_rangeslider_visible=False,
-        hovermode="x unified",
-    )
-    fig.update_xaxes(gridcolor="#21262D", zeroline=False)
-    fig.update_yaxes(gridcolor="#21262D", zeroline=False)
-    # 隐藏成交量 X 轴标签
-    fig.update_xaxes(title_text="", row=2, col=1)
+    vol_data = [_safe_float(v) for v in df.get("vol", df.get("volume", pd.Series(dtype=float))).tolist()]
+
+    # 构建 ECharts option
+    series = [
+        {
+            "name": "K线",
+            "type": "candlestick",
+            "xAxisIndex": 0,
+            "yAxisIndex": 0,
+            "data": candle_data,
+            "itemStyle": {
+                "color": "#3FB950",
+                "color0": "#F85149",
+                "borderColor": "#3FB950",
+                "borderColor0": "#F85149",
+            },
+        },
+    ]
+
+    for period, info in ma_series.items():
+        series.append({
+            "name": f"MA{period}",
+            "type": "line",
+            "xAxisIndex": 0,
+            "yAxisIndex": 0,
+            "data": info["values"],
+            "smooth": True,
+            "symbol": "none",
+            "lineStyle": {"color": info["color"], "width": 1},
+        })
+
+    series.append({
+        "name": "成交量",
+        "type": "bar",
+        "xAxisIndex": 1,
+        "yAxisIndex": 1,
+        "data": vol_data,
+        "itemStyle": {"color": vol_colors, "opacity": 0.5},
+    })
+
+    option = {
+        "animation": False,
+        "tooltip": {
+            "trigger": "axis",
+            "axisPointer": {"type": "cross"},
+            "backgroundColor": "rgba(13,17,23,0.92)",
+            "borderColor": "#30363D",
+            "textStyle": {"color": "#E6EDF3", "fontSize": 12},
+        },
+        "legend": {
+            "data": ["K线", "MA5", "MA10", "MA20", "成交量"],
+            "textStyle": {"color": "#8B949E"},
+            "top": 0,
+            "left": 0,
+        },
+        "axisPointer": {
+            "link": [{"xAxisIndex": "all"}],
+        },
+        "grid": [
+            {"left": 50, "right": 10, "top": 30, "height": "55%"},
+            {"left": 50, "right": 10, "top": "75%", "height": "16%"},
+        ],
+        "xAxis": [
+            {
+                "type": "category",
+                "data": dates,
+                "gridIndex": 0,
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "splitLine": {"show": False},
+                "axisLabel": {"color": "#8B949E"},
+                "boundaryGap": True,
+            },
+            {
+                "type": "category",
+                "data": dates,
+                "gridIndex": 1,
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "splitLine": {"show": False},
+                "axisLabel": {"show": False},
+                "boundaryGap": True,
+            },
+        ],
+        "yAxis": [
+            {
+                "scale": True,
+                "gridIndex": 0,
+                "splitArea": {"show": False},
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "splitLine": {"lineStyle": {"color": "#21262D"}},
+                "axisLabel": {"color": "#8B949E"},
+            },
+            {
+                "scale": True,
+                "gridIndex": 1,
+                "splitNumber": 2,
+                "axisLine": {"lineStyle": {"color": "#30363D"}},
+                "splitLine": {"lineStyle": {"color": "#21262D"}},
+                "axisLabel": {"color": "#8B949E"},
+            },
+        ],
+        "dataZoom": [
+            {
+                "type": "inside",
+                "xAxisIndex": [0, 1],
+                "start": 50,
+                "end": 100,
+            },
+            {
+                "type": "slider",
+                "xAxisIndex": [0, 1],
+                "top": "93%",
+                "height": 16,
+                "start": 50,
+                "end": 100,
+                "borderColor": "#30363D",
+                "backgroundColor": "#060912",
+                "fillerColor": "rgba(63,185,80,0.15)",
+                "handleStyle": {"color": "#3FB950"},
+                "textStyle": {"color": "#8B949E"},
+            },
+        ],
+        "series": series,
+    }
 
     return Response(
-        content=fig.to_json(),
+        content=json.dumps(option, ensure_ascii=False),
         media_type="application/json",
     )
 
 
 @router.get("/ma")
 async def chart_ma(request: Request, days: int = Query(250)):
+    """均线图 — 返回 ECharts option JSON"""
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
@@ -102,40 +213,90 @@ async def chart_ma(request: Request, days: int = Query(250)):
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
+    dates = df["trade_date"].dt.strftime("%Y-%m-%d").tolist()
+    close_data = [_safe_float(v) for v in df["close"].tolist()]
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["trade_date"], y=df["close"],
-        mode="lines", name="收盘价",
-        line=dict(color="#F0F6FC", width=1.5),
-    ))
+    series = [
+        {
+            "name": "收盘价",
+            "type": "line",
+            "data": close_data,
+            "symbol": "none",
+            "lineStyle": {"color": "#F0F6FC", "width": 1.5},
+        },
+    ]
 
     for period, color in [("5", "#F85149"), ("10", "#39D2C0"),
                            ("20", "#D29922"), ("60", "#BC8CFF")]:
         ma = df["close"].rolling(int(period)).mean()
-        fig.add_trace(go.Scatter(
-            x=df["trade_date"], y=ma,
-            mode="lines", name=f"MA{period}",
-            line=dict(color=color, width=1),
-        ))
+        series.append({
+            "name": f"MA{period}",
+            "type": "line",
+            "data": [_safe_float(v) for v in ma.tolist()],
+            "smooth": True,
+            "symbol": "none",
+            "lineStyle": {"color": color, "width": 1},
+        })
 
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#060912",
-        plot_bgcolor="#0C1017",
-        font=dict(color="#8B949E", size=11),
-        height=450,
-        margin=dict(l=10, r=10, t=30, b=10),
-        hovermode="x unified",
+    option = {
+        "animation": False,
+        "tooltip": {
+            "trigger": "axis",
+            "backgroundColor": "rgba(13,17,23,0.92)",
+            "borderColor": "#30363D",
+            "textStyle": {"color": "#E6EDF3", "fontSize": 12},
+        },
+        "legend": {
+            "data": ["收盘价", "MA5", "MA10", "MA20", "MA60"],
+            "textStyle": {"color": "#8B949E"},
+            "top": 0,
+            "left": 0,
+        },
+        "grid": {"left": 50, "right": 10, "top": 35, "bottom": 50},
+        "xAxis": {
+            "type": "category",
+            "data": dates,
+            "axisLine": {"lineStyle": {"color": "#30363D"}},
+            "splitLine": {"show": False},
+            "axisLabel": {"color": "#8B949E"},
+        },
+        "yAxis": {
+            "scale": True,
+            "axisLine": {"lineStyle": {"color": "#30363D"}},
+            "splitLine": {"lineStyle": {"color": "#21262D"}},
+            "axisLabel": {"color": "#8B949E"},
+        },
+        "dataZoom": [
+            {
+                "type": "inside",
+                "start": 0,
+                "end": 100,
+            },
+            {
+                "type": "slider",
+                "top": "90%",
+                "height": 16,
+                "start": 0,
+                "end": 100,
+                "borderColor": "#30363D",
+                "backgroundColor": "#060912",
+                "fillerColor": "rgba(57,210,192,0.15)",
+                "handleStyle": {"color": "#39D2C0"},
+                "textStyle": {"color": "#8B949E"},
+            },
+        ],
+        "series": series,
+    }
+
+    return Response(
+        content=json.dumps(option, ensure_ascii=False),
+        media_type="application/json",
     )
-    fig.update_xaxes(gridcolor="#21262D", zeroline=False)
-    fig.update_yaxes(gridcolor="#21262D", zeroline=False)
-
-    return Response(content=fig.to_json(), media_type="application/json")
 
 
 @router.get("/bar")
 async def chart_bar(request: Request, days: int = Query(60)):
+    """涨跌幅柱状图 — 返回 ECharts option JSON"""
     session = _get_session(request)
     df = _get_daily(session)
     if df is None:
@@ -143,27 +304,62 @@ async def chart_bar(request: Request, days: int = Query(60)):
 
     df = df.tail(days).copy()
     df["trade_date"] = pd.to_datetime(df["trade_date"], errors="coerce")
-    df["pct_chg"] = df["close"].pct_change() * 100 if "pct_chg" not in df.columns else df["pct_chg"]
 
-    colors = ["#3FB950" if v >= 0 else "#F85149" for v in df["pct_chg"]]
-    fig = go.Figure(go.Bar(
-        x=df["trade_date"], y=df["pct_chg"],
-        marker_color=colors, name="涨跌幅%",
-        hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f}%<extra></extra>",
-    ))
+    if "pct_chg" not in df.columns:
+        df["pct_chg"] = df["close"].pct_change() * 100
+    df["pct_chg"] = df["pct_chg"].fillna(0)
 
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#060912",
-        plot_bgcolor="#0C1017",
-        font=dict(color="#8B949E", size=11),
-        height=400,
-        margin=dict(l=10, r=10, t=30, b=10),
+    dates = df["trade_date"].dt.strftime("%Y-%m-%d").tolist()
+    pct_data = []
+    bar_colors = []
+    for v in df["pct_chg"]:
+        fv = _safe_float(v)
+        pct_data.append(fv if fv is not None else 0)
+        bar_colors.append("#3FB950" if (fv or 0) >= 0 else "#F85149")
+
+    option = {
+        "animation": False,
+        "tooltip": {
+            "trigger": "axis",
+            "backgroundColor": "rgba(13,17,23,0.92)",
+            "borderColor": "#30363D",
+            "textStyle": {"color": "#E6EDF3", "fontSize": 12},
+        },
+        "grid": {"left": 50, "right": 10, "top": 20, "bottom": 50},
+        "xAxis": {
+            "type": "category",
+            "data": dates,
+            "axisLine": {"lineStyle": {"color": "#30363D"}},
+            "splitLine": {"show": False},
+            "axisLabel": {"color": "#8B949E"},
+        },
+        "yAxis": {
+            "type": "value",
+            "axisLine": {"lineStyle": {"color": "#30363D"}},
+            "splitLine": {"lineStyle": {"color": "#21262D"}},
+            "axisLabel": {"color": "#8B949E"},
+        },
+        "dataZoom": [
+            {
+                "type": "inside",
+                "start": 0,
+                "end": 100,
+            },
+        ],
+        "series": [
+            {
+                "name": "涨跌幅%",
+                "type": "bar",
+                "data": pct_data,
+                "itemStyle": {"color": bar_colors},
+            },
+        ],
+    }
+
+    return Response(
+        content=json.dumps(option, ensure_ascii=False),
+        media_type="application/json",
     )
-    fig.update_xaxes(gridcolor="#21262D", zeroline=False)
-    fig.update_yaxes(gridcolor="#21262D", zeroline=True, zerolinecolor="#21262D")
-
-    return Response(content=fig.to_json(), media_type="application/json")
 
 
 @router.get("/img/{chart_type}")
@@ -225,6 +421,9 @@ async def chart_img(request: Request, chart_type: str):
 
 def _empty_chart():
     return Response(
-        content='{"data":[],"layout":{"title":{"text":"无数据"}}}',
+        content=json.dumps({
+            "title": {"text": "无数据", "left": "center", "textStyle": {"color": "#8B949E"}},
+            "series": [],
+        }, ensure_ascii=False),
         media_type="application/json",
     )
