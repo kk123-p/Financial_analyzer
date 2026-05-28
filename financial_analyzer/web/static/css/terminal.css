@@ -504,6 +504,7 @@ a:hover { color: var(--accent-primary-hover); }
   min-height: 0;
 }
 .tab-panel.active { display: flex; }
+#tab-quant { overflow-y: auto; }
 
 /* ---- 分析结果 — 毛玻璃深度 2 ---- */
 .result-container {
