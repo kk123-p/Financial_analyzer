@@ -94,6 +94,10 @@ def _serialize_result(result):
         "excess_returns": result.excess_returns,
         "information_ratio": result.information_ratio,
         "tracking_error": result.tracking_error,
+        "rolling_sharpe": result.rolling_sharpe,
+        "rolling_drawdown": result.rolling_drawdown,
+        "rolling_alpha": result.rolling_alpha,
+        "rolling_beta": result.rolling_beta,
     }
 
 
