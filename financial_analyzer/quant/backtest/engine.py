@@ -89,6 +89,7 @@ class BacktestEngine:
         all_trades: list = []
         factor_matrix_history: list[FactorMatrix] = []
         factor_scores_history: list[tuple[date, dict[str, dict[str, float]]]] = []
+        monthly_forward_returns: list[tuple[date, dict[str, float]]] = []
 
         # 2.5 预取全量数据（一次性获取，后续按日期切片）
         logger.info("预取全量数据（一次性获取，避免逐月重复调用 API）...")
@@ -154,23 +155,26 @@ class BacktestEngine:
             # 3d. 标准化 → 打分 → 排名 → 优化
             matrix = self.normalizer.normalize(matrix)
 
-            # 存储因子截面数据用于相关性矩阵
-            if self.factor_analyzer:
-                self.factor_analyzer.store_monthly_matrix(
-                    {stock: dict(scores) for stock, scores in matrix.scores.items()},
-                    ref_date=rebal_date,
-                )
-
-            # 3d-ic. 因子 IC 分析（如果启用了 FactorAnalyzer）
+            # 3d-ic. 计算前瞻收益（用于 IC 分析和年度表现）
+            fwd_returns: dict[str, float] = {}
             if self.factor_analyzer and i + 1 < len(month_ends):
                 next_date = month_ends[i + 1]
                 fwd_returns = self._compute_forward_returns(
                     stocks, rebal_date, next_date
                 )
                 if fwd_returns:
+                    monthly_forward_returns.append((rebal_date, fwd_returns))
                     self.factor_analyzer.compute_monthly_ic(
                         matrix, fwd_returns, ref_date=rebal_date
                     )
+
+            # 存储因子截面数据用于相关性矩阵和年度分组
+            if self.factor_analyzer:
+                self.factor_analyzer.store_monthly_matrix(
+                    {stock: dict(scores) for stock, scores in matrix.scores.items()},
+                    ref_date=rebal_date,
+                    market_returns=fwd_returns if fwd_returns else None,
+                )
 
             scores = self.scorer.score(matrix)
             ranked = self.ranker.rank(scores, stocks, prices=prices)
@@ -267,6 +271,15 @@ class BacktestEngine:
             if labels:
                 correlation_matrix = {"labels": labels, "matrix": matrix_data}
 
+        # 9. 年度因子表现 + 综合评分
+        annual_performance = {}
+        composite_score_list = []
+        if self.factor_analyzer:
+            annual_performance = self.factor_analyzer.compute_annual_performance(
+                monthly_forward_returns
+            )
+            composite_score_list = self.factor_analyzer.compute_composite_score()
+
         final_value = portfolio_values[-1] if portfolio_values else initial_capital
 
         logger.info(
@@ -288,6 +301,8 @@ class BacktestEngine:
             factor_ic=factor_ic,
             factor_decay=factor_decay,
             correlation_matrix=correlation_matrix,
+            annual_performance=annual_performance,
+            composite_score=composite_score_list,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
