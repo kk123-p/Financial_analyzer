@@ -540,3 +540,272 @@ async def sensitivity_result(task_id: str):
     if task["status"] == "done":
         return JSONResponse(task.get("result", {}))
     return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})
+
+
+# ========== 全因子自动权重优化 ==========
+
+CATEGORIES = ["value", "quality", "growth", "momentum", "sentiment", "low_vol", "risk"]
+
+CATEGORY_LABELS = {
+    "value": "价值", "quality": "质量", "growth": "成长",
+    "momentum": "动量", "sentiment": "情绪", "low_vol": "低波", "risk": "风险",
+}
+
+
+def _get_category_base_weights() -> dict[str, float]:
+    """获取每个类别的原始平均权重"""
+    cat_weights: dict[str, list[float]] = {}
+    for c in DEFAULT_FACTOR_CONFIGS:
+        cat_weights.setdefault(c.category, []).append(c.weight)
+    return {cat: sum(ws) / len(ws) for cat, ws in cat_weights.items()}
+
+
+def _build_weighted_configs(multipliers: dict[str, float]) -> list[FactorConfig]:
+    """根据类别乘数构建新的因子配置"""
+    configs = []
+    for c in DEFAULT_FACTOR_CONFIGS:
+        mult = multipliers.get(c.category, 1.0)
+        configs.append(FactorConfig(
+            name=c.name, label=c.label, category=c.category,
+            direction=c.direction, weight=c.weight * mult, enabled=c.enabled,
+        ))
+    return configs
+
+
+def _extract_price_at_date(stock_data: dict, stock_code: str, target_date) -> Optional[float]:
+    """从 stock_data 中提取指定日期附近的收盘价"""
+    data = stock_data.get(stock_code)
+    if not data:
+        return None
+    daily = data.get("daily")
+    if daily is None or daily.empty or "close" not in daily.columns:
+        return None
+
+    target_str = target_date.strftime("%Y%m%d") if hasattr(target_date, "strftime") else str(target_date)
+
+    if "trade_date" in daily.columns:
+        dates = daily["trade_date"].astype(str)
+        mask = dates <= target_str
+        if mask.any():
+            return float(daily.loc[mask].iloc[-1]["close"])
+
+    return float(daily.iloc[-1]["close"]) if not daily.empty else None
+
+
+@router.post("/optimize")
+async def run_optimize(
+    pool: str = Query("沪深300", description="选股池名称"),
+    train_end: str = Query("20240630", description="训练期结束日期 YYYYMMDD"),
+    top_n: int = Query(30, description="TOP-N 排名数量"),
+    max_iterations: int = Query(50, description="最大迭代次数"),
+):
+    """全因子自动权重优化（防过拟合版）
+
+    - 按 7 个类别优化权重（而非 25 个因子），降低参数维度
+    - 训练/测试期分割，在训练期优化，在测试期验证
+    - 使用实际收益率作为评估指标（而非拟合指标）
+    """
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中"}, status_code=400)
+
+    task_id = "opt_" + uuid.uuid4().hex[:12]
+
+    import time as _time
+    with _task_lock:
+        _cleanup_old_tasks()
+        _task_store[task_id] = {
+            "status": "starting", "progress": 0, "message": "正在初始化...",
+            "started_at": datetime.now().isoformat(), "started_ts": _time.time(), "pool": pool,
+        }
+
+    def _run_optimize():
+        try:
+            _update_task(task_id, progress=5, message="加载数据源...")
+            adapter = get_adapter()
+            _load_token(adapter)
+
+            _update_task(task_id, progress=10, message=f"获取 {pool} 成分股...")
+            mgr = UniverseManager(adapter)
+            stocks = mgr.get_universe(pool)
+            if not stocks:
+                _update_task(task_id, status="error", message=f"选股池 [{pool}] 无可用股票")
+                return
+
+            MAX_STOCKS = 500
+            if len(stocks) > MAX_STOCKS:
+                stocks = stocks[:MAX_STOCKS]
+
+            _update_task(task_id, progress=15, message="获取历史数据...")
+            fetcher = QuantDataFetcher(adapter, start_date="20230101")
+            stocks = fetcher.enrich_stock_info(stocks)
+            stocks = mgr.apply_filters(stocks)
+            stock_data = fetcher.fetch_all(stocks)
+
+            stocks_with_data = [s for s in stocks if s.code in stock_data]
+            if len(stocks_with_data) < 10:
+                _update_task(task_id, status="error", message="有效数据不足")
+                return
+
+            _update_task(task_id, progress=25, message="构建因子矩阵...")
+            builder = FactorMatrixBuilder(factors=ALL_FACTORS)
+            matrix = builder.build(stocks_with_data, stock_data)
+            normalizer = CrossSectionalNormalizer(method="zscore")
+            matrix = normalizer.normalize(matrix)
+
+            _update_task(task_id, progress=30, message="计算测试期收益率...")
+            from datetime import datetime as dt
+            train_end_dt = dt.strptime(train_end, "%Y%m%d")
+
+            prices_train = {}
+            prices_test = {}
+            for s in stocks_with_data:
+                p_train = _extract_price_at_date(stock_data, s.code, train_end_dt)
+                p_test = _extract_price_at_date(stock_data, s.code, datetime.now())
+                if p_train and p_test and p_train > 0:
+                    prices_train[s.code] = p_train
+                    prices_test[s.code] = p_test
+
+            test_returns = {}
+            for code in prices_train:
+                if code in prices_test:
+                    test_returns[code] = (prices_test[code] - prices_train[code]) / prices_train[code]
+
+            if len(test_returns) < 10:
+                _update_task(task_id, status="error", message="测试期价格数据不足")
+                return
+
+            _update_task(task_id, progress=35, message="计算基准表现...")
+            base_scorer = WeightedScorer(DEFAULT_FACTOR_CONFIGS)
+            base_scores = base_scorer.score(matrix)
+            base_ranked = Ranker(top_n=top_n, max_price=10.0).rank(base_scores, stocks_with_data, prices=prices_train)
+            base_top_codes = {s.code for s in base_ranked[:top_n]}
+            base_returns = [test_returns.get(c, 0) for c in base_top_codes]
+            base_avg_return = sum(base_returns) / len(base_returns) if base_returns else 0
+
+            eval_count = [0]
+
+            def objective(multipliers_arr):
+                eval_count[0] += 1
+                multipliers = {cat: float(multipliers_arr[i]) for i, cat in enumerate(CATEGORIES)}
+
+                configs = _build_weighted_configs(multipliers)
+                scorer = WeightedScorer(configs)
+                scores = scorer.score(matrix)
+                ranked = Ranker(top_n=top_n, max_price=10.0).rank(scores, stocks_with_data, prices=prices_train)
+                top_codes = {s.code for s in ranked[:top_n]}
+
+                if not top_codes:
+                    return 0.0
+
+                returns = [test_returns.get(c, 0) for c in top_codes]
+                avg_ret = sum(returns) / len(returns) if returns else 0
+
+                if eval_count[0] % 10 == 0:
+                    pct = min(35 + int(55 * eval_count[0] / (max_iterations * 15)), 90)
+                    _update_task(task_id, progress=pct,
+                                 message=f"优化中... 第 {eval_count[0]} 次评估，当前收益: {avg_ret:.2%}")
+
+                return -avg_ret
+
+            _update_task(task_id, progress=35, message="开始差分进化优化...")
+            from scipy.optimize import differential_evolution
+
+            bounds = [(0.1, 3.0)] * len(CATEGORIES)
+
+            result = differential_evolution(
+                objective, bounds=bounds, maxiter=max_iterations,
+                seed=42, tol=1e-4, polish=True,
+            )
+
+            _update_task(task_id, progress=92, message="整理优化结果...")
+            optimal_mults = {cat: round(float(result.x[i]), 4) for i, cat in enumerate(CATEGORIES)}
+
+            opt_configs = _build_weighted_configs(optimal_mults)
+            opt_scorer = WeightedScorer(opt_configs)
+            opt_scores = opt_scorer.score(matrix)
+            opt_ranked = Ranker(top_n=top_n, max_price=10.0).rank(opt_scores, stocks_with_data, prices=prices_train)
+            opt_top_codes = {s.code for s in opt_ranked[:top_n]}
+            opt_returns = [test_returns.get(c, 0) for c in opt_top_codes]
+            opt_avg_return = sum(opt_returns) / len(opt_returns) if opt_returns else 0
+
+            overlap = base_top_codes & opt_top_codes
+            overlap_rate = len(overlap) / len(base_top_codes) if base_top_codes else 0
+
+            base_cat_weights = _get_category_base_weights()
+            stock_name_map = {s.code: s.name for s in stocks_with_data}
+            added = opt_top_codes - base_top_codes
+            removed = base_top_codes - opt_top_codes
+
+            result_data = {
+                "pool": pool,
+                "train_end": train_end,
+                "top_n": top_n,
+                "valid_stocks": len(stocks_with_data),
+                "test_return_baseline": round(base_avg_return, 6),
+                "test_return_optimized": round(opt_avg_return, 6),
+                "improvement": round(opt_avg_return - base_avg_return, 6),
+                "overlap_count": len(overlap),
+                "overlap_rate": round(overlap_rate, 4),
+                "evaluations": eval_count[0],
+                "convergence": bool(result.success),
+                "category_weights": {
+                    cat: {
+                        "label": CATEGORY_LABELS[cat],
+                        "base_weight": round(base_cat_weights.get(cat, 1.0), 4),
+                        "optimal_multiplier": optimal_mults[cat],
+                        "effective_weight": round(base_cat_weights.get(cat, 1.0) * optimal_mults[cat], 4),
+                    }
+                    for cat in CATEGORIES
+                },
+                "baseline_top": [
+                    {"code": c, "name": stock_name_map.get(c, ""), "return": round(test_returns.get(c, 0), 4)}
+                    for c in sorted(base_top_codes)
+                ],
+                "optimized_top": [
+                    {"code": c, "name": stock_name_map.get(c, ""), "return": round(test_returns.get(c, 0), 4)}
+                    for c in sorted(opt_top_codes)
+                ],
+                "added": [
+                    {"code": c, "name": stock_name_map.get(c, ""), "return": round(test_returns.get(c, 0), 4)}
+                    for c in sorted(added)
+                ],
+                "removed": [
+                    {"code": c, "name": stock_name_map.get(c, ""), "return": round(test_returns.get(c, 0), 4)}
+                    for c in sorted(removed)
+                ],
+                "metric_label": "测试期实际收益率",
+            }
+
+            _update_task(task_id, status="done", progress=100,
+                         message=f"优化完成！评估 {eval_count[0]} 次，收益: {base_avg_return:.2%} → {opt_avg_return:.2%}",
+                         result=result_data)
+
+        except Exception as e:
+            logger.error(f"权重优化失败: {e}", exc_info=True)
+            _update_task(task_id, status="error", message=str(e))
+
+    threading.Thread(target=_run_optimize, daemon=True).start()
+    return JSONResponse({"task_id": task_id})
+
+
+@router.get("/optimize/status/{task_id}")
+async def optimize_status(task_id: str):
+    """查询优化任务进度"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse({k: v for k, v in task.items() if k != "result"})
+
+
+@router.get("/optimize/result/{task_id}")
+async def optimize_result(task_id: str):
+    """获取优化结果"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    if task["status"] == "done":
+        return JSONResponse(task.get("result", {}))
+    return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})

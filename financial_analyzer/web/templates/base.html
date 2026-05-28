@@ -472,6 +472,49 @@
                             </div>
                         </div>
 
+                        <!-- 自动权重优化 -->
+                        <div style="margin-top:24px;border-top:1px solid rgba(48,54,61,0.4);padding-top:20px;">
+                            <h3 style="margin:0 0 16px;color:var(--fg-primary);font-size:var(--text-md);">自动权重优化</h3>
+                            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);">训练截止</label>
+                                <input type="text" id="opt-train-end" value="20240630" style="width:90px;" placeholder="YYYYMMDD">
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);">最大迭代</label>
+                                <input type="number" id="opt-max-iter" value="50" min="10" max="200" style="width:70px;">
+                                <button class="btn btn-accent" id="btn-opt-run" onclick="runOptimize()">开始优化</button>
+                                <button class="btn" id="btn-opt-stop" onclick="stopOptimize()" style="display:none;background:var(--danger-bg,#3a1a1a);color:#f44336;">停止</button>
+                                <span id="opt-status-text" style="color:var(--text-muted);font-size:var(--text-xs);"></span>
+                            </div>
+                            <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:12px;">
+                                按 7 个类别（价值/质量/成长/动量/情绪/低波/风险）优化权重，使用训练/测试期分割防止过拟合，以实际收益率为评估指标。
+                            </div>
+
+                            <!-- 优化进度 -->
+                            <div id="opt-progress" style="display:none;">
+                                <div class="backtest-progress">
+                                    <div class="progress-pct" id="opt-progress-pct">0%</div>
+                                    <div id="opt-progress-msg" style="margin-top:4px;">初始化...</div>
+                                </div>
+                            </div>
+
+                            <!-- 优化结果 -->
+                            <div id="opt-result" style="display:none;">
+                                <div class="backtest-metrics-grid" id="opt-metrics-grid"></div>
+                                <div style="margin-top:16px;">
+                                    <h4 style="margin:0 0 8px;color:var(--text-secondary);font-size:var(--text-sm);">类别权重对比</h4>
+                                    <div id="opt-weights-table"></div>
+                                </div>
+                                <div id="opt-weight-chart" style="height:300px;margin-top:16px;"></div>
+                                <div style="margin-top:16px;">
+                                    <h4 style="margin:0 0 8px;color:var(--text-secondary);font-size:var(--text-sm);">新增股票（优化后入选）</h4>
+                                    <div id="opt-added-table"></div>
+                                </div>
+                                <div style="margin-top:12px;">
+                                    <h4 style="margin:0 0 8px;color:var(--text-secondary);font-size:var(--text-sm);">移除股票（优化后落选）</h4>
+                                    <div id="opt-removed-table"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 模拟交易 -->
                         <div style="margin-top:24px;border-top:1px solid rgba(48,54,61,0.4);padding-top:20px;">
                             <h3 style="margin:0 0 16px;color:var(--fg-primary);font-size:var(--text-md);">模拟交易</h3>
@@ -1212,6 +1255,234 @@
 
     // Initialize factor selectors on page load
     populateFactorSelectors();
+
+    // ========== 自动权重优化 ==========
+    var _optTimer = null;
+    var _optTaskId = null;
+    var _optRetryCount = 0;
+
+    function runOptimize() {
+        var trainEnd = document.getElementById('opt-train-end').value.trim();
+        var maxIter = document.getElementById('opt-max-iter').value;
+        var btn = document.getElementById('btn-opt-run');
+        var stopBtn = document.getElementById('btn-opt-stop');
+        var statusEl = document.getElementById('opt-status-text');
+        var progressEl = document.getElementById('opt-progress');
+        var resultEl = document.getElementById('opt-result');
+
+        if (!/^\d{8}$/.test(trainEnd)) {
+            statusEl.textContent = '训练截止日期格式错误，应为 YYYYMMDD';
+            statusEl.style.color = '#f44336';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '提交中...';
+        stopBtn.style.display = 'inline-block';
+        statusEl.textContent = '';
+        progressEl.style.display = 'block';
+        resultEl.style.display = 'none';
+        document.getElementById('opt-progress-pct').textContent = '0%';
+        document.getElementById('opt-progress-msg').textContent = '正在提交...';
+        _optRetryCount = 0;
+
+        var pool = document.getElementById('quant-pool').value;
+        var url = '/api/v1/quant/optimize?pool=' + encodeURIComponent(pool) +
+            '&train_end=' + trainEnd + '&max_iterations=' + maxIter;
+
+        fetch(url, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                btn.disabled = false;
+                btn.textContent = '开始优化';
+                stopBtn.style.display = 'none';
+                progressEl.style.display = 'none';
+                statusEl.textContent = data.error;
+                statusEl.style.color = '#f44336';
+                return;
+            }
+            _optTaskId = data.task_id;
+            btn.textContent = '优化中...';
+            pollOptProgress();
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '开始优化';
+            stopBtn.style.display = 'none';
+            progressEl.style.display = 'none';
+            statusEl.textContent = '提交失败: ' + err.message;
+            statusEl.style.color = '#f44336';
+        });
+    }
+
+    function pollOptProgress() {
+        if (!_optTaskId) return;
+        fetch('/api/v1/quant/optimize/status/' + _optTaskId)
+        .then(function(r) { return r.json(); })
+        .then(function(task) {
+            _optRetryCount = 0;
+            var pct = task.progress || 0;
+            var msg = task.message || '';
+            document.getElementById('opt-progress-pct').textContent = pct + '%';
+            document.getElementById('opt-progress-msg').textContent = msg;
+
+            if (task.status === 'done') {
+                _optTimer = null;
+                fetchOptResult(_optTaskId);
+                _optTaskId = null;
+            } else if (task.status === 'error') {
+                _optTimer = null;
+                _optTaskId = null;
+                var btn = document.getElementById('btn-opt-run');
+                var stopBtn = document.getElementById('btn-opt-stop');
+                btn.disabled = false;
+                btn.textContent = '开始优化';
+                stopBtn.style.display = 'none';
+                document.getElementById('opt-progress').style.display = 'none';
+                document.getElementById('opt-status-text').textContent = msg || '优化失败';
+                document.getElementById('opt-status-text').style.color = '#f44336';
+            } else {
+                _optTimer = setTimeout(pollOptProgress, 3000);
+            }
+        })
+        .catch(function() {
+            _optRetryCount++;
+            if (_optRetryCount >= 5) {
+                var statusEl = document.getElementById('opt-status-text');
+                statusEl.textContent = '网络错误，轮询已停止';
+                statusEl.style.color = '#f44336';
+                document.getElementById('btn-opt-run').disabled = false;
+                document.getElementById('btn-opt-run').textContent = '开始优化';
+                document.getElementById('btn-opt-stop').style.display = 'none';
+                document.getElementById('opt-progress').style.display = 'none';
+                _optTimer = null;
+                _optTaskId = null;
+                return;
+            }
+            _optTimer = setTimeout(pollOptProgress, 3000);
+        });
+    }
+
+    function fetchOptResult(taskId) {
+        fetch('/api/v1/quant/optimize/result/' + taskId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var btn = document.getElementById('btn-opt-run');
+            var stopBtn = document.getElementById('btn-opt-stop');
+            btn.disabled = false;
+            btn.textContent = '开始优化';
+            stopBtn.style.display = 'none';
+            document.getElementById('opt-progress').style.display = 'none';
+            document.getElementById('opt-status-text').textContent = '优化完成';
+            document.getElementById('opt-status-text').style.color = '#3FB950';
+            renderOptResult(data);
+        })
+        .catch(function(err) {
+            document.getElementById('btn-opt-run').disabled = false;
+            document.getElementById('btn-opt-run').textContent = '开始优化';
+            document.getElementById('opt-progress').style.display = 'none';
+            document.getElementById('opt-status-text').textContent = '获取结果失败: ' + err.message;
+        });
+    }
+
+    function stopOptimize() {
+        if (_optTimer) { clearTimeout(_optTimer); _optTimer = null; }
+        _optTaskId = null;
+        document.getElementById('btn-opt-run').disabled = false;
+        document.getElementById('btn-opt-run').textContent = '开始优化';
+        document.getElementById('btn-opt-stop').style.display = 'none';
+        document.getElementById('opt-progress').style.display = 'none';
+        document.getElementById('opt-status-text').textContent = '已停止';
+        document.getElementById('opt-status-text').style.color = 'var(--text-muted)';
+    }
+
+    function renderOptResult(data) {
+        var resultEl = document.getElementById('opt-result');
+        resultEl.style.display = 'block';
+
+        // 指标卡片
+        var imp = data.improvement || 0;
+        var impColor = imp >= 0 ? '#3FB950' : '#F85149';
+        var metricsHtml = '';
+        var items = [
+            { label: '基准收益', value: (data.test_return_baseline * 100).toFixed(2) + '%', color: '#64B5F6' },
+            { label: '优化收益', value: (data.test_return_optimized * 100).toFixed(2) + '%', color: impColor },
+            { label: '收益提升', value: (imp >= 0 ? '+' : '') + (imp * 100).toFixed(2) + '%', color: impColor },
+            { label: 'TOP-N 重合', value: data.overlap_count + '/' + data.top_n + ' (' + (data.overlap_rate * 100).toFixed(0) + '%)', color: '#D29922' },
+            { label: '评估次数', value: data.evaluations, color: '#BC8CFF' },
+            { label: '收敛', value: data.convergence ? '是' : '否', color: data.convergence ? '#3FB950' : '#F85149' },
+        ];
+        for (var i = 0; i < items.length; i++) {
+            metricsHtml += '<div class="backtest-metric-item"><div class="metric-value" style="color:' + items[i].color + ';">' + items[i].value + '</div><div class="metric-label">' + items[i].label + '</div></div>';
+        }
+        document.getElementById('opt-metrics-grid').innerHTML = metricsHtml;
+
+        // 类别权重对比表
+        var cw = data.category_weights || {};
+        var wHtml = '<table class="backtest-trades-table"><thead><tr><th>类别</th><th>原始权重</th><th>优化乘数</th><th>最终权重</th><th>变化</th></tr></thead><tbody>';
+        var catKeys = Object.keys(cw);
+        for (var ci = 0; ci < catKeys.length; ci++) {
+            var cat = catKeys[ci];
+            var c = cw[cat];
+            var change = c.effective_weight - c.base_weight;
+            var changeColor = change >= 0 ? '#3FB950' : '#F85149';
+            wHtml += '<tr><td>' + InteractionUtils.escapeHtml(c.label) + '</td><td>' + c.base_weight.toFixed(2) + '</td><td>' + c.optimal_multiplier.toFixed(3) + '</td><td>' + c.effective_weight.toFixed(2) + '</td><td style="color:' + changeColor + ';">' + (change >= 0 ? '+' : '') + change.toFixed(2) + '</td></tr>';
+        }
+        wHtml += '</tbody></table>';
+        document.getElementById('opt-weights-table').innerHTML = wHtml;
+
+        // 权重对比柱状图
+        renderWeightComparison(cw);
+
+        // 新增/移除股票表
+        renderStockChangeTable('opt-added-table', data.added || [], '新增');
+        renderStockChangeTable('opt-removed-table', data.removed || [], '移除');
+    }
+
+    function renderWeightComparison(cw) {
+        var dom = document.getElementById('opt-weight-chart');
+        if (!dom) return;
+        var chart = EchartsUtils.init('opt-weight-chart');
+        if (!chart) return;
+
+        var labels = [];
+        var baseVals = [];
+        var optVals = [];
+        var catKeys = Object.keys(cw);
+        for (var i = 0; i < catKeys.length; i++) {
+            var c = cw[catKeys[i]];
+            labels.push(c.label);
+            baseVals.push(c.base_weight);
+            optVals.push(c.effective_weight);
+        }
+
+        EchartsUtils.setOption(chart, {
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['原始权重', '优化权重'], textStyle: { color: '#8B949E' } },
+            xAxis: { type: 'category', data: labels, axisLabel: { color: '#8B949E' } },
+            yAxis: { type: 'value', name: '权重', axisLabel: { color: '#8B949E' }, splitLine: { lineStyle: { color: '#21262D' } } },
+            series: [
+                { name: '原始权重', type: 'bar', data: baseVals, itemStyle: { color: '#64B5F6' } },
+                { name: '优化权重', type: 'bar', data: optVals, itemStyle: { color: '#3FB950' } },
+            ],
+        });
+    }
+
+    function renderStockChangeTable(domId, stocks, label) {
+        if (!stocks.length) {
+            document.getElementById(domId).innerHTML = '<div style="color:var(--text-muted);font-size:var(--text-sm);padding:8px;">无' + label + '股票</div>';
+            return;
+        }
+        var html = '<table class="backtest-trades-table"><thead><tr><th>代码</th><th>名称</th><th>测试期收益</th></tr></thead><tbody>';
+        for (var i = 0; i < stocks.length; i++) {
+            var s = stocks[i];
+            var retColor = s.return >= 0 ? '#3FB950' : '#F85149';
+            html += '<tr><td style="font-family:monospace;">' + InteractionUtils.escapeHtml(s.code) + '</td><td>' + InteractionUtils.escapeHtml(s.name || '') + '</td><td style="color:' + retColor + ';">' + (s.return * 100).toFixed(2) + '%</td></tr>';
+        }
+        html += '</tbody></table>';
+        document.getElementById(domId).innerHTML = html;
+    }
 
     // ========== 模拟交易 ==========
 

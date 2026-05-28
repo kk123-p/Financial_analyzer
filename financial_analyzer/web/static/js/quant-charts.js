@@ -11,6 +11,7 @@
     heatmap: 'bt-chart-heatmap',
     trades: 'bt-chart-trades',
     sensitivity: 'sens-chart-heatmap',
+    optWeight: 'opt-weight-chart',
   };
 
   // ---- 1. Equity curve ----
