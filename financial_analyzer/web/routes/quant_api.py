@@ -924,6 +924,7 @@ async def run_factor_analysis(
                 "valid_stocks": len(stocks_with_data),
                 "ic_summary": ic_summary,
                 "monthly_ic": timeseries,
+                "decay_curves": result.factor_decay,
             }
 
             _update_task(task_id, status="done", progress=100,

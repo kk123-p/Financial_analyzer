@@ -88,6 +88,7 @@ class BacktestEngine:
         snapshots: list[PortfolioSnapshot] = []
         all_trades: list = []
         factor_matrix_history: list[FactorMatrix] = []
+        factor_scores_history: list[tuple[date, dict[str, dict[str, float]]]] = []
 
         # 2.5 预取全量数据（一次性获取，后续按日期切片）
         logger.info("预取全量数据（一次性获取，避免逐月重复调用 API）...")
@@ -146,6 +147,9 @@ class BacktestEngine:
 
             # 记录因子矩阵用于归因分析
             factor_matrix_history.append(matrix)
+            factor_scores_history.append(
+                (rebal_date, {stock: dict(scores) for stock, scores in matrix.scores.items()})
+            )
 
             # 3d. 标准化 → 打分 → 排名 → 优化
             matrix = self.normalizer.normalize(matrix)
@@ -219,6 +223,36 @@ class BacktestEngine:
             }
             factor_ic["_timeseries"] = self.factor_analyzer.get_ic_timeseries()
 
+        # 7. 因子衰减分析
+        factor_decay = {}
+        if self.factor_analyzer and factor_scores_history and month_ends:
+            horizons = [1, 2, 3, 6]
+            for ref_date, factor_vals in factor_scores_history:
+                fwd_by_horizon: dict[int, dict[str, float]] = {}
+                for h in horizons:
+                    target_idx = month_ends.index(ref_date) + h if ref_date in month_ends else -1
+                    if 0 <= target_idx < len(month_ends):
+                        fwd = self._compute_forward_returns(
+                            self._prefetched_stocks if hasattr(self, '_prefetched_stocks') else [],
+                            ref_date, month_ends[target_idx],
+                        )
+                        if fwd:
+                            fwd_by_horizon[h] = fwd
+                if fwd_by_horizon:
+                    self.factor_analyzer.compute_multi_horizon_ic(
+                        factor_vals, fwd_by_horizon, ref_date=ref_date
+                    )
+            decay_curves = self.factor_analyzer.compute_decay_curve()
+            factor_decay = {
+                name: {
+                    "horizons": curve.horizons,
+                    "mean_ic": [round(v, 6) for v in curve.mean_ic_by_horizon],
+                    "ic_positive_pct": [round(v, 4) for v in curve.ic_positive_pct_by_horizon],
+                    "n_months": curve.n_months_by_horizon,
+                }
+                for name, curve in decay_curves.items()
+            }
+
         final_value = portfolio_values[-1] if portfolio_values else initial_capital
 
         logger.info(
@@ -238,6 +272,7 @@ class BacktestEngine:
             trades=all_trades,
             attribution=attribution,
             factor_ic=factor_ic,
+            factor_decay=factor_decay,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
