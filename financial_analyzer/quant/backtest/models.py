@@ -35,3 +35,7 @@ class BacktestResult:
     information_ratio: float = 0.0
     tracking_error: float = 0.0
     benchmark_code: str = ""
+    rolling_sharpe: list = field(default_factory=list)
+    rolling_drawdown: list = field(default_factory=list)
+    rolling_alpha: list = field(default_factory=list)
+    rolling_beta: list = field(default_factory=list)
