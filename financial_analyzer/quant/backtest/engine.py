@@ -42,7 +42,9 @@ class BacktestEngine:
                  signal_generator: SignalGenerator,
                  commission_rate: float = DEFAULT_COMMISSION_RATE,
                  factor_analyzer: Optional[FactorAnalyzer] = None,
-                 benchmark_code: Optional[str] = None):
+                 benchmark_code: Optional[str] = None,
+                 slippage_pct: float = 0.1,
+                 stamp_tax: bool = True):
         self.universe_manager = universe_manager
         self.data_fetcher = data_fetcher
         self.factor_matrix_builder = factor_matrix_builder
@@ -54,6 +56,13 @@ class BacktestEngine:
         self.commission_rate = commission_rate
         self.factor_analyzer = factor_analyzer
         self.benchmark_code = benchmark_code
+        self.slippage_pct = slippage_pct
+        self.stamp_tax = stamp_tax
+
+    def _reset_cost_tracking(self):
+        self._total_commission = 0.0
+        self._total_slippage_cost = 0.0
+        self._total_stamp_tax = 0.0
 
     def run(self,
             start_date: str,
@@ -71,6 +80,7 @@ class BacktestEngine:
             progress_callback: 可选的进度回调，接收 0.0-1.0 浮点数
         """
         logger.info(f"回测启动: {start_date} ~ {end_date}, 选股池={pool}, 初始资金={initial_capital}")
+        self._reset_cost_tracking()
 
         # 1. 获取月末交易日序列
         month_ends = self._generate_month_ends(start_date, end_date)
@@ -362,6 +372,15 @@ class BacktestEngine:
             benchmark_returns=benchmark_returns_list if benchmark_returns_list else None,
         )
 
+        cost_breakdown = {
+            "commission": round(self._total_commission, 2),
+            "slippage_cost": round(self._total_slippage_cost, 2),
+            "stamp_tax": round(self._total_stamp_tax, 2),
+            "total_cost": round(
+                self._total_commission + self._total_slippage_cost + self._total_stamp_tax, 2
+            ),
+        }
+
         return BacktestResult(
             start_date=start_date,
             end_date=end_date,
@@ -385,6 +404,7 @@ class BacktestEngine:
             rolling_drawdown=rolling_result.get("rolling_drawdown", []),
             rolling_alpha=rolling_result.get("rolling_alpha", []),
             rolling_beta=rolling_result.get("rolling_beta", []),
+            cost_breakdown=cost_breakdown,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
@@ -571,6 +591,8 @@ class BacktestEngine:
                         ref_date: date) -> float:
         """执行交易，更新持仓和现金
 
+        应用滑点、佣金、印花税，并累计成本明细。
+
         Returns:
             更新后的现金余额
         """
@@ -583,10 +605,21 @@ class BacktestEngine:
                     logger.warning(f"  跳过卖出 {code}: 价格为 {price}，无法确定合理卖出价")
                     continue
                 shares = holdings.pop(code)
-                proceeds = shares * price
+                exec_price = price * (1 - self.slippage_pct / 100)
+                proceeds = shares * exec_price
                 commission = proceeds * self.commission_rate
-                cash += proceeds - commission
-                logger.debug(f"  卖出 {code}: {shares}股 x {price} = {proceeds:.2f}, 佣金 {commission:.2f}")
+                slippage_cost = shares * (price - exec_price)
+                stamp = 0.0
+                if self.stamp_tax:
+                    stamp = proceeds * 0.0005
+                cash += proceeds - commission - stamp
+                self._total_commission += commission
+                self._total_slippage_cost += slippage_cost
+                self._total_stamp_tax += stamp
+                logger.debug(
+                    f"  卖出 {code}: {shares}股 x {exec_price:.4f} = {proceeds:.2f}, "
+                    f"佣金 {commission:.2f}, 滑点 {slippage_cost:.2f}, 印花税 {stamp:.2f}"
+                )
 
         # 再买入
         buys = trade_list.buys
@@ -603,25 +636,33 @@ class BacktestEngine:
             if price <= 0:
                 continue
 
-            shares = int(per_stock_budget / price / 100) * 100  # 整手（100股）
+            exec_price = price * (1 + self.slippage_pct / 100)
+
+            shares = int(per_stock_budget / exec_price / 100) * 100  # 整手（100股）
             if shares <= 0:
                 continue
 
-            cost = shares * price
+            cost = shares * exec_price
             commission = cost * self.commission_rate
             total_cost = cost + commission
 
             if total_cost > cash:
-                shares = int((cash * 0.99) / price / 100) * 100
+                shares = int((cash * 0.99) / exec_price / 100) * 100
                 if shares <= 0:
                     continue
-                cost = shares * price
+                cost = shares * exec_price
                 commission = cost * self.commission_rate
                 total_cost = cost + commission
 
+            slippage_cost = shares * (exec_price - price)
             holdings[code] = holdings.get(code, 0) + shares
             cash -= total_cost
-            logger.debug(f"  买入 {code}: {shares}股 x {price} = {cost:.2f}, 佣金 {commission:.2f}")
+            self._total_commission += commission
+            self._total_slippage_cost += slippage_cost
+            logger.debug(
+                f"  买入 {code}: {shares}股 x {exec_price:.4f} = {cost:.2f}, "
+                f"佣金 {commission:.2f}, 滑点 {slippage_cost:.2f}"
+            )
 
         return cash
 
