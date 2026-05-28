@@ -138,32 +138,39 @@ function activateNav(row) {
     }
 }
 
-// ---- 图表加载 ----
+// ---- 图表加载（ECharts） ----
 function loadChart(chartType, btn) {
     if (btn) {
         btn.parentElement.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
 
-    const container = document.getElementById('chart-container');
+    var container = document.getElementById('chart-container');
     if (!container) return;
+
+    // 显示加载状态
     container.innerHTML = '<div class="result-empty">加载中...</div>';
 
     fetch('/chart/' + chartType)
-        .then(r => r.json())
-        .then(fig => {
-            if (fig.data && fig.data.length > 0) {
-                Plotly.newPlot('chart-container', fig.data, fig.layout, {
-                    responsive: true,
-                    displayModeBar: true,
-                    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-                    displaylogo: false,
-                });
-            } else {
+        .then(function(r) { return r.json(); })
+        .then(function(option) {
+            // 检查是否是空数据响应
+            if (!option.series || option.series.length === 0) {
                 container.innerHTML = '<div class="result-empty">暂无数据</div>';
+                return;
+            }
+
+            // 清除加载提示，准备 ECharts 容器
+            container.innerHTML = '';
+
+            var chart = EchartsUtils.init('chart-container');
+            if (chart) {
+                EchartsUtils.setOption(chart, option);
+            } else {
+                container.innerHTML = '<div class="result-empty">图表初始化失败</div>';
             }
         })
-        .catch(() => {
+        .catch(function() {
             container.innerHTML = '<div class="result-empty">图表加载失败</div>';
         });
 }
@@ -241,13 +248,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// ---- Plotly resize ----
-window.addEventListener('resize', function() {
-    const chartContainer = document.getElementById('chart-container');
-    if (chartContainer && chartContainer._fullLayout) {
-        Plotly.Plots.resize(chartContainer);
-    }
-});
+// ---- ECharts resize handled by echarts-utils.js ----
 
 
 // ============================================================================
