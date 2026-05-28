@@ -18,6 +18,7 @@ class FactorAnalyzer:
         self.min_sample_size = min_sample_size
         self._ic_history: dict[str, list[ICRecord]] = {}
         self._decay_history: dict[str, list[ICDecayRecord]] = {}
+        self._monthly_matrices: list[tuple[date, dict[str, dict[str, float]]]] = []
 
     def compute_monthly_ic(
         self,
@@ -223,7 +224,97 @@ class FactorAnalyzer:
 
         return curves
 
+    def store_monthly_matrix(
+        self,
+        factor_values: dict[str, dict[str, float]],
+        ref_date: date,
+    ) -> None:
+        """存储每月的因子截面数据。
+
+        Args:
+            factor_values: {stock_code: {factor_name: value}}
+            ref_date: 当月调仓日期
+        """
+        self._monthly_matrices.append((ref_date, factor_values))
+
+    def compute_correlation_matrix(
+        self,
+    ) -> tuple[list[str], list[list[float]]]:
+        """对所有月份的因子截面数据求平均 Spearman 相关系数矩阵。
+
+        对每个月计算因子间的 Spearman 相关矩阵，再逐元素求平均。
+        高相关因子（|corr| > 0.7）在 labels 中以 " [高相关]" 标记。
+
+        Returns:
+            (labels, matrix): 因子名称列表，二维相关系数矩阵
+        """
+        if not self._monthly_matrices:
+            return [], []
+
+        # 收集所有出现过的因子名称
+        all_factors: set[str] = set()
+        for _, factor_vals in self._monthly_matrices:
+            for stock_scores in factor_vals.values():
+                all_factors.update(stock_scores.keys())
+        if not all_factors:
+            return [], []
+
+        labels = sorted(all_factors)
+        n = len(labels)
+        sum_matrix = np.zeros((n, n), dtype=float)
+        count_matrix = np.zeros((n, n), dtype=float)
+
+        for _, factor_vals in self._monthly_matrices:
+            # 转置为 {factor_name: [values]}，只取所有因子都有值的股票
+            stocks = list(factor_vals.keys())
+            valid_stocks = [
+                s for s in stocks
+                if all(f in factor_vals[s] for f in labels)
+                and not any(np.isnan(factor_vals[s][f]) for f in labels)
+            ]
+            if len(valid_stocks) < self.min_sample_size:
+                continue
+
+            # 构建 (n_stocks, n_factors) 数组
+            data = np.array(
+                [[factor_vals[s][f] for f in labels] for s in valid_stocks]
+            )
+
+            # 逐对计算 Spearman 相关
+            for i in range(n):
+                for j in range(i, n):
+                    if np.std(data[:, i]) < 1e-10 or np.std(data[:, j]) < 1e-10:
+                        corr = 0.0
+                    else:
+                        corr, _ = spearmanr(data[:, i], data[:, j])
+                        if np.isnan(corr):
+                            corr = 0.0
+                    sum_matrix[i, j] += corr
+                    sum_matrix[j, i] += corr
+                    count_matrix[i, j] += 1
+                    count_matrix[j, i] += 1
+
+        # 求平均
+        with np.errstate(divide="ignore", invalid="ignore"):
+            avg_matrix = np.where(count_matrix > 0, sum_matrix / count_matrix, 0.0)
+
+        # 高相关标记
+        marked_labels = []
+        for i, lbl in enumerate(labels):
+            has_high = False
+            for j in range(n):
+                if i != j and abs(avg_matrix[i, j]) > 0.7:
+                    has_high = True
+                    break
+            marked_labels.append(f"{lbl} [高相关]" if has_high else lbl)
+
+        matrix_list = [
+            [round(avg_matrix[i, j], 6) for j in range(n)] for i in range(n)
+        ]
+        return marked_labels, matrix_list
+
     def reset(self):
         """清空历史数据。"""
         self._ic_history.clear()
         self._decay_history.clear()
+        self._monthly_matrices.clear()
