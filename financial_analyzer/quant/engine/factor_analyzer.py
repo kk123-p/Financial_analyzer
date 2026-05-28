@@ -34,8 +34,15 @@ class FactorAnalyzer:
         Returns:
             {factor_name: IC 值或 None（样本不足时）}
         """
+        # matrix.scores 结构: {stock_code: {factor_name: value}}
+        # 转置为 {factor_name: {stock_code: value}}
+        factor_columns: dict[str, dict[str, float]] = {}
+        for stock_code, stock_scores in matrix.scores.items():
+            for factor_name, value in stock_scores.items():
+                factor_columns.setdefault(factor_name, {})[stock_code] = value
+
         results = {}
-        for factor_name, scores in matrix.scores.items():
+        for factor_name, scores in factor_columns.items():
             common_stocks = [
                 code for code in scores
                 if code in forward_returns and not np.isnan(scores[code])
