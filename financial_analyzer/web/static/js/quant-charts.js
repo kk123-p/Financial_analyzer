@@ -477,6 +477,50 @@
     }
   }
 
+  // ---- 8. Paper trading PnL curve ----
+
+  function renderPaperPnlCurve(snapshots, initialCapital) {
+    if (!snapshots.length) return;
+    var dom = document.getElementById('paper-chart-pnl');
+    if (!dom) return;
+    var chart = EchartsUtils.init(dom);
+    var dates = snapshots.map(function(s) { return s.date; });
+    var values = snapshots.map(function(s) { return s.total_value; });
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: dates },
+      yAxis: { type: 'value', name: '资产 (¥)' },
+      series: [{
+        type: 'line',
+        data: values,
+        areaStyle: { opacity: 0.15 },
+        lineStyle: { width: 2 },
+        markLine: { data: [{ yAxis: initialCapital, name: '初始资金', lineStyle: { type: 'dashed', color: '#8B949E' } }] }
+      }]
+    });
+  }
+
+  // ---- 9. Paper trading allocation pie ----
+
+  function renderPaperAllocationPie(holdings, cash) {
+    var dom = document.getElementById('paper-chart-allocation');
+    if (!dom) return;
+    var chart = EchartsUtils.init(dom);
+    var data = [{ name: '现金', value: cash }];
+    for (var i = 0; i < holdings.length; i++) {
+      data.push({ name: holdings[i].name || holdings[i].code, value: holdings[i].market_value });
+    }
+    chart.setOption({
+      tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        data: data,
+        label: { show: true, formatter: '{b}\n{d}%' }
+      }]
+    });
+  }
+
   global.QuantCharts = {
     CHART_IDS: CHART_IDS,
     renderEquityCurve: renderEquityCurve,
@@ -486,5 +530,7 @@
     renderSensitivityHeatmap: renderSensitivityHeatmap,
     linkAllCharts: linkAllCharts,
     resizeAll: resizeAll,
+    renderPaperPnlCurve: renderPaperPnlCurve,
+    renderPaperAllocationPie: renderPaperAllocationPie,
   };
 })(window);

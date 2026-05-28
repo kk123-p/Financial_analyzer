@@ -471,6 +471,48 @@
                                 <div id="sens-baseline-info" style="margin-top:12px;font-size:var(--text-sm);color:var(--text-muted);"></div>
                             </div>
                         </div>
+
+                        <!-- 模拟交易 -->
+                        <div style="margin-top:24px;border-top:1px solid rgba(48,54,61,0.4);padding-top:20px;">
+                            <h3 style="margin:0 0 16px;color:var(--fg-primary);font-size:var(--text-md);">模拟交易</h3>
+
+                            <!-- 控制栏 -->
+                            <div class="paper-controls">
+                                <label>初始资金</label>
+                                <input type="number" id="paper-capital" value="5000">
+                                <button class="btn" onclick="initPaperAccount()">初始化账户</button>
+                                <button class="btn btn-accent" id="btn-paper-execute" onclick="executePaperSignals()" disabled>执行信号</button>
+                                <button class="btn" onclick="resetPaperAccount()">重置账户</button>
+                                <span id="paper-status-text"></span>
+                            </div>
+
+                            <!-- KPI 卡片 -->
+                            <div class="backtest-metrics-grid" id="paper-kpi-grid"></div>
+
+                            <!-- 图表 -->
+                            <div class="backtest-charts-grid">
+                                <div class="backtest-chart-card backtest-chart-card--full">
+                                    <h4>盈亏曲线</h4>
+                                    <div id="paper-chart-pnl" class="backtest-chart-echart"></div>
+                                </div>
+                                <div class="backtest-chart-card">
+                                    <h4>持仓分布</h4>
+                                    <div id="paper-chart-allocation" class="backtest-chart-echart"></div>
+                                </div>
+                            </div>
+
+                            <!-- 持仓表 -->
+                            <div style="margin-top:16px;">
+                                <h4>当前持仓</h4>
+                                <div id="paper-holdings-table" style="max-height:300px;overflow-y:auto;"></div>
+                            </div>
+
+                            <!-- 交易记录 -->
+                            <div style="margin-top:16px;">
+                                <h4>交易记录</h4>
+                                <div id="paper-ledger-table" style="max-height:300px;overflow-y:auto;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -550,6 +592,7 @@
     // ========== 量化策略面板（异步 + 进度轮询） ==========
     var _quantTimer = null;
     var _quantTaskId = null;
+    var _lastQuantTaskId = null;
 
     function runQuantSignal() {
         var pool = document.getElementById('quant-pool').value;
@@ -642,6 +685,8 @@
     }
 
     function fetchQuantResult(taskId) {
+        _lastQuantTaskId = taskId;
+        document.getElementById('btn-paper-execute').disabled = false;
         fetch('/api/v1/quant/result/' + taskId)
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -1095,6 +1140,130 @@
 
     // Initialize factor selectors on page load
     populateFactorSelectors();
+
+    // ========== 模拟交易 ==========
+
+    function initPaperAccount() {
+        var capital = document.getElementById('paper-capital').value;
+        var statusEl = document.getElementById('paper-status-text');
+        statusEl.textContent = '初始化中...';
+
+        fetch('/api/v1/paper/init?capital=' + capital, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { statusEl.textContent = data.error; return; }
+            statusEl.textContent = '账户已初始化';
+            statusEl.style.color = '#3FB950';
+            refreshPaperPortfolio();
+        })
+        .catch(function(err) { statusEl.textContent = '失败: ' + err.message; });
+    }
+
+    function executePaperSignals() {
+        if (!_lastQuantTaskId) {
+            document.getElementById('paper-status-text').textContent = '请先生成信号';
+            return;
+        }
+        var btn = document.getElementById('btn-paper-execute');
+        var statusEl = document.getElementById('paper-status-text');
+        btn.disabled = true;
+        btn.textContent = '执行中...';
+        statusEl.textContent = '';
+
+        fetch('/api/v1/paper/execute?task_id=' + _lastQuantTaskId, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.textContent = '执行信号';
+            btn.disabled = false;
+            if (data.error) { statusEl.textContent = data.error; statusEl.style.color = '#f44336'; return; }
+            statusEl.textContent = '执行完成，' + (data.executed || []).length + ' 笔交易';
+            statusEl.style.color = '#3FB950';
+            refreshPaperPortfolio();
+            refreshPaperLedger();
+            refreshPaperPnl();
+        })
+        .catch(function(err) {
+            btn.textContent = '执行信号';
+            btn.disabled = false;
+            statusEl.textContent = '失败: ' + err.message;
+        });
+    }
+
+    function resetPaperAccount() {
+        if (!confirm('确定要重置账户？所有持仓和交易记录将被清除。')) return;
+        fetch('/api/v1/paper/reset', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            document.getElementById('paper-status-text').textContent = '账户已重置';
+            document.getElementById('paper-kpi-grid').innerHTML = '';
+            document.getElementById('paper-holdings-table').innerHTML = '';
+            document.getElementById('paper-ledger-table').innerHTML = '';
+        });
+    }
+
+    function refreshPaperPortfolio() {
+        fetch('/api/v1/paper/portfolio')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            // 更新 KPI
+            var kpiHtml = '';
+            var items = [
+                { label: '现金', value: '¥' + data.cash.toFixed(2) },
+                { label: '总市值', value: '¥' + data.total_value.toFixed(2) },
+            ];
+            // 从 pnl 获取盈亏
+            fetch('/api/v1/paper/pnl').then(function(r){return r.json();}).then(function(pnl){
+                if (pnl.latest) {
+                    items.push({ label: '总盈亏', value: '¥' + pnl.latest.total_pnl.toFixed(2), color: pnl.latest.total_pnl >= 0 ? '#3FB950' : '#F85149' });
+                    items.push({ label: '收益率', value: (pnl.latest.return_pct * 100).toFixed(2) + '%', color: pnl.latest.return_pct >= 0 ? '#3FB950' : '#F85149' });
+                }
+                for (var i = 0; i < items.length; i++) {
+                    kpiHtml += '<div class="backtest-metric-item"><div class="metric-value" style="color:' + (items[i].color || '#E6EDF3') + ';">' + items[i].value + '</div><div class="metric-label">' + items[i].label + '</div></div>';
+                }
+                document.getElementById('paper-kpi-grid').innerHTML = kpiHtml;
+            });
+
+            // 更新持仓表
+            var holdings = data.holdings || [];
+            var html = '<table class="backtest-trades-table"><thead><tr><th>代码</th><th>名称</th><th>持仓</th><th>成本价</th><th>现价</th><th>市值</th><th>浮动盈亏</th></tr></thead><tbody>';
+            for (var i = 0; i < holdings.length; i++) {
+                var h = holdings[i];
+                var pnlColor = h.unrealized_pnl >= 0 ? '#3FB950' : '#F85149';
+                html += '<tr><td style="font-family:monospace;">' + escapeHtml(h.code) + '</td><td>' + escapeHtml(h.name || '') + '</td><td>' + h.shares + '</td><td>¥' + h.avg_cost.toFixed(2) + '</td><td>¥' + h.last_price.toFixed(2) + '</td><td>¥' + h.market_value.toFixed(2) + '</td><td style="color:' + pnlColor + ';">¥' + h.unrealized_pnl.toFixed(2) + '</td></tr>';
+            }
+            html += '</tbody></table>';
+            document.getElementById('paper-holdings-table').innerHTML = html;
+
+            // 更新图表
+            QuantCharts.renderPaperAllocationPie(holdings, data.cash);
+        });
+    }
+
+    function refreshPaperLedger() {
+        fetch('/api/v1/paper/ledger')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var trades = data.trades || [];
+            var html = '<table class="backtest-trades-table"><thead><tr><th>日期</th><th>代码</th><th>名称</th><th>操作</th><th>价格</th><th>股数</th><th>佣金</th><th>总花费</th></tr></thead><tbody>';
+            var actionColors = { buy: '#3FB950', sell: '#F85149' };
+            var actionLabels = { buy: '买入', sell: '卖出' };
+            for (var i = 0; i < trades.length; i++) {
+                var t = trades[i];
+                var ac = actionColors[t.action] || '#E6EDF3';
+                html += '<tr><td>' + escapeHtml(t.date) + '</td><td style="font-family:monospace;">' + escapeHtml(t.stock_code) + '</td><td>' + escapeHtml(t.stock_name || '') + '</td><td style="color:' + ac + ';font-weight:600;">' + escapeHtml(actionLabels[t.action] || t.action) + '</td><td>¥' + t.price.toFixed(2) + '</td><td>' + t.shares + '</td><td>¥' + t.commission.toFixed(2) + '</td><td>¥' + t.total_cost.toFixed(2) + '</td></tr>';
+            }
+            html += '</tbody></table>';
+            document.getElementById('paper-ledger-table').innerHTML = html;
+        });
+    }
+
+    function refreshPaperPnl() {
+        fetch('/api/v1/paper/pnl')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            QuantCharts.renderPaperPnlCurve(data.snapshots || [], data.initial_capital);
+        });
+    }
     </script>
 </body>
 </html>

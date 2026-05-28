@@ -141,6 +141,7 @@ async def execute_signals(
     with _lock:
         portfolio = _get_portfolio()
         executed = portfolio.execute_signals(trade_list, prices)
+        portfolio.record_daily_snapshot(date_cls.today().strftime("%Y%m%d"), prices)
         portfolio.save()
 
     return JSONResponse({
@@ -156,9 +157,10 @@ async def get_portfolio():
     with _lock:
         portfolio = _get_portfolio()
         holdings = portfolio.get_holdings_summary()
-        total_value = portfolio.get_portfolio_value(
-            {h["code"]: h["last_price"] for h in holdings}
-        )
+        prices = {h["code"]: h["last_price"] for h in holdings}
+        total_value = portfolio.get_portfolio_value(prices)
+        portfolio.record_daily_snapshot(datetime.now().strftime("%Y%m%d"), prices)
+        portfolio.save()
         return JSONResponse({
             "cash": round(portfolio.cash, 2),
             "total_value": round(total_value, 2),
