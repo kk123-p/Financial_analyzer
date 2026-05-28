@@ -85,3 +85,25 @@ class TradeList:
     @property
     def sells(self) -> list[SignalResult]:
         return [s for s in self.signals if s.action == "sell"]
+
+
+@dataclass
+class ICRecord:
+    """单月 IC 记录"""
+    date: date
+    factor_name: str
+    ic_value: float
+    n_stocks: int
+    p_value: Optional[float] = None
+
+
+@dataclass
+class ICSummary:
+    """因子 IC 汇总统计"""
+    factor_name: str
+    mean_ic: float
+    std_ic: float
+    ir: float
+    ic_positive_pct: float
+    t_stat: float
+    n_months: int
