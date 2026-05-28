@@ -157,8 +157,37 @@
     color: var(--text-primary, #E6EDF3);
 }
 
+/* ---- Analysis chart helpers ---- */
+
+.chart-divider {
+    color: rgba(48, 54, 61, 0.6);
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.chart-container--tall {
+    min-height: 600px;
+    height: 650px;
+}
+
+.chart-container--gauge {
+    min-height: 400px;
+    height: 450px;
+}
+
 @media (max-width: 900px) {
     .backtest-charts-grid {
         grid-template-columns: 1fr;
+    }
+    .chart-container--tall {
+        min-height: 480px;
+        height: 520px;
+    }
+    .chart-container--gauge {
+        min-height: 320px;
+        height: 360px;
     }
 }
