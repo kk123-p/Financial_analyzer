@@ -993,3 +993,202 @@ async def clone_template_endpoint(name: str, new_name: str = Query(...), body: d
         return JSONResponse({"success": True, "template": cloned.to_dict()})
     except FileNotFoundError:
         return JSONResponse({"error": f"模板 {name} 不存在"}, status_code=404)
+
+
+# ========== 网格搜索 + 批量回测 ==========
+
+_batch_store: dict[str, dict] = {}
+_batch_lock = threading.Lock()
+
+
+@router.post("/grid-search")
+async def run_grid_search(
+    pool: str = Query("沪深300", description="选股池名称"),
+    start_date: str = Query("20230101", description="回测起始日期 YYYYMMDD"),
+    end_date: str = Query("", description="回测结束日期 YYYYMMDD（空=至今）"),
+    top_n: int = Query(30, description="TOP-N 排名数量"),
+    param_grid: dict = Body(..., description="参数网格 {factor_name: [weight_values]}"),
+    factor_weights: Optional[dict] = Body(None, description="基础因子权重 {name: weight}"),
+):
+    """参数网格搜索（后台线程 + 进度轮询）"""
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中"}, status_code=400)
+
+    if not param_grid:
+        return JSONResponse({"error": "param_grid 不能为空"}, status_code=400)
+
+    allowed_names = {c.name for c in DEFAULT_FACTOR_CONFIGS}
+    for name in param_grid:
+        if name not in allowed_names:
+            return JSONResponse({"error": f"因子 '{name}' 不在因子列表中"}, status_code=400)
+
+    task_id = "gs_" + uuid.uuid4().hex[:12]
+
+    import time as _time
+    with _task_lock:
+        _cleanup_old_tasks()
+        _task_store[task_id] = {
+            "status": "starting", "progress": 0, "message": "正在初始化网格搜索...",
+            "started_at": datetime.now().isoformat(), "started_ts": _time.time(), "pool": pool,
+        }
+
+    def _run_grid_search():
+        try:
+            from financial_analyzer.quant.engine.grid_search import GridSearchEngine
+            from financial_analyzer.quant.backtest.engine import BacktestEngine
+            from financial_analyzer.quant.engine.factor_analyzer import FactorAnalyzer
+
+            _update_task(task_id, status="running", progress=5, message="加载数据源...")
+            adapter = get_adapter()
+            _load_token(adapter)
+
+            base_configs = DEFAULT_FACTOR_CONFIGS
+            if factor_weights:
+                base_configs = [
+                    FactorConfig(
+                        name=c.name, label=c.label, category=c.category,
+                        direction=c.direction,
+                        weight=float(factor_weights.get(c.name, c.weight)),
+                        enabled=c.enabled,
+                    )
+                    for c in DEFAULT_FACTOR_CONFIGS
+                ]
+
+            total_combos = 1
+            for vals in param_grid.values():
+                total_combos *= len(vals)
+            _update_task(task_id, progress=10,
+                         message=f"参数组合数: {total_combos}，开始搜索...")
+
+            def engine_factory(factor_configs, pool, start_date, end_date):
+                return BacktestEngine(
+                    universe_manager=UniverseManager(adapter),
+                    data_fetcher=QuantDataFetcher(adapter, start_date=start_date),
+                    factor_matrix_builder=FactorMatrixBuilder(factors=ALL_FACTORS),
+                    normalizer=CrossSectionalNormalizer(method="zscore"),
+                    scorer=WeightedScorer(factor_configs),
+                    ranker=Ranker(top_n=top_n, max_price=10.0),
+                    optimizer=ConstraintOptimizer(),
+                    signal_generator=SignalGenerator(),
+                )
+
+            grid_engine = GridSearchEngine(engine_factory)
+
+            def progress_cb(progress):
+                pct = 10 + int(85 * progress)
+                _update_task(task_id, progress=min(pct, 95),
+                             message=f"搜索中... {int(progress * 100)}%")
+
+            results = grid_engine.search(
+                param_grid=param_grid,
+                base_configs=base_configs,
+                pool=pool,
+                start_date=start_date,
+                end_date=end_date or datetime.now().strftime("%Y%m%d"),
+                initial_capital=100000,
+                top_n=top_n,
+            )
+
+            _update_task(task_id, status="done", progress=100,
+                         message=f"网格搜索完成，共 {len(results)} 组",
+                         result={
+                             "pool": pool,
+                             "param_grid": param_grid,
+                             "total_combinations": total_combos,
+                             "results": results,
+                         })
+
+        except Exception as e:
+            logger.error(f"网格搜索失败: {e}", exc_info=True)
+            _update_task(task_id, status="error", message=str(e))
+
+    threading.Thread(target=_run_grid_search, daemon=True).start()
+    return JSONResponse({"task_id": task_id})
+
+
+@router.post("/batch-backtest")
+async def run_batch_backtest(
+    pool: str = Query("沪深300", description="选股池名称"),
+    start_date: str = Query("20230101", description="回测起始日期 YYYYMMDD"),
+    end_date: str = Query("", description="回测结束日期 YYYYMMDD（空=至今）"),
+    template_names: list[str] = Body(..., description="策略模板名称列表"),
+):
+    """批量回测多个策略模板（并行执行）"""
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中"}, status_code=400)
+
+    if not template_names:
+        return JSONResponse({"error": "template_names 不能为空"}, status_code=400)
+
+    if len(template_names) > 10:
+        return JSONResponse({"error": "最多同时回测 10 个策略"}, status_code=400)
+
+    mgr = TemplateManager()
+    templates = []
+    for name in template_names:
+        try:
+            templates.append(mgr.load_template(name))
+        except FileNotFoundError:
+            return JSONResponse({"error": f"模板 {name} 不存在"}, status_code=404)
+
+    from financial_analyzer.quant.backtest.batch_backtest import BatchBacktestRunner
+
+    adapter = get_adapter()
+    _load_token(adapter)
+
+    def engine_factory(template):
+        factor_configs = template.to_factor_configs()
+        return BacktestEngine(
+            universe_manager=UniverseManager(adapter),
+            data_fetcher=QuantDataFetcher(adapter, start_date=start_date),
+            factor_matrix_builder=FactorMatrixBuilder(factors=ALL_FACTORS),
+            normalizer=CrossSectionalNormalizer(method="zscore"),
+            scorer=WeightedScorer(factor_configs),
+            ranker=Ranker(top_n=template.top_n, max_price=10.0),
+            optimizer=ConstraintOptimizer(),
+            signal_generator=SignalGenerator(),
+        )
+
+    runner = BatchBacktestRunner(engine_factory)
+    batch_id = runner.run_batch(
+        strategies=templates,
+        pool=pool,
+        start_date=start_date,
+        end_date=end_date or datetime.now().strftime("%Y%m%d"),
+        initial_capital=100000,
+    )
+
+    with _batch_lock:
+        _batch_store[batch_id] = runner
+
+    return JSONResponse({"batch_id": batch_id})
+
+
+@router.get("/batch-backtest/status/{batch_id}")
+async def batch_backtest_status(batch_id: str):
+    """查询批量回测进度"""
+    with _batch_lock:
+        runner = _batch_store.get(batch_id)
+    if not runner:
+        return JSONResponse({"error": "批量任务不存在"}, status_code=404)
+    status = runner.get_batch_status(batch_id)
+    if not status:
+        return JSONResponse({"error": "批量任务不存在"}, status_code=404)
+    return JSONResponse({k: v for k, v in status.items() if k != 'results'})
+
+
+@router.get("/batch-backtest/result/{batch_id}")
+async def batch_backtest_result(batch_id: str):
+    """获取批量回测结果"""
+    with _batch_lock:
+        runner = _batch_store.get(batch_id)
+    if not runner:
+        return JSONResponse({"error": "批量任务不存在"}, status_code=404)
+    result = runner.get_batch_result(batch_id)
+    if not result:
+        return JSONResponse({"error": "批量任务不存在"}, status_code=404)
+    if result.get('status') != 'done':
+        return JSONResponse(result)
+    return JSONResponse(result)
