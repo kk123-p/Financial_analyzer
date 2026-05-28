@@ -829,3 +829,131 @@ async def optimize_result(task_id: str):
     if task["status"] == "done":
         return JSONResponse(task.get("result", {}))
     return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})
+
+
+# ========== 因子 IC/IR 分析 ==========
+
+@router.post("/factor-analysis")
+async def run_factor_analysis(
+    pool: str = Query("沪深300", description="选股池名称"),
+    top_n: int = Query(30, description="TOP-N 排名数量"),
+    start_date: str = Query("20230101", description="回测起始日期 YYYYMMDD"),
+    end_date: str = Query("", description="回测结束日期 YYYYMMDD（空=至今）"),
+):
+    """启动因子 IC/IR 分析（后台线程 + 进度轮询）"""
+    allowed_pools = ["沪深300", "中证500", "中证800", "创业板指", "科创50"]
+    if pool not in allowed_pools:
+        return JSONResponse({"error": f"pool 不在允许列表中，可选: {', '.join(allowed_pools)}"}, status_code=400)
+
+    task_id = "fa_" + uuid.uuid4().hex[:12]
+
+    import time as _time
+    with _task_lock:
+        _cleanup_old_tasks()
+        _task_store[task_id] = {
+            "status": "starting",
+            "progress": 0,
+            "message": "正在初始化因子分析...",
+            "started_at": datetime.now().isoformat(),
+            "started_ts": _time.time(),
+            "pool": pool,
+        }
+
+    def _run_factor_analysis():
+        try:
+            from financial_analyzer.quant.engine.factor_analyzer import FactorAnalyzer
+            from financial_analyzer.quant.backtest.engine import BacktestEngine
+
+            _update_task(task_id, status="running", progress=5, message="加载数据源...")
+            adapter = get_adapter()
+            _load_token(adapter)
+
+            _update_task(task_id, progress=10, message=f"获取 {pool} 成分股...")
+            mgr = UniverseManager(adapter)
+            stocks = mgr.get_universe(pool)
+            if not stocks:
+                _update_task(task_id, status="error", message=f"选股池 [{pool}] 无可用股票")
+                return
+
+            MAX_STOCKS = 500
+            if len(stocks) > MAX_STOCKS:
+                stocks = stocks[:MAX_STOCKS]
+
+            def progress_cb(stage, current, total, msg):
+                base = 15
+                pct = base + int(55 * current / total) if total > 0 else base
+                _update_task(task_id, progress=pct, message=msg)
+
+            _update_task(task_id, progress=15, message="获取历史数据...")
+            fetcher = QuantDataFetcher(adapter, start_date=start_date,
+                                       progress_callback=progress_cb)
+            stocks = fetcher.enrich_stock_info(stocks)
+            stocks = mgr.apply_filters(stocks)
+            stock_data = fetcher.fetch_all(stocks)
+
+            stocks_with_data = [s for s in stocks if s.code in stock_data]
+            if len(stocks_with_data) < 30:
+                _update_task(task_id, status="error",
+                             message=f"有效数据不足: {len(stocks_with_data)} 只（需要至少 30 只）")
+                return
+
+            _update_task(task_id, progress=70, message="运行因子 IC/IR 分析...")
+
+            factor_analyzer = FactorAnalyzer(min_sample_size=30)
+            engine = BacktestEngine(
+                factors=ALL_FACTORS,
+                factor_configs=DEFAULT_FACTOR_CONFIGS,
+                factor_analyzer=factor_analyzer,
+            )
+
+            result = engine.run(
+                stocks=stocks_with_data,
+                stock_data=stock_data,
+                initial_capital=100000,
+                top_n=top_n,
+            )
+
+            _update_task(task_id, progress=90, message="整理分析结果...")
+
+            ic_summary = result.factor_ic
+            timeseries = ic_summary.pop("_timeseries", {})
+
+            output = {
+                "pool": pool,
+                "period": {"start": start_date, "end": end_date or "至今"},
+                "valid_stocks": len(stocks_with_data),
+                "ic_summary": ic_summary,
+                "monthly_ic": timeseries,
+            }
+
+            _update_task(task_id, status="done", progress=100,
+                         message="因子分析完成", result=output)
+
+        except Exception as e:
+            logger.error(f"因子分析失败: {e}", exc_info=True)
+            _update_task(task_id, status="error", message=str(e))
+
+    threading.Thread(target=_run_factor_analysis, daemon=True).start()
+    return JSONResponse({"task_id": task_id})
+
+
+@router.get("/factor-analysis/status/{task_id}")
+async def factor_analysis_status(task_id: str):
+    """查询因子分析任务进度"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    return JSONResponse({k: v for k, v in task.items() if k != "result"})
+
+
+@router.get("/factor-analysis/result/{task_id}")
+async def factor_analysis_result(task_id: str):
+    """获取因子分析结果"""
+    with _task_lock:
+        task = _task_store.get(task_id)
+    if not task:
+        return JSONResponse({"error": "任务不存在"}, status_code=404)
+    if task["status"] == "done":
+        return JSONResponse(task.get("result", {}))
+    return JSONResponse({"status": task["status"], "progress": task["progress"], "message": task["message"]})
