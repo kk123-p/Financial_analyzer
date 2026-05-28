@@ -30,3 +30,8 @@ class BacktestResult:
     correlation_matrix: dict = field(default_factory=dict)  # {labels, matrix}
     annual_performance: dict = field(default_factory=dict)  # {factor: [{year, q1..q5, long_short}]}
     composite_score: list = field(default_factory=list)  # [{factor, ic_mean, ir, max_corr, score}]
+    benchmark_returns: list = field(default_factory=list)
+    excess_returns: list = field(default_factory=list)
+    information_ratio: float = 0.0
+    tracking_error: float = 0.0
+    benchmark_code: str = ""

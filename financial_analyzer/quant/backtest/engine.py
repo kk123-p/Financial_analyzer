@@ -18,6 +18,7 @@ from ..engine.signal import SignalGenerator
 from ..engine.factor_analyzer import FactorAnalyzer
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .attribution import FactorAttribution
+from .benchmark import BenchmarkComparator
 from .models import BacktestResult, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ class BacktestEngine:
                  optimizer: ConstraintOptimizer,
                  signal_generator: SignalGenerator,
                  commission_rate: float = DEFAULT_COMMISSION_RATE,
-                 factor_analyzer: Optional[FactorAnalyzer] = None):
+                 factor_analyzer: Optional[FactorAnalyzer] = None,
+                 benchmark_code: Optional[str] = None):
         self.universe_manager = universe_manager
         self.data_fetcher = data_fetcher
         self.factor_matrix_builder = factor_matrix_builder
@@ -50,6 +52,7 @@ class BacktestEngine:
         self.signal_generator = signal_generator
         self.commission_rate = commission_rate
         self.factor_analyzer = factor_analyzer
+        self.benchmark_code = benchmark_code
 
     def run(self,
             start_date: str,
@@ -282,6 +285,34 @@ class BacktestEngine:
 
         final_value = portfolio_values[-1] if portfolio_values else initial_capital
 
+        # 4.5 基准指数对比
+        benchmark_returns_list = []
+        excess_returns_list = []
+        information_ratio = 0.0
+        tracking_error = 0.0
+        benchmark_code_str = ""
+        if self.benchmark_code and metrics.monthly_returns:
+            try:
+                benchmark_monthly = self._compute_benchmark_monthly_returns(
+                    self.benchmark_code, start_date, end_date, month_ends
+                )
+                if benchmark_monthly:
+                    benchmark_code_str = self.benchmark_code
+                    benchmark_returns_list = [round(r, 6) for r in benchmark_monthly]
+                    port_series = pd.Series(metrics.monthly_returns)
+                    bench_series = pd.Series(benchmark_monthly)
+                    comparator = BenchmarkComparator(self.benchmark_code)
+                    comparison = comparator.compute_full_comparison(port_series, bench_series)
+                    excess_returns_list = comparison["excess_returns"]
+                    information_ratio = comparison["information_ratio"]
+                    tracking_error = comparison["tracking_error"]
+                    logger.info(
+                        f"基准对比({self.benchmark_code}): "
+                        f"信息比率={information_ratio}, 跟踪误差={tracking_error}"
+                    )
+            except Exception as e:
+                logger.warning(f"基准对比失败（降级为无基准模式）: {e}")
+
         logger.info(
             f"回测完成: 总收益率={metrics.total_return:.2%}, "
             f"年化={metrics.annualized_return:.2%}, "
@@ -303,6 +334,11 @@ class BacktestEngine:
             correlation_matrix=correlation_matrix,
             annual_performance=annual_performance,
             composite_score=composite_score_list,
+            benchmark_returns=benchmark_returns_list,
+            excess_returns=excess_returns_list,
+            information_ratio=information_ratio,
+            tracking_error=tracking_error,
+            benchmark_code=benchmark_code_str,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
@@ -577,3 +613,58 @@ class BacktestEngine:
         """解析 YYYYMMDD 格式日期"""
         s = date_str.replace("-", "").strip()[:8]
         return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+
+    def _compute_benchmark_monthly_returns(
+        self,
+        benchmark_code: str,
+        start_date: str,
+        end_date: str,
+        month_ends: list[date],
+    ) -> list[float]:
+        """获取基准指数的月度收益率序列
+
+        从 adapter 获取基准指数日线数据，提取月末收盘价，计算月度收益率。
+        如果数据不可用，返回空列表（降级为无基准模式）。
+        """
+        try:
+            df = self.data_fetcher.adapter.get_stock_data(
+                benchmark_code, start_date, end_date, data_type="daily"
+            )
+            if df is None or df.empty or "close" not in df.columns:
+                logger.warning(f"基准指数 {benchmark_code} 无可用数据")
+                return []
+
+            # 确保有 trade_date 列
+            if "trade_date" not in df.columns:
+                logger.warning(f"基准指数 {benchmark_code} 数据缺少 trade_date 列")
+                return []
+
+            df = df.copy()
+            df["_date_str"] = df["trade_date"].astype(str).str.replace("-", "").str[:8]
+            df = df.sort_values("_date_str", ascending=True).reset_index(drop=True)
+
+            # 提取每月末的收盘价
+            month_end_prices = []
+            for me in month_ends:
+                me_str = me.strftime("%Y%m%d")
+                mask = df["_date_str"] <= me_str
+                if mask.any():
+                    month_end_prices.append(float(df.loc[mask].iloc[-1]["close"]))
+
+            if len(month_end_prices) < 2:
+                return []
+
+            # 计算月度收益率
+            monthly_returns = []
+            for i in range(1, len(month_end_prices)):
+                prev = month_end_prices[i - 1]
+                if prev > 0:
+                    monthly_returns.append(month_end_prices[i] / prev - 1)
+                else:
+                    monthly_returns.append(0.0)
+
+            return monthly_returns
+
+        except Exception as e:
+            logger.warning(f"获取基准指数 {benchmark_code} 数据失败: {e}")
+            return []

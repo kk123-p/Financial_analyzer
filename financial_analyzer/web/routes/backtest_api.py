@@ -89,6 +89,11 @@ def _serialize_result(result):
         "snapshots": snapshots_list,
         "trades": trades_list,
         "attribution": result.attribution,
+        "benchmark_code": result.benchmark_code,
+        "benchmark_returns": result.benchmark_returns,
+        "excess_returns": result.excess_returns,
+        "information_ratio": result.information_ratio,
+        "tracking_error": result.tracking_error,
     }
 
 
@@ -98,6 +103,7 @@ async def run_backtest(
     start_date: str = Query("20230101", description="回测起始日期 YYYYMMDD"),
     end_date: str = Query("20251231", description="回测结束日期 YYYYMMDD"),
     initial_capital: float = Query(5000.0, description="初始资金"),
+    benchmark_code: str = Query("", description="基准指数代码（如 000300.SH）"),
 ):
     """启动回测任务（后台线程）"""
     # Validate date format
@@ -161,6 +167,7 @@ async def run_backtest(
                 ranker=ranker,
                 optimizer=optimizer,
                 signal_generator=signal_gen,
+                benchmark_code=benchmark_code or None,
             )
 
             _update_task(task_id, progress=20, message=f"开始回测 {start_date} ~ {end_date}...")
