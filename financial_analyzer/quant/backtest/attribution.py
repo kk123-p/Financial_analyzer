@@ -3,6 +3,8 @@ import math
 import logging
 from typing import Optional
 
+import numpy as np
+
 from ..models import FactorMatrix
 
 logger = logging.getLogger(__name__)
@@ -143,3 +145,140 @@ class FactorAttribution:
             return 0.0
 
         return cov / denom
+
+    def multi_factor_attribution(
+        self,
+        factor_matrix_history: list[FactorMatrix],
+        monthly_returns: list[dict[str, float]],
+    ) -> dict[str, dict[str, float]]:
+        """多因子截面 OLS 回归归因
+
+        每月底对所有股票做截面回归:
+            R_i = beta_1*F_1 + beta_2*F_2 + ... + epsilon
+
+        Args:
+            factor_matrix_history: 每期的因子矩阵列表
+            monthly_returns: 每期的个股收益率列表 [{stock_code: return}, ...]
+
+        Returns:
+            {factor_name: {"mean_beta": float, "t_stat": float}}
+        """
+        if not factor_matrix_history or not monthly_returns:
+            return {}
+
+        factor_names: list[str] = []
+        seen: set[str] = set()
+        for matrix in factor_matrix_history:
+            for scores in matrix.scores.values():
+                for fname in scores:
+                    if fname not in seen:
+                        seen.add(fname)
+                        factor_names.append(fname)
+
+        if not factor_names:
+            return {}
+
+        n_factors = len(factor_names)
+        all_betas: list[list[float]] = [[] for _ in range(n_factors)]
+        valid_periods = 0
+
+        for t, matrix in enumerate(factor_matrix_history):
+            if t >= len(monthly_returns):
+                break
+
+            stock_returns = monthly_returns[t]
+            if not stock_returns:
+                continue
+
+            X_rows = []
+            y_vals = []
+            for code, ret in stock_returns.items():
+                scores = matrix.scores.get(code)
+                if scores is None:
+                    continue
+                row = []
+                skip = False
+                for fname in factor_names:
+                    val = scores.get(fname)
+                    if val is None or val != val:
+                        skip = True
+                        break
+                    row.append(val)
+                if skip:
+                    continue
+                X_rows.append(row)
+                y_vals.append(ret)
+
+            if len(X_rows) < n_factors + 2:
+                continue
+
+            X = np.array(X_rows, dtype=np.float64)
+            y = np.array(y_vals, dtype=np.float64)
+
+            try:
+                betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+            except np.linalg.LinAlgError:
+                continue
+
+            for j in range(n_factors):
+                all_betas[j].append(betas[j])
+            valid_periods += 1
+
+        if valid_periods < 3:
+            return {}
+
+        result: dict[str, dict[str, float]] = {}
+        for j, fname in enumerate(factor_names):
+            betas_j = all_betas[j]
+            n = len(betas_j)
+            mean_beta = sum(betas_j) / n
+            if n >= 2:
+                var_b = sum((b - mean_beta) ** 2 for b in betas_j) / (n - 1)
+                t_stat = mean_beta / (math.sqrt(var_b / n)) if var_b > 0 else 0.0
+            else:
+                t_stat = 0.0
+            result[fname] = {
+                "mean_beta": round(mean_beta, 6),
+                "t_stat": round(t_stat, 4),
+            }
+
+        return result
+
+    @staticmethod
+    def industry_attribution(
+        holdings_by_industry: dict[str, list[str]],
+        monthly_returns: list[dict[str, float]],
+    ) -> dict[str, float]:
+        """行业归因 — 按行业分组计算各行业对组合收益的贡献
+
+        Args:
+            holdings_by_industry: {industry: [stock_codes]}
+            monthly_returns: 每期的个股收益率列表 [{stock_code: return}, ...]
+
+        Returns:
+            {industry: contribution_pct}  占总收益的百分比
+        """
+        if not holdings_by_industry or not monthly_returns:
+            return {}
+
+        industry_contrib: dict[str, float] = {ind: 0.0 for ind in holdings_by_industry}
+        total_return_sum = 0.0
+
+        for stock_returns in monthly_returns:
+            if not stock_returns:
+                continue
+
+            period_total = sum(stock_returns.values())
+            total_return_sum += period_total
+
+            for industry, codes in holdings_by_industry.items():
+                ind_ret = sum(stock_returns.get(c, 0.0) for c in codes)
+                industry_contrib[industry] += ind_ret
+
+        if total_return_sum == 0:
+            return {ind: 0.0 for ind in industry_contrib}
+
+        return {
+            ind: round(contrib / total_return_sum * 100, 2)
+            for ind, contrib in industry_contrib.items()
+        }
