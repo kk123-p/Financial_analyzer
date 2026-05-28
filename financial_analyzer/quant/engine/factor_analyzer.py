@@ -18,7 +18,7 @@ class FactorAnalyzer:
         self.min_sample_size = min_sample_size
         self._ic_history: dict[str, list[ICRecord]] = {}
         self._decay_history: dict[str, list[ICDecayRecord]] = {}
-        self._monthly_matrices: list[tuple[date, dict[str, dict[str, float]]]] = []
+        self._monthly_matrices: list[tuple[date, dict[str, dict[str, float]], dict[str, float]]] = []
 
     def compute_monthly_ic(
         self,
@@ -228,14 +228,16 @@ class FactorAnalyzer:
         self,
         factor_values: dict[str, dict[str, float]],
         ref_date: date,
+        market_returns: Optional[dict[str, float]] = None,
     ) -> None:
         """存储每月的因子截面数据。
 
         Args:
             factor_values: {stock_code: {factor_name: value}}
             ref_date: 当月调仓日期
+            market_returns: {stock_code: 当月收益率}，用于年度分组分析
         """
-        self._monthly_matrices.append((ref_date, factor_values))
+        self._monthly_matrices.append((ref_date, factor_values, market_returns or {}))
 
     def compute_correlation_matrix(
         self,
@@ -253,7 +255,7 @@ class FactorAnalyzer:
 
         # 收集所有出现过的因子名称
         all_factors: set[str] = set()
-        for _, factor_vals in self._monthly_matrices:
+        for _, factor_vals, _ in self._monthly_matrices:
             for stock_scores in factor_vals.values():
                 all_factors.update(stock_scores.keys())
         if not all_factors:
@@ -264,7 +266,7 @@ class FactorAnalyzer:
         sum_matrix = np.zeros((n, n), dtype=float)
         count_matrix = np.zeros((n, n), dtype=float)
 
-        for _, factor_vals in self._monthly_matrices:
+        for _, factor_vals, _ in self._monthly_matrices:
             # 转置为 {factor_name: [values]}，只取所有因子都有值的股票
             stocks = list(factor_vals.keys())
             valid_stocks = [
@@ -312,6 +314,137 @@ class FactorAnalyzer:
             [round(avg_matrix[i, j], 6) for j in range(n)] for i in range(n)
         ]
         return marked_labels, matrix_list
+
+    def compute_annual_performance(
+        self,
+        monthly_returns: list[tuple[date, dict[str, float]]],
+    ) -> dict[str, list[dict]]:
+        """按年度分组计算因子分组收益表现。
+
+        对每个年度，将股票按因子值排序分成 5 组（quintile），
+        计算每组的平均收益率和多空收益（TOP - BOTTOM）。
+
+        Args:
+            monthly_returns: [(ref_date, {stock_code: forward_return}), ...]
+
+        Returns:
+            {factor_name: [{year, q1_return, ..., q5_return, long_short_return}, ...]}
+        """
+        if not self._monthly_matrices or not monthly_returns:
+            return {}
+
+        returns_by_year: dict[int, list[tuple[date, dict[str, float]]]] = {}
+        for ref_date, rets in monthly_returns:
+            returns_by_year.setdefault(ref_date.year, []).append((ref_date, rets))
+
+        matrices_by_year: dict[int, list[tuple[date, dict[str, dict[str, float]]]]] = {}
+        for ref_date, factor_vals, _ in self._monthly_matrices:
+            matrices_by_year.setdefault(ref_date.year, []).append((ref_date, factor_vals))
+
+        all_factors: set[str] = set()
+        for _, factor_vals, _ in self._monthly_matrices:
+            for stock_scores in factor_vals.values():
+                all_factors.update(stock_scores.keys())
+
+        result: dict[str, list[dict]] = {}
+
+        for factor_name in sorted(all_factors):
+            yearly_data = []
+            common_years = sorted(set(matrices_by_year.keys()) & set(returns_by_year.keys()))
+
+            for year in common_years:
+                returns_dict = {rd: rets for rd, rets in returns_by_year[year]}
+                month_data = []
+                for ref_date, factor_vals in matrices_by_year[year]:
+                    if ref_date in returns_dict:
+                        month_data.append((factor_vals, returns_dict[ref_date]))
+
+                if not month_data:
+                    continue
+
+                stock_factor_vals: dict[str, list[float]] = {}
+                stock_returns: dict[str, list[float]] = {}
+
+                for factor_vals, rets in month_data:
+                    for stock, scores in factor_vals.items():
+                        if factor_name in scores and not np.isnan(scores[factor_name]):
+                            stock_factor_vals.setdefault(stock, []).append(scores[factor_name])
+                    for stock, ret in rets.items():
+                        stock_returns.setdefault(stock, []).append(ret)
+
+                common_stocks = [s for s in stock_factor_vals if s in stock_returns]
+                if len(common_stocks) < 10:
+                    continue
+
+                avg_factor = {s: float(np.mean(stock_factor_vals[s])) for s in common_stocks}
+                avg_return = {s: float(np.mean(stock_returns[s])) for s in common_stocks}
+
+                sorted_stocks = sorted(common_stocks, key=lambda s: avg_factor[s])
+                n = len(sorted_stocks)
+                quintile_size = n // 5
+
+                quintile_returns: dict[int, float] = {}
+                for q in range(5):
+                    start = q * quintile_size
+                    end = start + quintile_size if q < 4 else n
+                    group = sorted_stocks[start:end]
+                    quintile_returns[q + 1] = float(np.mean([avg_return[s] for s in group])) if group else 0.0
+
+                long_short = quintile_returns.get(5, 0.0) - quintile_returns.get(1, 0.0)
+
+                yearly_data.append({
+                    "year": year,
+                    "q1_return": round(quintile_returns.get(1, 0.0), 6),
+                    "q2_return": round(quintile_returns.get(2, 0.0), 6),
+                    "q3_return": round(quintile_returns.get(3, 0.0), 6),
+                    "q4_return": round(quintile_returns.get(4, 0.0), 6),
+                    "q5_return": round(quintile_returns.get(5, 0.0), 6),
+                    "long_short_return": round(long_short, 6),
+                })
+
+            if yearly_data:
+                result[factor_name] = yearly_data
+
+        return result
+
+    def compute_composite_score(self) -> list[dict]:
+        """综合评分：score = IC_mean * IR * (1 - max_corr)。
+
+        从已有 IC 历史和月度因子矩阵中提取数据，
+        对每个因子计算综合评分并按降序排列。
+
+        Returns:
+            [{factor, ic_mean, ir, max_corr, score}]
+        """
+        ic_summaries = self.compute_ic_summary()
+        if not ic_summaries:
+            return []
+
+        labels, matrix = self.compute_correlation_matrix()
+        max_corr: dict[str, float] = {}
+        if labels and matrix:
+            label_clean = [lbl.replace(" [高相关]", "") for lbl in labels]
+            for i, lbl in enumerate(label_clean):
+                max_c = 0.0
+                for j in range(len(labels)):
+                    if i != j:
+                        max_c = max(max_c, abs(matrix[i][j]))
+                max_corr[lbl] = max_c
+
+        scores = []
+        for factor_name, summary in ic_summaries.items():
+            mc = max_corr.get(factor_name, 0.0)
+            score_val = summary.mean_ic * summary.ir * (1.0 - mc)
+            scores.append({
+                "factor": factor_name,
+                "ic_mean": round(summary.mean_ic, 6),
+                "ir": round(summary.ir, 4),
+                "max_corr": round(mc, 4),
+                "score": round(score_val, 6),
+            })
+
+        scores.sort(key=lambda x: x["score"], reverse=True)
+        return scores
 
     def reset(self):
         """清空历史数据。"""
