@@ -263,3 +263,82 @@ class TestGetICTimeseries:
         assert entry["date"] == "2025-01-31"
         assert entry["ic"] > 0.95
         assert entry["n_stocks"] == n
+
+
+class TestComputeCorrelationMatrix:
+    def test_basic(self):
+        """构造已知相关性的因子数据，验证矩阵正确"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        # 因子A和B完全正相关（都等于索引），因子C与A负相关
+        for month in range(1, 4):
+            factor_values = {}
+            for i, s in enumerate(stocks):
+                factor_values[s] = {
+                    "factor_a": float(i),
+                    "factor_b": float(i) * 2.0,  # 与A完全正相关
+                    "factor_c": float(n - i),  # 与A完全负相关
+                }
+            analyzer.store_monthly_matrix(
+                factor_values, ref_date=date(2025, month, 28)
+            )
+
+        labels, matrix = analyzer.compute_correlation_matrix()
+        assert len(labels) == 3
+        assert len(matrix) == 3
+        assert len(matrix[0]) == 3
+
+        # 找到各因子的索引
+        idx = {lbl.replace(" [高相关]", ""): i for i, lbl in enumerate(labels)}
+
+        # factor_a 与 factor_b: 完全正相关 -> 接近 1.0
+        assert matrix[idx["factor_a"]][idx["factor_b"]] > 0.95
+        # factor_a 与 factor_c: 完全负相关 -> 接近 -1.0
+        assert matrix[idx["factor_a"]][idx["factor_c"]] < -0.95
+        # 对角线应为 1.0
+        for i in range(3):
+            assert abs(matrix[i][i] - 1.0) < 1e-4
+
+    def test_high_correlation_label(self):
+        """高相关因子在 labels 中标记"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 50
+        stocks = [f"S{i:04d}" for i in range(n)]
+
+        for month in range(1, 4):
+            factor_values = {}
+            for i, s in enumerate(stocks):
+                factor_values[s] = {
+                    "x": float(i),
+                    "y": float(i) * 1.5,  # 高相关
+                    "z": float(n - i) * 0.01 + float(i) * 0.99,  # 弱相关
+                }
+            analyzer.store_monthly_matrix(
+                factor_values, ref_date=date(2025, month, 28)
+            )
+
+        labels, _ = analyzer.compute_correlation_matrix()
+        label_map = {lbl.replace(" [高相关]", ""): lbl for lbl in labels}
+        # x 和 y 完全正相关，应标记
+        assert "[高相关]" in label_map["x"]
+        assert "[高相关]" in label_map["y"]
+
+    def test_empty(self):
+        """无数据时返回空"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        labels, matrix = analyzer.compute_correlation_matrix()
+        assert labels == []
+        assert matrix == []
+
+    def test_reset_clears_matrices(self):
+        """reset 清除 _monthly_matrices"""
+        analyzer = FactorAnalyzer(min_sample_size=5)
+        n = 20
+        stocks = [f"S{i:04d}" for i in range(n)]
+        factor_values = {s: {"a": 1.0, "b": 2.0} for s in stocks}
+        analyzer.store_monthly_matrix(factor_values, ref_date=date(2025, 1, 31))
+        assert len(analyzer._monthly_matrices) == 1
+        analyzer.reset()
+        assert len(analyzer._monthly_matrices) == 0
