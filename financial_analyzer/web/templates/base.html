@@ -593,6 +593,7 @@
     var _quantTimer = null;
     var _quantTaskId = null;
     var _lastQuantTaskId = null;
+    var _quantRetryCount = 0;
 
     function runQuantSignal() {
         var pool = document.getElementById('quant-pool').value;
@@ -632,6 +633,7 @@
         fetch('/api/v1/quant/status/' + _quantTaskId)
         .then(function(r) { return r.json(); })
         .then(function(task) {
+            _quantRetryCount = 0;
             var btn = document.getElementById('btn-quant-run');
             var statusEl = document.getElementById('quant-status-text');
             var stopBtn = document.getElementById('btn-quant-stop');
@@ -667,6 +669,18 @@
             }
         })
         .catch(function() {
+            _quantRetryCount++;
+            if (_quantRetryCount >= 5) {
+                var statusEl = document.getElementById('quant-status-text');
+                statusEl.textContent = '网络错误，轮询已停止';
+                statusEl.style.color = '#f44336';
+                document.getElementById('btn-quant-run').disabled = false;
+                document.getElementById('btn-quant-run').textContent = '生成信号';
+                document.getElementById('btn-quant-stop').style.display = 'none';
+                _quantTaskId = null;
+                _quantTimer = null;
+                return;
+            }
             _quantTimer = setTimeout(pollTaskProgress, 3000);
         });
     }
@@ -761,6 +775,7 @@
     // ========== 回测异步轮询 ==========
     var _btTimer = null;
     var _btTaskId = null;
+    var _btRetryCount = 0;
 
     function runBacktest() {
         var pool = document.getElementById('quant-pool').value;
@@ -772,6 +787,24 @@
         var statusEl = document.getElementById('bt-status-text');
         var progressEl = document.getElementById('bt-progress');
         var resultEl = document.getElementById('bt-result');
+
+        var datePattern = /^\d{8}$/;
+        if (!datePattern.test(startDate) || !datePattern.test(endDate)) {
+            statusEl.textContent = '日期格式错误，应为 YYYYMMDD';
+            statusEl.style.color = '#f44336';
+            return;
+        }
+        var capitalNum = parseFloat(capital);
+        if (isNaN(capitalNum) || capitalNum <= 0) {
+            statusEl.textContent = '初始资金必须大于 0';
+            statusEl.style.color = '#f44336';
+            return;
+        }
+        if (startDate >= endDate) {
+            statusEl.textContent = '起始日期必须早于结束日期';
+            statusEl.style.color = '#f44336';
+            return;
+        }
 
         btn.disabled = true;
         btn.textContent = '提交中...';
@@ -817,6 +850,7 @@
         fetch('/api/v1/backtest/status/' + _btTaskId)
         .then(function(r) { return r.json(); })
         .then(function(task) {
+            _btRetryCount = 0;
             var pct = task.progress || 0;
             var msg = task.message || '';
             document.getElementById('bt-progress-pct').textContent = pct + '%';
@@ -843,6 +877,19 @@
             }
         })
         .catch(function() {
+            _btRetryCount++;
+            if (_btRetryCount >= 5) {
+                var statusEl = document.getElementById('bt-status-text');
+                statusEl.textContent = '网络错误，轮询已停止';
+                statusEl.style.color = '#f44336';
+                document.getElementById('btn-bt-run').disabled = false;
+                document.getElementById('btn-bt-run').textContent = '运行回测';
+                document.getElementById('btn-bt-stop').style.display = 'none';
+                document.getElementById('bt-progress').style.display = 'none';
+                _btTaskId = null;
+                _btTimer = null;
+                return;
+            }
             _btTimer = setTimeout(pollBacktestProgress, 3000);
         });
     }
@@ -956,6 +1003,7 @@
     // ========== 敏感性分析 ==========
     var _sensTimer = null;
     var _sensTaskId = null;
+    var _sensRetryCount = 0;
 
     function populateFactorSelectors() {
         fetch('/api/v1/quant/factors')
@@ -998,6 +1046,16 @@
 
         if (!factorX || !factorY) { alert('请选择因子 X 和因子 Y'); return; }
         if (factorX === factorY) { alert('因子 X 和因子 Y 不能相同'); return; }
+        var wMin = parseFloat(weightMin);
+        var wMax = parseFloat(weightMax);
+        if (isNaN(wMin) || isNaN(wMax) || wMin < 0 || wMax < 0) {
+            alert('权重范围必须为非负数');
+            return;
+        }
+        if (wMin >= wMax) {
+            alert('权重最小值必须小于最大值');
+            return;
+        }
 
         var pool = document.getElementById('quant-pool').value;
         var btn = document.getElementById('btn-sens-run');
@@ -1053,6 +1111,7 @@
         fetch('/api/v1/quant/sensitivity/status/' + _sensTaskId)
         .then(function(r) { return r.json(); })
         .then(function(task) {
+            _sensRetryCount = 0;
             var pct = task.progress || 0;
             var msg = task.message || '';
             document.getElementById('sens-progress-pct').textContent = pct + '%';
@@ -1079,6 +1138,19 @@
             }
         })
         .catch(function() {
+            _sensRetryCount++;
+            if (_sensRetryCount >= 5) {
+                var statusEl = document.getElementById('sens-status-text');
+                statusEl.textContent = '网络错误，轮询已停止';
+                statusEl.style.color = '#f44336';
+                document.getElementById('btn-sens-run').disabled = false;
+                document.getElementById('btn-sens-run').textContent = '运行分析';
+                document.getElementById('btn-sens-stop').style.display = 'none';
+                document.getElementById('sens-progress').style.display = 'none';
+                _sensTaskId = null;
+                _sensTimer = null;
+                return;
+            }
             _sensTimer = setTimeout(pollSensProgress, 3000);
         });
     }
@@ -1146,6 +1218,12 @@
     function initPaperAccount() {
         var capital = document.getElementById('paper-capital').value;
         var statusEl = document.getElementById('paper-status-text');
+        var capitalNum = parseFloat(capital);
+        if (isNaN(capitalNum) || capitalNum <= 0) {
+            statusEl.textContent = '初始资金必须大于 0';
+            statusEl.style.color = '#f44336';
+            return;
+        }
         statusEl.textContent = '初始化中...';
 
         fetch('/api/v1/paper/init?capital=' + capital, { method: 'POST' })
@@ -1208,6 +1286,8 @@
             document.getElementById('paper-kpi-grid').innerHTML = '';
             document.getElementById('paper-holdings-table').innerHTML = '';
             document.getElementById('paper-ledger-table').innerHTML = '';
+            EchartsUtils.dispose('paper-chart-pnl');
+            EchartsUtils.dispose('paper-chart-allocation');
         });
     }
 
@@ -1227,6 +1307,11 @@
                     items.push({ label: '总盈亏', value: '¥' + pnl.latest.total_pnl.toFixed(2), color: pnl.latest.total_pnl >= 0 ? '#3FB950' : '#F85149' });
                     items.push({ label: '收益率', value: (pnl.latest.return_pct * 100).toFixed(2) + '%', color: pnl.latest.return_pct >= 0 ? '#3FB950' : '#F85149' });
                 }
+                for (var i = 0; i < items.length; i++) {
+                    kpiHtml += '<div class="backtest-metric-item"><div class="metric-value" style="color:' + (items[i].color || '#E6EDF3') + ';">' + items[i].value + '</div><div class="metric-label">' + items[i].label + '</div></div>';
+                }
+                document.getElementById('paper-kpi-grid').innerHTML = kpiHtml;
+            }).catch(function(){
                 for (var i = 0; i < items.length; i++) {
                     kpiHtml += '<div class="backtest-metric-item"><div class="metric-value" style="color:' + (items[i].color || '#E6EDF3') + ';">' + items[i].value + '</div><div class="metric-label">' + items[i].label + '</div></div>';
                 }
