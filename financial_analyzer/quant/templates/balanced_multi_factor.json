@@ -1,0 +1,20 @@
+{
+  "name": "多因子均衡",
+  "description": "7 类因子各选 1 个代表，等权配置",
+  "factors": [
+    {"name": "pe", "weight": 1.0, "direction": -1},
+    {"name": "roe", "weight": 1.0, "direction": 1},
+    {"name": "revenue_growth", "weight": 1.0, "direction": 1},
+    {"name": "momentum_12m", "weight": 1.0, "direction": 1},
+    {"name": "north_bound_flow", "weight": 1.0, "direction": 1},
+    {"name": "volatility_60d", "weight": 1.0, "direction": -1},
+    {"name": "debt_ratio", "weight": 1.0, "direction": -1}
+  ],
+  "position_sizer": "equal",
+  "risk": {
+    "max_drawdown_pct": 15,
+    "stop_loss_pct": -10,
+    "take_profit_pct": 30
+  },
+  "top_n": 30
+}

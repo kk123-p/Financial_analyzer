@@ -1,0 +1,17 @@
+{
+  "name": "价值投资",
+  "description": "低估值 + 高分红 + 低波动，适合长期持有",
+  "factors": [
+    {"name": "pe", "weight": 0.3, "direction": -1},
+    {"name": "pb", "weight": 0.2, "direction": -1},
+    {"name": "fcf_yield", "weight": 0.3, "direction": 1},
+    {"name": "dividend_yield", "weight": 0.2, "direction": 1}
+  ],
+  "position_sizer": "risk_parity",
+  "risk": {
+    "max_drawdown_pct": 15,
+    "stop_loss_pct": -10,
+    "take_profit_pct": 30
+  },
+  "top_n": 20
+}

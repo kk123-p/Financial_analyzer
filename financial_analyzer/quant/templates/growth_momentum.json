@@ -1,0 +1,17 @@
+{
+  "name": "成长动量",
+  "description": "营收增长 + 利润增长 + 12月动量，趋势跟踪",
+  "factors": [
+    {"name": "revenue_growth", "weight": 0.3, "direction": 1},
+    {"name": "net_profit_growth", "weight": 0.3, "direction": 1},
+    {"name": "momentum_12m", "weight": 0.2, "direction": 1},
+    {"name": "momentum_6m", "weight": 0.2, "direction": 1}
+  ],
+  "position_sizer": "equal",
+  "risk": {
+    "max_drawdown_pct": 20,
+    "stop_loss_pct": -15,
+    "take_profit_pct": 40
+  },
+  "top_n": 25
+}
