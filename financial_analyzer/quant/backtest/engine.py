@@ -52,7 +52,8 @@ class BacktestEngine:
             start_date: str,
             end_date: str,
             pool: str = "沪深300",
-            initial_capital: float = 5000.0) -> BacktestResult:
+            initial_capital: float = 5000.0,
+            progress_callback=None) -> BacktestResult:
         """运行回测
 
         Args:
@@ -60,6 +61,7 @@ class BacktestEngine:
             end_date: 回测结束日期 YYYYMMDD
             pool: 选股池名称
             initial_capital: 初始资金
+            progress_callback: 可选的进度回调，接收 0.0-1.0 浮点数
         """
         logger.info(f"回测启动: {start_date} ~ {end_date}, 选股池={pool}, 初始资金={initial_capital}")
 
@@ -86,6 +88,8 @@ class BacktestEngine:
 
         # 3. 逐月回测
         for i, rebal_date in enumerate(month_ends):
+            if progress_callback:
+                progress_callback(i / len(month_ends))
             ref_date_str = rebal_date.strftime("%Y%m%d")
             logger.info(f"[{i+1}/{len(month_ends)}] 调仓日: {ref_date_str}")
 
