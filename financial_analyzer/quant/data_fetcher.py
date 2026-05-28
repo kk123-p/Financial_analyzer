@@ -203,6 +203,16 @@ class QuantDataFetcher:
     def _rate_limited_fetch(self, code: str, data_type: str,
                            end_date: Optional[str] = None) -> Optional[pd.DataFrame]:
         """带速率限制的单次数据获取（锁外sleep，支持并行）"""
+        if end_date is None:
+            end_date = date.today().strftime("%Y%m%d")
+
+        # 检查缓存
+        from .data_cache import get_quant_cache
+        cache = get_quant_cache()
+        cached = cache.get(code, data_type, end_date)
+        if cached is not None:
+            return cached
+
         # 预留时间槽
         with self._rate_lock:
             now = time.time()
@@ -218,6 +228,10 @@ class QuantDataFetcher:
         if wait > 0:
             time.sleep(wait)
 
-        if end_date is None:
-            end_date = date.today().strftime("%Y%m%d")
-        return self.adapter.get_stock_data(code, self.start_date, end_date, data_type)
+        df = self.adapter.get_stock_data(code, self.start_date, end_date, data_type)
+
+        # 写入缓存
+        if df is not None and not df.empty:
+            cache.put(code, data_type, end_date, df)
+
+        return df

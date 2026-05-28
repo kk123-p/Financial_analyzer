@@ -86,6 +86,22 @@ class BacktestEngine:
         all_trades: list = []
         factor_matrix_history: list[FactorMatrix] = []
 
+        # 2.5 预取全量数据（一次性获取，后续按日期切片）
+        logger.info("预取全量数据（一次性获取，避免逐月重复调用 API）...")
+        if progress_callback:
+            progress_callback(0.0)
+        stocks_all = self.universe_manager.get_universe(pool)
+        if stocks_all:
+            if len(stocks_all) > 500:
+                stocks_all = stocks_all[:500]
+            stocks_all = self.data_fetcher.enrich_stock_info(stocks_all)
+            self._prefetched_data = self.data_fetcher.fetch_all(stocks_all)
+            self._prefetched_stocks = stocks_all
+            logger.info(f"预取完成: {len(self._prefetched_data)} 只股票数据已加载到内存")
+        else:
+            self._prefetched_data = {}
+            self._prefetched_stocks = []
+
         # 3. 逐月回测
         for i, rebal_date in enumerate(month_ends):
             if progress_callback:
@@ -220,9 +236,12 @@ class BacktestEngine:
     def _get_universe_at_date(self, pool: str, ref_date: date) -> list[StockInfo]:
         """获取指定日期的选股池成分股（避免幸存者偏差）
 
-        使用 Tushare index_weight 的 trade_date 参数查询历史成分股。
-        如果历史数据不可用，回退到当前成分股并记录警告。
+        优先使用预取的成分股列表（避免重复 API 调用）。
+        如果没有预取数据，回退到逐月查询。
         """
+        if hasattr(self, '_prefetched_stocks') and self._prefetched_stocks:
+            return self._prefetched_stocks
+
         stocks = self.universe_manager.get_universe_at_date(pool, ref_date)
         if not stocks:
             return []
@@ -231,10 +250,38 @@ class BacktestEngine:
     def _fetch_data_for_date(self,
                              stocks: list[StockInfo],
                              ref_date: date) -> dict[str, dict[str, pd.DataFrame]]:
-        """获取截至 ref_date 的历史数据（并行，复用 data_fetcher 速率限制）"""
-        end = ref_date.strftime("%Y%m%d")
-        result: dict[str, dict[str, pd.DataFrame]] = {}
+        """获取截至 ref_date 的历史数据
 
+        如果有预取数据（self._prefetched_data），直接从内存切片，不调用 API。
+        否则回退到逐只获取（兼容无预取的场景）。
+        """
+        end = ref_date.strftime("%Y%m%d")
+
+        # 优先使用预取数据（内存切片，零 API 调用）
+        if hasattr(self, '_prefetched_data') and self._prefetched_data:
+            result: dict[str, dict[str, pd.DataFrame]] = {}
+            for stock in stocks:
+                if stock.code not in self._prefetched_data:
+                    continue
+                stock_data = self._prefetched_data[stock.code]
+                filtered = {}
+                for data_type, df in stock_data.items():
+                    if df is None or df.empty:
+                        continue
+                    # 按日期切片：只保留 ref_date 之前的数据
+                    if "trade_date" in df.columns:
+                        mask = df["trade_date"].astype(str) <= end
+                        sliced = df.loc[mask]
+                        if not sliced.empty:
+                            filtered[data_type] = sliced
+                    else:
+                        filtered[data_type] = df
+                if filtered:
+                    result[stock.code] = filtered
+            return result
+
+        # 回退：逐只获取（无预取时的兼容路径）
+        result: dict[str, dict[str, pd.DataFrame]] = {}
         tasks = [
             (stock.code, data_type)
             for stock in stocks
