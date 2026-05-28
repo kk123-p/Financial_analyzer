@@ -480,45 +480,109 @@
   // ---- 8. Paper trading PnL curve ----
 
   function renderPaperPnlCurve(snapshots, initialCapital) {
-    if (!snapshots.length) return;
-    var dom = document.getElementById('paper-chart-pnl');
-    if (!dom) return;
-    var chart = EchartsUtils.init(dom);
-    var dates = snapshots.map(function(s) { return s.date; });
+    var domId = 'paper-chart-pnl';
+    var el = document.getElementById(domId);
+    if (!el || !snapshots || snapshots.length === 0) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var dates = snapshots.map(function(s) { return formatDate(s.date); });
     var values = snapshots.map(function(s) { return s.total_value; });
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: dates },
-      yAxis: { type: 'value', name: '资产 (¥)' },
+
+    var option = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: function (params) {
+          var p = params[0];
+          return p.axisValue + '<br/>资产: <b>¥' + p.value.toFixed(2) + '</b>';
+        },
+      },
+      grid: { left: 60, right: 20, top: 30, bottom: 30 },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: { color: '#8B949E', fontSize: 10 },
+        axisLine: { lineStyle: { color: '#30363D' } },
+      },
+      yAxis: {
+        type: 'value',
+        name: '资产 (¥)',
+        axisLabel: { color: '#8B949E', fontSize: 10 },
+        splitLine: { lineStyle: { color: '#21262D' } },
+      },
       series: [{
         type: 'line',
         data: values,
-        areaStyle: { opacity: 0.15 },
-        lineStyle: { width: 2 },
-        markLine: { data: [{ yAxis: initialCapital, name: '初始资金', lineStyle: { type: 'dashed', color: '#8B949E' } }] }
-      }]
-    });
+        smooth: 0.3,
+        symbol: 'none',
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(63,185,80,0.25)' },
+              { offset: 1, color: 'rgba(63,185,80,0.02)' },
+            ],
+          },
+        },
+        lineStyle: { width: 2, color: '#3FB950' },
+        markLine: { data: [{ yAxis: initialCapital, name: '初始资金', lineStyle: { type: 'dashed', color: '#8B949E' } }] },
+      }],
+    };
+
+    EchartsUtils.setOption(chart, option);
+
+    InteractionUtils.enableZoom(chart, { start: 0, end: 100 });
+    InteractionUtils.addZoomControls(domId, chart);
   }
 
   // ---- 9. Paper trading allocation pie ----
 
   function renderPaperAllocationPie(holdings, cash) {
-    var dom = document.getElementById('paper-chart-allocation');
-    if (!dom) return;
-    var chart = EchartsUtils.init(dom);
-    var data = [{ name: '现金', value: cash }];
+    var domId = 'paper-chart-allocation';
+    var el = document.getElementById(domId);
+    if (!el) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var data = [{ name: '现金', value: cash, itemStyle: { color: '#3FB950' } }];
     for (var i = 0; i < holdings.length; i++) {
-      data.push({ name: holdings[i].name || holdings[i].code, value: holdings[i].market_value });
+      data.push({
+        name: holdings[i].name || holdings[i].code,
+        value: holdings[i].market_value,
+        itemStyle: { color: EchartsUtils.PALETTE[(i + 1) % EchartsUtils.PALETTE.length] },
+      });
     }
-    chart.setOption({
-      tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+
+    var option = {
+      tooltip: {
+        trigger: 'item',
+        formatter: '{b}: ¥{c} ({d}%)',
+      },
+      legend: {
+        bottom: 0,
+        textStyle: { color: '#8B949E', fontSize: 11 },
+      },
       series: [{
         type: 'pie',
         radius: ['40%', '70%'],
+        center: ['50%', '45%'],
         data: data,
-        label: { show: true, formatter: '{b}\n{d}%' }
-      }]
-    });
+        label: {
+          color: '#E6EDF3',
+          fontSize: 11,
+          formatter: '{b}\n{d}%',
+        },
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' },
+        },
+      }],
+    };
+
+    EchartsUtils.setOption(chart, option);
+
+    InteractionUtils.addZoomControls(domId, chart);
   }
 
   global.QuantCharts = {

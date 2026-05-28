@@ -191,6 +191,8 @@ class PortfolioManager:
         return weights
 
     def record_daily_snapshot(self, date_str: str, prices: dict[str, float]):
+        if self.pnl_tracker.snapshots and self.pnl_tracker.snapshots[-1].date == date_str:
+            return
         holdings_value = sum(
             h.shares * prices.get(h.code, h.last_price)
             for h in self.holdings.values()

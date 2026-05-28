@@ -1171,7 +1171,17 @@
         statusEl.textContent = '';
 
         fetch('/api/v1/paper/execute?task_id=' + _lastQuantTaskId, { method: 'POST' })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) {
+                return r.json().then(function(errData) {
+                    throw new Error(errData.error || 'HTTP ' + r.status);
+                }).catch(function(parseErr) {
+                    if (parseErr.message && parseErr.message.startsWith('HTTP')) throw parseErr;
+                    throw new Error('HTTP ' + r.status);
+                });
+            }
+            return r.json();
+        })
         .then(function(data) {
             btn.textContent = '执行信号';
             btn.disabled = false;
