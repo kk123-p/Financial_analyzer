@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
     <script src="/static/js/echarts-utils.js"></script>
     <script src="/static/js/quant-charts.js"></script>
+    <script src="/static/js/analysis-charts.js"></script>
 </head>
 <body>
     <div class="app-layout">
@@ -138,8 +139,12 @@
                         <button class="chart-type-btn active" onclick="loadChart('candlestick', this)">K线图</button>
                         <button class="chart-type-btn" onclick="loadChart('ma', this)">均线图</button>
                         <button class="chart-type-btn" onclick="loadChart('bar', this)">涨跌柱</button>
-                        <button class="chart-type-btn" onclick="loadChartImg('dupont', this)">杜邦瀑布</button>
-                        <button class="chart-type-btn" onclick="loadChartImg('fscore', this)">F-score雷达</button>
+                        <button class="chart-type-btn" onclick="loadChartImg('dupont', this)">杜邦(旧)</button>
+                        <button class="chart-type-btn" onclick="loadChartImg('fscore', this)">F-score(旧)</button>
+                        <span class="chart-divider">|</span>
+                        <button class="chart-type-btn" onclick="loadAnalysisChart('dupont_waterfall', this)">杜邦瀑布</button>
+                        <button class="chart-type-btn" onclick="loadAnalysisChart('valuation_dashboard', this)">估值仪表</button>
+                        <button class="chart-type-btn" onclick="loadAnalysisChart('tech_panel', this)">技术面板</button>
                     </div>
                     <div id="chart-container" class="chart-container"></div>
                 </div>
