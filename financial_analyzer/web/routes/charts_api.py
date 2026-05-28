@@ -430,7 +430,7 @@ async def chart_dupont_waterfall(request: Request):
                 "backgroundColor": "rgba(13,17,23,0.92)",
                 "borderColor": "#30363D",
                 "textStyle": {"color": "#E6EDF3", "fontSize": 12},
-                "formatter": "function(p){return p[1]?p[1].name+': '+p[1].value:''}",
+                "formatter": "{b}",
             },
             "grid": {"left": 60, "right": 30, "top": 40, "bottom": 50},
             "xAxis": {

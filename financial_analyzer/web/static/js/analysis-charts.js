@@ -21,7 +21,12 @@
 
   function _showMessage(text) {
     var el = document.getElementById(CONTAINER_ID);
-    if (el) el.innerHTML = '<div class="result-empty">' + text + '</div>';
+    if (!el) return;
+    el.innerHTML = '';
+    var div = document.createElement('div');
+    div.className = 'result-empty';
+    div.textContent = text;
+    el.appendChild(div);
   }
 
   function _isEmptyOption(option) {
