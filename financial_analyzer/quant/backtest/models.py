@@ -27,3 +27,4 @@ class BacktestResult:
     attribution: dict[str, float] = field(default_factory=dict)  # factor attribution
     factor_ic: dict = field(default_factory=dict)  # factor IC/IR analysis
     factor_decay: dict = field(default_factory=dict)  # factor decay curves
+    correlation_matrix: dict = field(default_factory=dict)  # {labels, matrix}

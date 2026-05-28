@@ -154,6 +154,13 @@ class BacktestEngine:
             # 3d. 标准化 → 打分 → 排名 → 优化
             matrix = self.normalizer.normalize(matrix)
 
+            # 存储因子截面数据用于相关性矩阵
+            if self.factor_analyzer:
+                self.factor_analyzer.store_monthly_matrix(
+                    {stock: dict(scores) for stock, scores in matrix.scores.items()},
+                    ref_date=rebal_date,
+                )
+
             # 3d-ic. 因子 IC 分析（如果启用了 FactorAnalyzer）
             if self.factor_analyzer and i + 1 < len(month_ends):
                 next_date = month_ends[i + 1]
@@ -253,6 +260,13 @@ class BacktestEngine:
                 for name, curve in decay_curves.items()
             }
 
+        # 8. 因子相关性矩阵
+        correlation_matrix = {}
+        if self.factor_analyzer:
+            labels, matrix_data = self.factor_analyzer.compute_correlation_matrix()
+            if labels:
+                correlation_matrix = {"labels": labels, "matrix": matrix_data}
+
         final_value = portfolio_values[-1] if portfolio_values else initial_capital
 
         logger.info(
@@ -273,6 +287,7 @@ class BacktestEngine:
             attribution=attribution,
             factor_ic=factor_ic,
             factor_decay=factor_decay,
+            correlation_matrix=correlation_matrix,
         )
 
     def _generate_month_ends(self, start_date: str, end_date: str) -> list[date]:
