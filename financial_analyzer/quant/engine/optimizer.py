@@ -1,6 +1,8 @@
 """约束优化器 — 在TOP-N中选择满足约束的最优组合"""
+import numpy as np
 from typing import Optional
 from ..models import StockInfo
+from .position_sizer import PositionSizer, EqualWeightSizer
 
 
 class ConstraintOptimizer:
@@ -11,12 +13,14 @@ class ConstraintOptimizer:
                  max_stocks: int = 8,
                  min_industries: int = 3,
                  max_industry_weight: float = 0.40,
-                 cash_reserve: float = 0.10):
+                 cash_reserve: float = 0.10,
+                 position_sizer: Optional[PositionSizer] = None):
         self.min_stocks = min_stocks
         self.max_stocks = max_stocks
         self.min_industries = min_industries
         self.max_industry_weight = max_industry_weight
         self.cash_reserve = cash_reserve
+        self.position_sizer = position_sizer or EqualWeightSizer()
 
     def optimize(self, ranked_stocks: list[StockInfo],
                  scores: Optional[dict[str, float]] = None) -> list[StockInfo]:
@@ -69,3 +73,30 @@ class ConstraintOptimizer:
                         break
 
         return result
+
+    def compute_weights(
+        self,
+        stocks: list[StockInfo],
+        scores: dict[str, float],
+        cov_matrix: Optional[np.ndarray] = None,
+    ) -> dict[str, float]:
+        """使用 position_sizer 计算各资产权重
+
+        Args:
+            stocks: 优化后的持仓列表
+            scores: 综合得分
+            cov_matrix: 协方差矩阵（可选）
+
+        Returns:
+            {stock_code: weight}，权重之和为 1
+        """
+        if not stocks:
+            return {}
+        stock_scores = {s.code: scores.get(s.code, 0.0) for s in stocks}
+        stock_codes = [s.code for s in stocks]
+        weights = self.position_sizer.compute_weights(
+            stock_scores, cov_matrix=cov_matrix, stock_codes=stock_codes
+        )
+        # 只返回在 stocks 中的权重
+        valid_codes = set(stock_codes)
+        return {c: w for c, w in weights.items() if c in valid_codes}
