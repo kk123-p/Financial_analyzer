@@ -125,6 +125,21 @@ async def list_factors():
     })
 
 
+def _cleanup_old_tasks(max_age_seconds=1800, store=None):
+    """清理已完成/失败且超过 max_age_seconds 的任务"""
+    import time as _time
+    if store is None:
+        store = _task_store
+    now = _time.time()
+    expired = [
+        tid for tid, task in store.items()
+        if task.get("status") in ("done", "error")
+        and now - task.get("started_ts", 0) > max_age_seconds
+    ]
+    for tid in expired:
+        del store[tid]
+
+
 def _update_task(task_id: str, **kwargs):
     with _task_lock:
         if task_id in _task_store:
@@ -152,6 +167,7 @@ async def run_signal_generation(
 
     import time as _time
     with _task_lock:
+        _cleanup_old_tasks()
         _task_store[task_id] = {
             "status": "starting",
             "progress": 0,
@@ -347,6 +363,7 @@ async def run_sensitivity(
 
     import time as _time
     with _task_lock:
+        _cleanup_old_tasks()
         _task_store[task_id] = {
             "status": "starting",
             "progress": 0,

@@ -21,7 +21,7 @@ from financial_analyzer.quant.engine.optimizer import ConstraintOptimizer
 from financial_analyzer.quant.engine.signal import SignalGenerator
 from financial_analyzer.quant.backtest.engine import BacktestEngine
 from financial_analyzer.web.routes.quant_api import (
-    ALL_FACTORS, DEFAULT_FACTOR_CONFIGS, _load_token,
+    ALL_FACTORS, DEFAULT_FACTOR_CONFIGS, _load_token, _cleanup_old_tasks,
 )
 from ..dependencies import get_adapter
 
@@ -123,6 +123,7 @@ async def run_backtest(
 
     import time as _time
     with _task_lock:
+        _cleanup_old_tasks(store=_task_store)
         _task_store[task_id] = {
             "status": "starting",
             "progress": 0,
