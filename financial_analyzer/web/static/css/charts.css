@@ -1,0 +1,41 @@
+/* charts.css — ECharts container and chart tab styles */
+
+.chart-container {
+    width: 100%;
+    min-height: 450px;
+    height: 500px;
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(6, 9, 18, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.4);
+}
+
+.chart-controls {
+    display: flex;
+    gap: 8px;
+    padding: 12px 0;
+    flex-wrap: wrap;
+}
+
+.chart-type-btn {
+    padding: 6px 14px;
+    font-size: var(--text-xs, 12px);
+    color: var(--text-muted, #8B949E);
+    background: rgba(22, 27, 34, 0.6);
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 150ms, border-color 150ms, background 150ms;
+}
+
+.chart-type-btn:hover {
+    color: var(--text-primary, #E6EDF3);
+    border-color: rgba(48, 54, 61, 0.8);
+}
+
+.chart-type-btn.active {
+    color: #3FB950;
+    border-color: rgba(63, 185, 80, 0.4);
+    background: rgba(63, 185, 80, 0.08);
+}
