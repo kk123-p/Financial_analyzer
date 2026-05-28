@@ -438,6 +438,39 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- 敏感性分析控制 -->
+                        <div style="margin-top:24px;border-top:1px solid rgba(48,54,61,0.4);padding-top:20px;">
+                            <h3 style="margin:0 0 16px;color:var(--fg-primary);font-size:var(--text-md);">敏感性分析</h3>
+                            <div class="backtest-controls">
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);white-space:nowrap;">因子 X</label>
+                                <select id="sens-factor-x" class="quant-select-native" title="选择 X 轴因子"></select>
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);white-space:nowrap;">因子 Y</label>
+                                <select id="sens-factor-y" class="quant-select-native" title="选择 Y 轴因子"></select>
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);white-space:nowrap;">网格大小</label>
+                                <input type="number" id="sens-grid-size" value="5" min="3" max="9" style="width:60px;" title="网格大小 (3-9)">
+                                <label style="color:var(--text-secondary);font-size:var(--text-sm);white-space:nowrap;">权重范围</label>
+                                <input type="number" id="sens-weight-min" value="0.2" step="0.1" style="width:60px;" title="权重最小值">
+                                <input type="number" id="sens-weight-max" value="1.8" step="0.1" style="width:60px;" title="权重最大值">
+                                <button type="button" class="btn btn-accent" id="btn-sens-run" onclick="runSensitivity()">运行分析</button>
+                                <button type="button" class="btn" id="btn-sens-stop" onclick="stopSensitivity()" style="display:none;background:var(--danger-bg,#3a1a1a);color:#f44336;">停止</button>
+                                <span id="sens-status-text" style="color:var(--text-muted);font-size:var(--text-xs);"></span>
+                            </div>
+
+                            <!-- 敏感性分析进度 -->
+                            <div id="sens-progress" style="display:none;">
+                                <div class="backtest-progress">
+                                    <div class="progress-pct" id="sens-progress-pct">0%</div>
+                                    <div id="sens-progress-msg" style="margin-top:4px;">初始化...</div>
+                                </div>
+                            </div>
+
+                            <!-- 敏感性分析结果 -->
+                            <div id="sens-result" style="display:none;">
+                                <div id="sens-chart-heatmap" style="height:400px;margin-top:12px;"></div>
+                                <div id="sens-baseline-info" style="margin-top:12px;font-size:var(--text-sm);color:var(--text-muted);"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -874,6 +907,194 @@
         if (v === undefined || v === null) return '--';
         return (v * 100).toFixed(2) + '%';
     }
+
+    // ========== 敏感性分析 ==========
+    var _sensTimer = null;
+    var _sensTaskId = null;
+
+    function populateFactorSelectors() {
+        fetch('/api/v1/quant/factors')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var factors = data.factors || [];
+            var groups = {};
+            var categoryLabels = { value: '价值', quality: '质量', growth: '成长', momentum: '动量', sentiment: '情绪', low_vol: '低波', risk: '风险' };
+            factors.forEach(function(f) {
+                var cat = f.category || 'other';
+                if (!groups[cat]) groups[cat] = [];
+                groups[cat].push(f);
+            });
+            var html = '';
+            for (var cat in groups) {
+                if (!groups.hasOwnProperty(cat)) continue;
+                html += '<optgroup label="' + InteractionUtils.escapeHtml(categoryLabels[cat] || cat) + '">';
+                groups[cat].forEach(function(f) {
+                    html += '<option value="' + InteractionUtils.escapeHtml(f.name) + '">' + InteractionUtils.escapeHtml(f.label) + '</option>';
+                });
+                html += '</optgroup>';
+            }
+            document.getElementById('sens-factor-x').innerHTML = html;
+            document.getElementById('sens-factor-y').innerHTML = html;
+            // Default: first factor for X, second for Y
+            var selX = document.getElementById('sens-factor-x');
+            var selY = document.getElementById('sens-factor-y');
+            if (selX.options.length > 0) selX.selectedIndex = 0;
+            if (selY.options.length > 1) selY.selectedIndex = 1;
+        })
+        .catch(function() {});
+    }
+
+    function runSensitivity() {
+        var factorX = document.getElementById('sens-factor-x').value;
+        var factorY = document.getElementById('sens-factor-y').value;
+        var gridSize = document.getElementById('sens-grid-size').value;
+        var weightMin = document.getElementById('sens-weight-min').value;
+        var weightMax = document.getElementById('sens-weight-max').value;
+
+        if (!factorX || !factorY) { alert('请选择因子 X 和因子 Y'); return; }
+        if (factorX === factorY) { alert('因子 X 和因子 Y 不能相同'); return; }
+
+        var pool = document.getElementById('quant-pool').value;
+        var btn = document.getElementById('btn-sens-run');
+        var stopBtn = document.getElementById('btn-sens-stop');
+        var statusEl = document.getElementById('sens-status-text');
+        var progressEl = document.getElementById('sens-progress');
+        var resultEl = document.getElementById('sens-result');
+
+        btn.disabled = true;
+        btn.textContent = '提交中...';
+        stopBtn.style.display = 'inline-block';
+        statusEl.textContent = '';
+        progressEl.style.display = 'block';
+        resultEl.style.display = 'none';
+        document.getElementById('sens-progress-pct').textContent = '0%';
+        document.getElementById('sens-progress-msg').textContent = '正在提交...';
+
+        var url = '/api/v1/quant/sensitivity?pool=' + encodeURIComponent(pool) +
+            '&factor_x=' + encodeURIComponent(factorX) +
+            '&factor_y=' + encodeURIComponent(factorY) +
+            '&grid_size=' + gridSize +
+            '&weight_min=' + weightMin +
+            '&weight_max=' + weightMax;
+
+        fetch(url, { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                btn.disabled = false;
+                btn.textContent = '运行分析';
+                stopBtn.style.display = 'none';
+                progressEl.style.display = 'none';
+                statusEl.textContent = data.error;
+                statusEl.style.color = '#f44336';
+                return;
+            }
+            _sensTaskId = data.task_id;
+            btn.textContent = '计算中...';
+            pollSensProgress();
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '运行分析';
+            stopBtn.style.display = 'none';
+            progressEl.style.display = 'none';
+            statusEl.textContent = '提交失败: ' + err.message;
+            statusEl.style.color = '#f44336';
+        });
+    }
+
+    function pollSensProgress() {
+        if (!_sensTaskId) return;
+        fetch('/api/v1/quant/sensitivity/status/' + _sensTaskId)
+        .then(function(r) { return r.json(); })
+        .then(function(task) {
+            var pct = task.progress || 0;
+            var msg = task.message || '';
+            document.getElementById('sens-progress-pct').textContent = pct + '%';
+            document.getElementById('sens-progress-msg').textContent = msg;
+
+            if (task.status === 'done') {
+                _sensTimer = null;
+                fetchSensResult(_sensTaskId);
+                _sensTaskId = null;
+            } else if (task.status === 'error') {
+                _sensTimer = null;
+                _sensTaskId = null;
+                var btn = document.getElementById('btn-sens-run');
+                var stopBtn = document.getElementById('btn-sens-stop');
+                btn.disabled = false;
+                btn.textContent = '运行分析';
+                stopBtn.style.display = 'none';
+                document.getElementById('sens-progress').style.display = 'none';
+                var statusEl = document.getElementById('sens-status-text');
+                statusEl.textContent = msg || '分析失败';
+                statusEl.style.color = '#f44336';
+            } else {
+                _sensTimer = setTimeout(pollSensProgress, 2000);
+            }
+        })
+        .catch(function() {
+            _sensTimer = setTimeout(pollSensProgress, 3000);
+        });
+    }
+
+    function fetchSensResult(taskId) {
+        fetch('/api/v1/quant/sensitivity/result/' + taskId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var btn = document.getElementById('btn-sens-run');
+            var stopBtn = document.getElementById('btn-sens-stop');
+            var statusEl = document.getElementById('sens-status-text');
+            btn.disabled = false;
+            btn.textContent = '运行分析';
+            stopBtn.style.display = 'none';
+            document.getElementById('sens-progress').style.display = 'none';
+            statusEl.textContent = '分析完成';
+            statusEl.style.color = '#3FB950';
+            renderSensResult(data);
+        })
+        .catch(function(err) {
+            var btn = document.getElementById('btn-sens-run');
+            btn.disabled = false;
+            btn.textContent = '运行分析';
+            document.getElementById('sens-progress').style.display = 'none';
+            document.getElementById('sens-status-text').textContent = '获取结果失败: ' + err.message;
+        });
+    }
+
+    function stopSensitivity() {
+        if (_sensTimer) { clearTimeout(_sensTimer); _sensTimer = null; }
+        _sensTaskId = null;
+        var btn = document.getElementById('btn-sens-run');
+        var stopBtn = document.getElementById('btn-sens-stop');
+        var statusEl = document.getElementById('sens-status-text');
+        btn.disabled = false;
+        btn.textContent = '运行分析';
+        stopBtn.style.display = 'none';
+        document.getElementById('sens-progress').style.display = 'none';
+        statusEl.textContent = '已停止';
+        statusEl.style.color = 'var(--text-muted)';
+    }
+
+    function renderSensResult(data) {
+        var resultEl = document.getElementById('sens-result');
+        resultEl.style.display = 'block';
+
+        var bl = data.baseline || {};
+        document.getElementById('sens-baseline-info').innerHTML =
+            '基准权重: ' + InteractionUtils.escapeHtml(data.factor_x.label) + ' = ' + bl.x_weight +
+            ', ' + InteractionUtils.escapeHtml(data.factor_y.label) + ' = ' + bl.y_weight +
+            ' | 基准指标: ' + (bl.metric || 0).toFixed(4) +
+            ' | 有效股票: ' + (data.valid_stocks || 0) + ' 只' +
+            ' | 选股池: ' + InteractionUtils.escapeHtml(data.pool);
+
+        setTimeout(function() {
+            QuantCharts.renderSensitivityHeatmap(data);
+        }, 50);
+    }
+
+    // Initialize factor selectors on page load
+    populateFactorSelectors();
     </script>
 </body>
 </html>
