@@ -11,6 +11,8 @@ class FakeLLMClient:
     def __init__(self):
         self.calls = []
         self._stream_responses = ["模拟分析结果。置信度: 高"]
+        from financial_analyzer.deepseek.client import DeepSeekConfig
+        self.config = DeepSeekConfig(thinking_enabled=False)
 
     def generate_deep_analysis_stream(self, prompt, system_prompt=None, callback=None, cancel_event=None):
         self.calls.append({"prompt": prompt, "system_prompt": system_prompt})

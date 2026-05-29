@@ -106,40 +106,47 @@ class AnalysisOrchestrator:
             system_prompt = "你是一个专业的财务分析助手。请用简洁、专业的中文回答用户问题。"
             user_prompt = message
 
-        parser = OutputParser()
+        # 简单问题不需要深度推理
+        saved_thinking = self._llm.config.thinking_enabled
+        if not data:
+            self._llm.config.thinking_enabled = False
+        try:
+            parser = OutputParser()
 
-        def on_chunk(chunk: str, done: bool, reasoning: str = ""):
-            if reasoning and callback:
-                callback("reasoning", reasoning, None)
-            if chunk:
-                for event in parser.feed(chunk):
+            def on_chunk(chunk: str, done: bool, reasoning: str = ""):
+                if reasoning and callback:
+                    callback("reasoning", reasoning, None)
+                if chunk:
+                    for event in parser.feed(chunk):
+                        if callback:
+                            cb_type = event.get("type", "chunk")
+                            callback(cb_type, event.get("content", ""), None)
+                if done:
+                    result = parser.finalize()
+                    if result and callback:
+                        callback("chunk", result.raw_text, None)
+                        callback("structured", result.raw_text, {
+                            "confidence": result.confidence,
+                            "signal_tags": result.signal_tags,
+                        })
+                        conversation.add_message(Message(
+                            role="assistant", content=result.raw_text,
+                            msg_type="structured",
+                            metadata={"confidence": result.confidence, "signal_tags": result.signal_tags},
+                        ))
                     if callback:
-                        cb_type = event.get("type", "chunk")
-                        callback(cb_type, event.get("content", ""), None)
-            if done:
-                result = parser.finalize()
-                if result and callback:
-                    callback("chunk", result.raw_text, None)
-                    callback("structured", result.raw_text, {
-                        "confidence": result.confidence,
-                        "signal_tags": result.signal_tags,
-                    })
-                    conversation.add_message(Message(
-                        role="assistant", content=result.raw_text,
-                        msg_type="structured",
-                        metadata={"confidence": result.confidence, "signal_tags": result.signal_tags},
-                    ))
-                if callback:
-                    callback("done", "", None)
+                        callback("done", "", None)
 
-        result = self._llm.generate_deep_analysis_stream(
-            user_prompt, system_prompt=system_prompt, callback=on_chunk,
-            cancel_event=cancel_event,
-        )
-        if not result.success:
-            if callback:
-                callback("error", result.error or "AI 分析失败", None)
-                callback("done", "", None)
+            result = self._llm.generate_deep_analysis_stream(
+                user_prompt, system_prompt=system_prompt, callback=on_chunk,
+                cancel_event=cancel_event,
+            )
+            if not result.success:
+                if callback:
+                    callback("error", result.error or "AI 分析失败", None)
+                    callback("done", "", None)
+        finally:
+            self._llm.config.thinking_enabled = saved_thinking
 
     @staticmethod
     def _is_data_question(message: str, stock_code: str, company_name: str) -> bool:
