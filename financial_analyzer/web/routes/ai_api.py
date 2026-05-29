@@ -85,8 +85,8 @@ async def ai_chat(
 
         config = DeepSeekConfig(
             api_key=api_key,
-            thinking_enabled=ai_config.get("thinking_enabled", False),
-            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+            thinking_enabled=ai_config.get("thinking_enabled", True),
+            reasoning_effort=ai_config.get("reasoning_effort", "high"),
         )
         client = DeepSeekClient(config)
 
@@ -142,8 +142,8 @@ async def ai_debate(websocket: WebSocket):
 
         config = DeepSeekConfig(
             api_key=api_key,
-            thinking_enabled=ai_config.get("thinking_enabled", False),
-            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+            thinking_enabled=ai_config.get("thinking_enabled", True),
+            reasoning_effort=ai_config.get("reasoning_effort", "high"),
         )
         engine = DebateEngine(api_key=api_key, config=config)
 
@@ -151,6 +151,8 @@ async def ai_debate(websocket: WebSocket):
         session = _get_session_for_ws(stock_code)
         if session and session.get("data"):
             data = {k: pd.DataFrame(v) for k, v in session["data"].items()}
+            from financial_analyzer.ai.tools import ToolExecutor
+            engine._tool_executor = ToolExecutor(data, stock_code)
             prepare_result = engine.prepare(data, stock_code)
             company_name = prepare_result.get("report", {}).get("company_snapshot", {}).get("name", stock_code)
         else:
@@ -373,8 +375,8 @@ async def ai_conversation(websocket: WebSocket):
 
         config = DeepSeekConfig(
             api_key=api_key,
-            thinking_enabled=ai_config.get("thinking_enabled", False),
-            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+            thinking_enabled=ai_config.get("thinking_enabled", True),
+            reasoning_effort=ai_config.get("reasoning_effort", "high"),
         )
         client = DeepSeekStreamClient(config=config)
 
