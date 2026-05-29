@@ -262,6 +262,7 @@ function _openConversationWs(stockCode, onReady) {
     window._conversationWs = chatWs;
     var messages = document.getElementById('chat-messages');
     var _currentAssistantEl = null;
+    var _currentReasoningEl = null;
 
     chatWs.onopen = function() {
         chatWs.send(JSON.stringify({ stock_code: stockCode }));
@@ -298,8 +299,26 @@ function _openConversationWs(stockCode, onReady) {
                 messages.scrollTop = messages.scrollHeight;
             } else if (msg.content.startsWith('section:')) {
                 _currentAssistantEl = null;
+                _currentReasoningEl = null;
             }
+        } else if (msg.type === 'reasoning') {
+            if (!_currentReasoningEl) {
+                _currentReasoningEl = document.createElement('details');
+                _currentReasoningEl.className = 'chat-reasoning';
+                _currentReasoningEl.open = false;
+                var summary = document.createElement('summary');
+                summary.textContent = '推理过程';
+                _currentReasoningEl.appendChild(summary);
+                var contentDiv = document.createElement('div');
+                contentDiv.className = 'reasoning-content';
+                _currentReasoningEl.appendChild(contentDiv);
+                messages.appendChild(_currentReasoningEl);
+            }
+            var rc = _currentReasoningEl.querySelector('.reasoning-content');
+            if (rc) rc.textContent += msg.content;
+            messages.scrollTop = messages.scrollHeight;
         } else if (msg.type === 'chunk') {
+            _currentReasoningEl = null;
             if (!_currentAssistantEl) {
                 _currentAssistantEl = document.createElement('div');
                 _currentAssistantEl.className = 'chat-bubble chat-bubble--assistant';
@@ -311,9 +330,11 @@ function _openConversationWs(stockCode, onReady) {
             var card = buildStructuredCard(msg.content, msg.meta || {});
             messages.appendChild(card);
             _currentAssistantEl = null;
+            _currentReasoningEl = null;
             messages.scrollTop = messages.scrollHeight;
         } else if (msg.type === 'done') {
             _currentAssistantEl = null;
+            _currentReasoningEl = null;
             chatInProgress = false;
             document.getElementById('chat-send-btn').style.display = 'inline-block';
             document.getElementById('chat-stop-btn').style.display = 'none';
