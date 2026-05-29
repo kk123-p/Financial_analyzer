@@ -132,15 +132,13 @@ DEEP_ANALYSIS_SYSTEM_PROMPT = """你是一位专业的财务分析师，拥有�
 """
 
 
-def get_analysis_prompt(structured_prompt: str, analysis_focus: str = "comprehensive",
-                        perspective: str = "multi") -> str:
+def get_analysis_prompt(structured_prompt: str, analysis_focus: str = "comprehensive") -> str:
     """
-    构建深度分析提示词（兼容旧版接口）
+    构建深度分析用户消息（role context 由调用方设为 system message）
 
     Args:
         structured_prompt: 结构化数据提示词
         analysis_focus: 分析焦点 (dupont/zscore/fscore/mscore/fcf/quadrant/moat/comprehensive)
-        perspective: 分析视角 (value/growth/risk/multi)
     """
     focus_map = {
         "dupont": "请重点进行杜邦分析，拆解ROE的驱动因素",
@@ -154,17 +152,7 @@ def get_analysis_prompt(structured_prompt: str, analysis_focus: str = "comprehen
     }
     focus_instruction = focus_map.get(analysis_focus, focus_map["comprehensive"])
 
-    perspective_map = {
-        "value": ANALYST_ROLES["value"]["system_prompt"],
-        "growth": ANALYST_ROLES["growth"]["system_prompt"],
-        "risk": ANALYST_ROLES["risk"]["system_prompt"],
-        "multi": DEEP_ANALYSIS_SYSTEM_PROMPT,
-    }
-    role_prompt = perspective_map.get(perspective, DEEP_ANALYSIS_SYSTEM_PROMPT)
-
-    return f"""{role_prompt}
-
-{focus_instruction}
+    return f"""{focus_instruction}
 
 以下是公司的结构化财务数据：
 {structured_prompt}
@@ -195,7 +183,10 @@ def build_multi_perspective_prompt(structured_prompt: str,
         for task in role["tasks"]:
             roles_text += f"  - {task}\n"
 
-    return f"""{DEEP_ANALYSIS_SYSTEM_PROMPT}
+    return f"""请按以下格式输出：
+1. 首先分别从三个视角给出独立分析
+2. 然后指出三个视角之间的共识与分歧
+3. 最后给出综合评估和情景概率矩阵
 
 你将同时扮演三位不同视角的分析师，对以下公司进行多维度分析：
 
@@ -203,11 +194,6 @@ def build_multi_perspective_prompt(structured_prompt: str,
 
 以下是公司的结构化财务数据：
 {structured_prompt}
-
-请按以下格式输出：
-1. 首先分别从三个视角给出独立分析
-2. 然后指出三个视角之间的共识与分歧
-3. 最后给出综合评估和情景概率矩阵
 """
 
 
