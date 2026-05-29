@@ -83,7 +83,11 @@ async def ai_chat(
         if not api_key:
             return _ai_error("请先配置 DeepSeek API Key")
 
-        config = DeepSeekConfig(api_key=api_key)
+        config = DeepSeekConfig(
+            api_key=api_key,
+            thinking_enabled=ai_config.get("thinking_enabled", False),
+            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+        )
         client = DeepSeekClient(config)
 
         structured = json.dumps(report, ensure_ascii=False, indent=2, default=str)
@@ -136,7 +140,11 @@ async def ai_debate(websocket: WebSocket):
             await websocket.close()
             return
 
-        config = DeepSeekConfig(api_key=api_key)
+        config = DeepSeekConfig(
+            api_key=api_key,
+            thinking_enabled=ai_config.get("thinking_enabled", False),
+            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+        )
         engine = DebateEngine(api_key=api_key, config=config)
 
         # 准备分析数据
@@ -363,7 +371,11 @@ async def ai_conversation(websocket: WebSocket):
         from financial_analyzer.ai.conversation import ConversationManager
         from financial_analyzer.ai.orchestrator import AnalysisOrchestrator
 
-        config = DeepSeekConfig(api_key=api_key)
+        config = DeepSeekConfig(
+            api_key=api_key,
+            thinking_enabled=ai_config.get("thinking_enabled", False),
+            reasoning_effort=ai_config.get("reasoning_effort", "medium"),
+        )
         client = DeepSeekStreamClient(config=config)
 
         def debate_factory():

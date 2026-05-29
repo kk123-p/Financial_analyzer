@@ -21,7 +21,9 @@ _DEFAULT_CONFIG = {
     },
     "debate_rounds": 3,
     "max_tokens": 4096,
-    "temperature": 0.3
+    "temperature": 0.3,
+    "thinking_enabled": False,
+    "reasoning_effort": "medium",
 }
 
 

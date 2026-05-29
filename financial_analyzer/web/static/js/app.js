@@ -548,6 +548,8 @@ const BODY_IDS = {
     'risk': 'debate-body-risk',
 };
 
+let _debateReasoningEls = {};
+
 let debateWs = null;
 let debateRunning = false;
 let debateData = {
@@ -649,7 +651,28 @@ function startDebateNew() {
                     body.scrollTop = body.scrollHeight;
                 } else if (BODY_IDS[roleKey]) {
                     const body = document.getElementById(BODY_IDS[roleKey]);
-                    body.textContent += msg.content;
+
+                    if (msg.reasoning) {
+                        if (!_debateReasoningEls[roleKey]) {
+                            var details = document.createElement('details');
+                            details.className = 'debate-reasoning';
+                            details.open = false;
+                            var summary = document.createElement('summary');
+                            summary.textContent = '推理过程';
+                            details.appendChild(summary);
+                            var rcDiv = document.createElement('div');
+                            rcDiv.className = 'reasoning-content';
+                            details.appendChild(rcDiv);
+                            body.appendChild(details);
+                            _debateReasoningEls[roleKey] = rcDiv;
+                        }
+                        _debateReasoningEls[roleKey].textContent += msg.reasoning;
+                    }
+
+                    if (msg.content) {
+                        _debateReasoningEls[roleKey] = null;
+                        body.textContent += msg.content;
+                    }
                     body.scrollTop = body.scrollHeight;
 
                     // 收集到 debateData
