@@ -474,10 +474,10 @@ class DeepSeekStreamClient(DeepSeekClient):
             system_prompt: 系统提示词（可选）
 
         Yields:
-            str: 响应文本块
+            dict: {"type": "reasoning"|"content"|"error", "content": str}
         """
         if not self.config.api_key:
-            yield "⚠️ API Key 未设置"
+            yield {"type": "error", "content": "API Key 未设置"}
             return
 
         url = f"{self.config.base_url}/v1/chat/completions"
@@ -503,7 +503,7 @@ class DeepSeekStreamClient(DeepSeekClient):
             resp = requests.post(url, headers=headers, json=payload,
                                  timeout=self.config.timeout, stream=True)
             if resp.status_code != 200:
-                yield f"❌ API 返回错误 ({resp.status_code})"
+                yield {"type": "error", "content": f"API 返回错误 ({resp.status_code})"}
                 return
 
             for line in resp.iter_lines():
@@ -520,10 +520,10 @@ class DeepSeekStreamClient(DeepSeekClient):
                     content = delta.get("content", "")
                     reasoning = delta.get("reasoning_content", "")
                     if reasoning:
-                        yield f"[reasoning]{reasoning}"
+                        yield {"type": "reasoning", "content": reasoning}
                     if content:
-                        yield content
+                        yield {"type": "content", "content": content}
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            yield f"\n❌ 请求失败: {str(e)}"
+            yield {"type": "error", "content": f"请求失败: {str(e)}"}
