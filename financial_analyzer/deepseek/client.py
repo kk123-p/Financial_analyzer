@@ -347,8 +347,8 @@ class DeepSeekClient:
                 try:
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
-                    reasoning = delta.get("reasoning_content", "")
+                    content = delta.get("content") or ""
+                    reasoning = delta.get("reasoning_content") or ""
                     if reasoning:
                         full_reasoning += reasoning
                     if content or reasoning:
@@ -544,8 +544,8 @@ class DeepSeekStreamClient(DeepSeekClient):
                 try:
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
-                    reasoning = delta.get("reasoning_content", "")
+                    content = delta.get("content") or ""
+                    reasoning = delta.get("reasoning_content") or ""
                     if reasoning:
                         full_reasoning += reasoning
                     if content or reasoning:
@@ -619,8 +619,8 @@ class DeepSeekStreamClient(DeepSeekClient):
                 try:
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
-                    reasoning = delta.get("reasoning_content", "")
+                    content = delta.get("content") or ""
+                    reasoning = delta.get("reasoning_content") or ""
                     if reasoning:
                         yield {"type": "reasoning", "content": reasoning}
                     if content:
