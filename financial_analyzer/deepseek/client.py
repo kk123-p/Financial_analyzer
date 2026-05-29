@@ -18,6 +18,9 @@ except ImportError:
     HAS_REQUESTS = False
 
 
+_VALID_REASONING_EFFORTS = {"low", "medium", "high"}
+
+
 @dataclass
 class DeepSeekConfig:
     """DeepSeek 配置"""
@@ -27,8 +30,12 @@ class DeepSeekConfig:
     max_tokens: int = 8192
     temperature: float = 0.3
     timeout: int = 120
-    thinking_enabled: bool = False
-    reasoning_effort: str = "medium"
+    thinking_enabled: bool = True
+    reasoning_effort: str = "high"
+
+    def __post_init__(self):
+        if self.reasoning_effort not in _VALID_REASONING_EFFORTS:
+            self.reasoning_effort = "medium"
 
 
 @dataclass
@@ -37,6 +44,7 @@ class AnalysisReport:
     title: str = ""
     summary: str = ""
     content: str = ""
+    reasoning_content: str = ""
     timestamp: str = ""
     model: str = ""
     tokens_used: int = 0
@@ -86,6 +94,13 @@ class DeepSeekClient:
     def set_model(self, model: str):
         """设置模型"""
         self.config.model = model
+
+    def _apply_thinking_config(self, payload: dict):
+        """如果 thinking 启用，修改 payload：移除 temperature，添加 thinking 参数"""
+        if self.config.thinking_enabled:
+            payload.pop("temperature", None)
+            payload["thinking"] = {"type": "enabled"}
+            payload["reasoning_effort"] = self.config.reasoning_effort
 
     def validate_key(self) -> tuple[bool, str]:
         """验证 API Key 是否有效"""
@@ -158,10 +173,7 @@ class DeepSeekClient:
             "stream": False,
         }
 
-        if self.config.thinking_enabled:
-            payload.pop("temperature", None)
-            payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = self.config.reasoning_effort
+        self._apply_thinking_config(payload)
 
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -178,6 +190,7 @@ class DeepSeekClient:
                 choice = data.get("choices", [{}])[0]
                 message = choice.get("message", {})
                 report.content = message.get("content", "")
+                report.reasoning_content = message.get("reasoning_content", "")
                 report.summary = report.content[:200] + "..." if len(report.content) > 200 else report.content
                 report.tokens_used = data.get("usage", {}).get("total_tokens", 0)
                 report.success = True
@@ -299,10 +312,7 @@ class DeepSeekClient:
             "stream": True,
         }
 
-        if self.config.thinking_enabled:
-            payload.pop("temperature", None)
-            payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = self.config.reasoning_effort
+        self._apply_thinking_config(payload)
 
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -348,6 +358,7 @@ class DeepSeekClient:
                     continue
 
             report.content = full_content
+            report.reasoning_content = full_reasoning
             report.success = True
         except Exception as e:
             report.error = f"流式调用失败: {str(e)}"
@@ -400,10 +411,7 @@ class DeepSeekStreamClient(DeepSeekClient):
             "stream": True,
         }
 
-        if self.config.thinking_enabled:
-            payload.pop("temperature", None)
-            payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = self.config.reasoning_effort
+        self._apply_thinking_config(payload)
 
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -446,6 +454,7 @@ class DeepSeekStreamClient(DeepSeekClient):
                     continue
 
             report.content = full_content
+            report.reasoning_content = full_reasoning
             report.summary = full_content[:200] + "..." if len(full_content) > 200 else full_content
             report.success = True
             logger.info("流式 API 调用完成")
@@ -488,6 +497,8 @@ class DeepSeekStreamClient(DeepSeekClient):
             "stream": True,
         }
 
+        self._apply_thinking_config(payload)
+
         try:
             resp = requests.post(url, headers=headers, json=payload,
                                  timeout=self.config.timeout, stream=True)
@@ -507,6 +518,9 @@ class DeepSeekStreamClient(DeepSeekClient):
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
+                    reasoning = delta.get("reasoning_content", "")
+                    if reasoning:
+                        yield f"[reasoning]{reasoning}"
                     if content:
                         yield content
                 except json.JSONDecodeError:
