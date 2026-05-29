@@ -398,6 +398,7 @@ class DebateEngine:
             tools=TOOL_DEFINITIONS,
             tool_executor=self._tool_executor,
             system_prompt=system_prompt,
+            max_tool_rounds=5,
             tool_callback=_on_tool,
         )
         # Stream the final result to callback

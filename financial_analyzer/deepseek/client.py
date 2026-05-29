@@ -367,7 +367,7 @@ class DeepSeekClient:
         return report
 
     def generate_with_tools(self, messages: list, tools: list, tool_executor,
-                            system_prompt: str = None, max_tool_rounds: int = 3,
+                            system_prompt: str = None, max_tool_rounds: int = 5,
                             tool_callback=None) -> AnalysisReport:
         """支持工具调用的生成方法（非流式）"""
         url = f"{self.config.base_url}/v1/chat/completions"
@@ -394,7 +394,7 @@ class DeepSeekClient:
                 "max_tokens": self.config.max_tokens,
                 "temperature": self.config.temperature,
                 "tools": tools,
-                "tool_choice": "auto",
+                "tool_choice": "auto" if round_num < max_tool_rounds - 1 else "none",
                 "stream": False,
             }
             self._apply_thinking_config(payload)
@@ -441,6 +441,28 @@ class DeepSeekClient:
             except Exception as e:
                 report.error = f"工具调用失败: {str(e)}"
                 return report
+
+        # Fallback: call API without tools to get final text response
+        try:
+            fallback_payload = {
+                "model": self.config.model,
+                "messages": all_messages,
+                "max_tokens": self.config.max_tokens,
+                "temperature": self.config.temperature,
+                "stream": False,
+            }
+            self._apply_thinking_config(fallback_payload)
+            resp = requests.post(url, headers=headers, json=fallback_payload, timeout=self.config.timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                message = data.get("choices", [{}])[0].get("message", {})
+                report.content = message.get("content", "")
+                report.reasoning_content = message.get("reasoning_content", "")
+                report.success = True
+                report.tool_calls_log = tool_calls_log
+                return report
+        except Exception:
+            pass
 
         report.error = "超过最大工具调用轮数"
         return report
