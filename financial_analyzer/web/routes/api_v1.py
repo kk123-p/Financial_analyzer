@@ -288,9 +288,9 @@ async def api_ai_chat_stream(request: Request):
 
     async def generate():
         queue = asyncio.Queue()
-        def callback(chunk: str, done: bool):
+        def callback(chunk: str, done: bool, reasoning: str = ''):
             try:
-                queue.put_nowait((chunk, done))
+                queue.put_nowait((chunk, done, reasoning))
             except asyncio.QueueFull:
                 pass
 
@@ -305,8 +305,8 @@ async def api_ai_chat_stream(request: Request):
 
         while True:
             try:
-                chunk, done = await asyncio.wait_for(queue.get(), timeout=60)
-                yield f"data: {json.dumps({'chunk': chunk, 'done': done}, ensure_ascii=False)}\n\n"
+                chunk, done, reasoning = await asyncio.wait_for(queue.get(), timeout=60)
+                yield f"data: {json.dumps({'chunk': chunk, 'done': done, 'reasoning': reasoning}, ensure_ascii=False)}\n\n"
                 if done:
                     break
             except asyncio.TimeoutError:
