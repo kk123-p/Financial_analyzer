@@ -10,6 +10,7 @@ from ..deepseek.client import DeepSeekStreamClient, DeepSeekConfig
 from ..deepseek.prompts import (
     get_debate_system_prompt, get_analyst_roles,
     build_debate_round1, build_debate_round2, build_debate_round3,
+    build_citation_verification_prompt,
     build_user_followup, build_weight_adjustment,
 )
 from .report_builder import ReportBuilder
@@ -33,6 +34,8 @@ class DebateState:
     report: dict = field(default_factory=dict)
     report_text: str = ""
     signals: list = field(default_factory=list)
+    citation_issues: list = field(default_factory=list)
+    citation_verified: bool = False
     error: str = ""
 
 
@@ -195,8 +198,6 @@ class DebateEngine:
             if callback:
                 callback("_meta", "round2_start", False)
 
-            round2_prompt = build_debate_round2(self.state.round1_statements)
-
             for analyst_id in ["value", "growth", "risk"]:
                 if self._stop_event.is_set():
                     break
@@ -205,11 +206,11 @@ class DebateEngine:
                 if callback:
                     callback("_meta", f"analyst_{analyst_id}_start", False)
 
-                full_prompt = f"You are {role['name']}.\n\n{round2_prompt}"
+                round2_prompt = build_debate_round2(self.state.round1_statements, role_key=analyst_id)
                 if self._tool_executor:
-                    result = self._tool_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                    result = self._tool_call(round2_prompt, role["system_prompt"], callback, analyst_id)
                 else:
-                    result = self._stream_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                    result = self._stream_call(round2_prompt, role["system_prompt"], callback, analyst_id)
 
                 if result.success:
                     self.state.round2_statements[analyst_id] = result.content
@@ -218,6 +219,15 @@ class DebateEngine:
 
                 if callback:
                     callback("_meta", f"analyst_{analyst_id}_done", False)
+
+            if self._stop_event.is_set():
+                return
+
+            # --- Citation verification ---
+            self.state.phase = "citation_verify"
+            if callback:
+                callback("_meta", "citation_verify_start", False)
+            self._verify_citations(callback)
 
             if self._stop_event.is_set():
                 return
@@ -275,7 +285,7 @@ class DebateEngine:
                 if callback:
                     callback("_meta", f"analyst_{analyst_id}_start", False)
 
-                full_prompt = f"You are {role['name']}.\n\n{prompt}"
+                full_prompt = f"你是{role['name']}。\n\n{prompt}"
                 if self._tool_executor:
                     self._tool_call(full_prompt, role["system_prompt"], callback, analyst_id)
                 else:
@@ -304,7 +314,7 @@ class DebateEngine:
             self.state.phase = "weight"
             prompt = build_weight_adjustment(wv, wg, wr, self.state.round3_result or "")
             full_debate = self._build_full_debate_text()
-            prompt = f"Full debate record:\n{full_debate}\n\n{prompt}"
+            prompt = f"完整辩论记录：\n{full_debate}\n\n{prompt}"
 
             def consensus_cb(chunk, done, reasoning=""):
                 if callback:
@@ -330,6 +340,40 @@ class DebateEngine:
                 callback("_meta", f"error:{e}", True)
             if on_complete:
                 on_complete(self.state)
+
+    def _verify_citations(self, callback=None):
+        """Verify data citations from round 1 and round 2 statements."""
+        roles = get_analyst_roles()
+        parts = []
+        for aid, stmt in self.state.round1_statements.items():
+            role = roles.get(aid, {})
+            parts.append(f"[{role.get('name', aid)} - 第一轮]\n{stmt}")
+        for aid, stmt in self.state.round2_statements.items():
+            role = roles.get(aid, {})
+            parts.append(f"[{role.get('name', aid)} - 第二轮]\n{stmt}")
+        debate_text = "\n\n---\n\n".join(parts)
+
+        prompt = build_citation_verification_prompt(debate_text)
+
+        def verify_cb(chunk, done, reasoning=""):
+            if callback:
+                callback("citation_verify", chunk, done, reasoning=reasoning)
+
+        result = self.client.generate_deep_analysis_stream(
+            prompt, system_prompt=get_debate_system_prompt(), callback=verify_cb
+        )
+
+        if result.success:
+            content = result.content
+            issue_count = content.count("[不准确]")
+            self.state.citation_issues = [content]
+            self.state.citation_verified = issue_count == 0
+        else:
+            self.state.citation_issues = [f"[验证失败: {result.error}]"]
+            self.state.citation_verified = False
+
+        if callback:
+            callback("_meta", "citation_verify_done", False)
 
     def _stream_call(self, prompt, system_prompt, callback, analyst_id):
         """Helper to make a streaming API call."""
@@ -371,14 +415,14 @@ class DebateEngine:
         parts = []
 
         if self.state.round1_statements:
-            parts.append("### Round 1: Independent Statements")
+            parts.append("### 第一轮：独立视角陈述")
             for aid, stmt in self.state.round1_statements.items():
                 role = roles.get(aid, {})
                 parts.append(f"\n#### {role.get('emoji', '')} {role.get('name', aid)}:")
                 parts.append(stmt)
 
         if self.state.round2_statements:
-            parts.append("\n\n### Round 2: Cross-Examination")
+            parts.append("\n\n### 第二轮：交叉质询")
             for aid, stmt in self.state.round2_statements.items():
                 role = roles.get(aid, {})
                 parts.append(f"\n#### {role.get('emoji', '')} {role.get('name', aid)}:")
