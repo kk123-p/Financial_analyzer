@@ -351,10 +351,12 @@ class DeepSeekClient:
                     reasoning = delta.get("reasoning_content") or ""
                     if reasoning:
                         full_reasoning += reasoning
-                    if content or reasoning:
+                        if callback:
+                            callback("", False, reasoning=reasoning)
+                    if content:
                         full_content += content
                         if callback:
-                            callback(content, False, reasoning=reasoning)
+                            callback(content, False, reasoning="")
                 except json.JSONDecodeError:
                     continue
 
@@ -548,10 +550,12 @@ class DeepSeekStreamClient(DeepSeekClient):
                     reasoning = delta.get("reasoning_content") or ""
                     if reasoning:
                         full_reasoning += reasoning
-                    if content or reasoning:
+                        if callback:
+                            callback("", False, reasoning=reasoning)
+                    if content:
                         full_content += content
                         if callback:
-                            callback(content, False, reasoning=reasoning)
+                            callback(content, False, reasoning="")
                 except json.JSONDecodeError:
                     continue
 
