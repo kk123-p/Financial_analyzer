@@ -55,12 +55,10 @@ function switchTab(tabName, btn) {
     const newPanel = document.getElementById('tab-' + tabName);
 
     if (oldPanel && newPanel && oldPanel !== newPanel) {
-        oldPanel.style.opacity = '1';
-        oldPanel.style.transition = 'opacity 120ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)), transform 120ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1))';
-        oldPanel.style.transform = 'translateY(4px)';
-        oldPanel.style.opacity = '0';
-        const finish = function() {
-            oldPanel.removeEventListener('transitionend', finish);
+        var switched = false;
+        function doSwitch() {
+            if (switched) return;
+            switched = true;
             oldPanel.classList.remove('active');
             oldPanel.style.opacity = '';
             oldPanel.style.transform = '';
@@ -78,8 +76,17 @@ function switchTab(tabName, btn) {
                 };
                 newPanel.addEventListener('transitionend', cleanup);
             });
-        };
-        oldPanel.addEventListener('transitionend', finish);
+        }
+        oldPanel.style.opacity = '1';
+        oldPanel.style.transition = 'opacity 120ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)), transform 120ms var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1))';
+        oldPanel.style.transform = 'translateY(4px)';
+        oldPanel.style.opacity = '0';
+        oldPanel.addEventListener('transitionend', function finish() {
+            oldPanel.removeEventListener('transitionend', finish);
+            doSwitch();
+        });
+        // 兜底：如果 transitionend 不触发（面板隐藏等），200ms 后强制切换
+        setTimeout(doSwitch, 200);
     } else if (newPanel && !oldPanel) {
         newPanel.classList.add('active');
     } else if (newPanel && oldPanel === newPanel) {
@@ -908,10 +915,31 @@ function loadTemplates() {
             var templates = list.filter(function(t) {
                 return t.mode === 'template';
             });
-            renderTemplateButtons(templates);
+            if (templates.length > 0) {
+                renderTemplateButtons(templates);
+            } else {
+                console.warn('No template-mode prompts found, using fallback');
+                renderTemplateButtons([
+                    {name: '盈利能力深度解读', description: '从毛利率、净利率、ROE四个维度解读'},
+                    {name: '财务异常信号排查', description: '从资产端、利润端、现金流排查异常'},
+                    {name: '估值合理性判断', description: '从PE分位、股息率判断估值水平'},
+                    {name: '股东结构评估', description: '分析股权集中度和机构持仓'},
+                    {name: '资金面多空分析', description: '从主力、融资、北向三个维度解读'},
+                    {name: '成长质量检查', description: '评估营收成长性和利润质量'},
+                ]);
+            }
         })
         .catch(function(e) {
             console.error('Failed to load templates:', e);
+            // API 失败时使用硬编码回退
+            renderTemplateButtons([
+                {name: '盈利能力深度解读', description: '从毛利率、净利率、ROE四个维度解读'},
+                {name: '财务异常信号排查', description: '从资产端、利润端、现金流排查异常'},
+                {name: '估值合理性判断', description: '从PE分位、股息率判断估值水平'},
+                {name: '股东结构评估', description: '分析股权集中度和机构持仓'},
+                {name: '资金面多空分析', description: '从主力、融资、北向三个维度解读'},
+                {name: '成长质量检查', description: '评估营收成长性和利润质量'},
+            ]);
         });
 }
 
