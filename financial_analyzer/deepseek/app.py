@@ -79,7 +79,7 @@ class DeepSeekApp:
         config = load_config()
         self._saved_key = config.get("deepseek_api_key", "")
         self._saved_url = config.get("deepseek_base_url", "https://api.deepseek.com")
-        self._saved_model = config.get("deepseek_model", "deepseek-chat")
+        self._saved_model = config.get("deepseek_model", "deepseek-v4-flash")
 
         # 构建 UI
         self._build_ui()
@@ -136,7 +136,7 @@ class DeepSeekApp:
         ttk.Label(r3, text="模型:", width=10, font=FONT_LABEL).pack(side=tk.LEFT)
         self.model_var = tk.StringVar(value=self._saved_model)
         ttk.Combobox(r3, textvariable=self.model_var, width=20, state="readonly",
-                     values=["deepseek-chat", "deepseek-reasoner"]).pack(side=tk.LEFT, padx=(5, 10))
+                     values=["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"]).pack(side=tk.LEFT, padx=(5, 10))
 
         # 按钮行
         r4 = ttk.Frame(step1)

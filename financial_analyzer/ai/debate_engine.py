@@ -38,7 +38,7 @@ class DebateState:
 class DebateEngine:
     """Debate engine that orchestrates three-round analyst debates."""
 
-    def __init__(self, api_key: str, model: str = "deepseek-chat",
+    def __init__(self, api_key: str, model: str = "deepseek-v4-flash",
                  base_url: str = "https://api.deepseek.com", config=None):
         if config:
             self.client = DeepSeekStreamClient(config=config)
