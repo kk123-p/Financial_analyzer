@@ -336,6 +336,11 @@ function _openConversationWs(stockCode, onReady) {
             _currentAssistantEl = null;
             _currentReasoningEl = null;
             chatInProgress = false;
+            var msgEl = document.getElementById('chat-messages');
+            if (msgEl && msgEl.querySelectorAll('.chat-bubble').length === 0) {
+                var empty = document.getElementById('chat-empty');
+                if (empty) empty.style.display = '';
+            }
             document.getElementById('chat-send-btn').style.display = 'inline-block';
             document.getElementById('chat-stop-btn').style.display = 'none';
         } else if (msg.type === 'template_start') {
@@ -872,6 +877,7 @@ async function onTemplateChange() {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             loadTemplateList();
+            loadTemplates();
             fetch('/ai/prompts/' + encodeURIComponent('深度分析-默认'))
                 .then(r => r.json())
                 .then(d => { currentTemplateData = d; })
@@ -879,6 +885,7 @@ async function onTemplateChange() {
         });
     } else {
         loadTemplateList();
+        loadTemplates();
         fetch('/ai/prompts/' + encodeURIComponent('深度分析-默认'))
             .then(r => r.json())
             .then(d => { currentTemplateData = d; })
