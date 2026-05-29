@@ -570,5 +570,60 @@
 .section-card-title { color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; }
 .section-card-body { color: var(--text-primary); font-size: 13px; line-height: 1.7; }
 
+/* ---- 推理过程折叠面板 ---- */
+.chat-reasoning,
+.debate-reasoning {
+  align-self: flex-start;
+  max-width: 85%;
+  margin: 4px 0;
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  border-radius: 8px;
+  background: rgba(17, 24, 50, 0.30);
+  font-size: var(--text-xs);
+  overflow: hidden;
+}
+
+.chat-reasoning summary,
+.debate-reasoning summary {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: color var(--duration-fast) var(--ease-out-expo);
+}
+
+.chat-reasoning summary:hover,
+.debate-reasoning summary:hover {
+  color: var(--text-secondary);
+}
+
+.chat-reasoning[open] summary,
+.debate-reasoning[open] summary {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.reasoning-content {
+  padding: 8px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.reasoning-content::-webkit-scrollbar { width: 3px; }
+.reasoning-content::-webkit-scrollbar-track { background: transparent; }
+.reasoning-content::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 2px;
+}
+
 /* ---- 聊天元信息 ---- */
 .chat-meta { text-align: center; color: var(--fg-muted); font-size: 11px; padding: 6px 0; }
