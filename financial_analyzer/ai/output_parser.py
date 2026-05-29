@@ -44,6 +44,7 @@ class OutputParser:
         self._buffer = ""
         self._current_section: str | None = None
         self._events: list[dict] = []
+        self._last_idx = 0
 
     def feed(self, chunk: str) -> list[dict]:
         """喂入一个文本块，返回事件列表"""
@@ -63,7 +64,9 @@ class OutputParser:
                 })
                 break
 
-        return self._events
+        new_events = self._events[self._last_idx:]
+        self._last_idx = len(self._events)
+        return new_events
 
     def finalize(self) -> StructuredOutput | None:
         """流结束后提取结构化数据"""
@@ -115,5 +118,6 @@ class OutputParser:
         self._buffer = ""
         self._current_section = None
         self._events = []
+        self._last_idx = 0
 
         return result

@@ -21,14 +21,17 @@ class TestOutputParserBasic:
 
     def test_multiple_chunks_merge(self):
         parser = OutputParser()
-        parser.feed("第一段")
-        parser.feed("续接文本")
-        events = parser.feed("最后一段")
+        events1 = parser.feed("第一段")
+        events2 = parser.feed("续接文本")
+        events3 = parser.feed("最后一段")
 
-        assert len(events) == 3
-        assert events[0]["content"] == "第一段"
-        assert events[1]["content"] == "续接文本"
-        assert events[2]["content"] == "最后一段"
+        # 每次 feed 只返回本次新增事件
+        assert len(events1) == 1
+        assert events1[0]["content"] == "第一段"
+        assert len(events2) == 1
+        assert events2[0]["content"] == "续接文本"
+        assert len(events3) == 1
+        assert events3[0]["content"] == "最后一段"
 
 
 class TestOutputParserStructured:
