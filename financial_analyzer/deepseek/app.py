@@ -80,6 +80,9 @@ class DeepSeekApp:
         self._saved_key = config.get("deepseek_api_key", "")
         self._saved_url = config.get("deepseek_base_url", "https://api.deepseek.com")
         self._saved_model = config.get("deepseek_model", "deepseek-v4-flash")
+        if self._saved_model == "deepseek-chat":
+            logger.warning("配置使用了已废弃模型 'deepseek-chat'，自动迁移到 'deepseek-v4-flash'")
+            self._saved_model = "deepseek-v4-flash"
 
         # 构建 UI
         self._build_ui()
