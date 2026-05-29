@@ -15,6 +15,7 @@ from ..deepseek.prompts import (
 from .report_builder import ReportBuilder
 from .signal_detector import SignalDetector
 from .briefing_generator import BriefingGenerator
+from .tools import TOOL_DEFINITIONS, ToolExecutor
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -39,7 +40,8 @@ class DebateEngine:
     """Debate engine that orchestrates three-round analyst debates."""
 
     def __init__(self, api_key: str, model: str = "deepseek-v4-flash",
-                 base_url: str = "https://api.deepseek.com", config=None):
+                 base_url: str = "https://api.deepseek.com", config=None,
+                 tool_executor: ToolExecutor = None):
         if config:
             self.client = DeepSeekStreamClient(config=config)
         else:
@@ -48,6 +50,7 @@ class DebateEngine:
         self.state = DebateState()
         self._stop_event = threading.Event()
         self._thread = None
+        self._tool_executor = tool_executor
 
     def prepare(self, data: dict, stock_code: str,
                 data_adapter=None, cache_manager=None) -> dict:
@@ -171,7 +174,10 @@ class DebateEngine:
                     callback("_meta", f"analyst_{analyst_id}_start", False)
 
                 prompt = build_debate_round1(report_text, company_name, stock_code, analyst_id)
-                result = self._stream_call(prompt, role["system_prompt"], callback, analyst_id)
+                if self._tool_executor:
+                    result = self._tool_call(prompt, role["system_prompt"], callback, analyst_id)
+                else:
+                    result = self._stream_call(prompt, role["system_prompt"], callback, analyst_id)
 
                 if result.success:
                     self.state.round1_statements[analyst_id] = result.content
@@ -200,7 +206,10 @@ class DebateEngine:
                     callback("_meta", f"analyst_{analyst_id}_start", False)
 
                 full_prompt = f"You are {role['name']}.\n\n{round2_prompt}"
-                result = self._stream_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                if self._tool_executor:
+                    result = self._tool_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                else:
+                    result = self._stream_call(full_prompt, role["system_prompt"], callback, analyst_id)
 
                 if result.success:
                     self.state.round2_statements[analyst_id] = result.content
@@ -328,6 +337,24 @@ class DebateEngine:
         return self.client.generate_deep_analysis_stream(
             prompt, system_prompt=system_prompt, callback=stream_cb
         )
+
+    def _tool_call(self, prompt, system_prompt, callback, analyst_id):
+        """Helper to make a tool-enabled API call."""
+        messages = [{"role": "user", "content": prompt}]
+        result = self.client.generate_with_tools(
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            tool_executor=self._tool_executor,
+            system_prompt=system_prompt,
+        )
+        # Stream the final result to callback
+        if result.success and callback:
+            callback(analyst_id, result.content, False)
+            callback(analyst_id, "", True)
+        elif not result.success and callback:
+            callback(analyst_id, f"[Error: {result.error}]", False)
+            callback(analyst_id, "", True)
+        return result
 
     def _build_full_debate_text(self) -> str:
         """Combine all debate content into text."""

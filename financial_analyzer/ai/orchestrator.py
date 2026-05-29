@@ -173,6 +173,10 @@ class AnalysisOrchestrator:
 
         try:
             engine = self._debate_factory()
+
+            from .tools import ToolExecutor
+            engine._tool_executor = ToolExecutor(data, stock_code)
+
             prepare_result = engine.prepare(data, stock_code)
             if not company_name:
                 company_name = prepare_result.get("report", {}).get("company_snapshot", {}).get("name", stock_code)

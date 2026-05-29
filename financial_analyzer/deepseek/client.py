@@ -50,6 +50,7 @@ class AnalysisReport:
     tokens_used: int = 0
     success: bool = False
     error: str = ""
+    tool_calls_log: list = field(default_factory=list)
 
 
 class DeepSeekClient:
@@ -363,6 +364,81 @@ class DeepSeekClient:
         except Exception as e:
             report.error = f"流式调用失败: {str(e)}"
 
+        return report
+
+    def generate_with_tools(self, messages: list, tools: list, tool_executor,
+                            system_prompt: str = None, max_tool_rounds: int = 3) -> AnalysisReport:
+        """支持工具调用的生成方法（非流式）"""
+        url = f"{self.config.base_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        all_messages = []
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        all_messages.extend(messages)
+
+        report = AnalysisReport(
+            timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
+            model=self.config.model,
+        )
+        tool_calls_log = []
+
+        for round_num in range(max_tool_rounds):
+            payload = {
+                "model": self.config.model,
+                "messages": all_messages,
+                "max_tokens": self.config.max_tokens,
+                "tools": tools,
+                "tool_choice": "auto",
+                "stream": False,
+            }
+            self._apply_thinking_config(payload)
+
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=self.config.timeout)
+                if resp.status_code != 200:
+                    report.error = f"API 返回错误 ({resp.status_code})"
+                    return report
+
+                data = resp.json()
+                choice = data.get("choices", [{}])[0]
+                message = choice.get("message", {})
+                finish_reason = choice.get("finish_reason", "")
+
+                # 如果有 tool_calls，执行工具并继续
+                if finish_reason == "tool_calls" and message.get("tool_calls"):
+                    all_messages.append(message)
+
+                    for tc in message["tool_calls"]:
+                        func = tc.get("function", {})
+                        func_name = func.get("name", "")
+                        func_args = json.loads(func.get("arguments", "{}"))
+
+                        result = tool_executor.execute(func_name, func_args)
+                        tool_calls_log.append({"tool": func_name, "args": func_args, "result": result[:200]})
+
+                        all_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        })
+                    continue
+
+                # 纯文本响应，完成
+                report.content = message.get("content", "")
+                report.reasoning_content = message.get("reasoning_content", "")
+                report.success = True
+                report.tool_calls_log = tool_calls_log
+                return report
+
+            except Exception as e:
+                report.error = f"工具调用失败: {str(e)}"
+                return report
+
+        report.error = "超过最大工具调用轮数"
         return report
 
 
