@@ -586,6 +586,322 @@
     InteractionUtils.addZoomControls(domId, chart);
   }
 
+  // ---- 10. IC Timeseries ----
+
+  function renderICTimeseries(timeseries) {
+    var domId = 'fa-chart-ic';
+    var el = document.getElementById(domId);
+    if (!el || !timeseries) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var factors = Object.keys(timeseries);
+    if (factors.length === 0) return;
+
+    // Build date axis from first factor
+    var dates = (timeseries[factors[0]] || []).map(function(r) { return r.date; });
+    var series = [];
+    var palette = ['#3FB950', '#F85149', '#64B5F6', '#D29922', '#BC8CFF', '#39D2C0', '#FF7043'];
+
+    for (var i = 0; i < Math.min(factors.length, 8); i++) {
+      var fname = factors[i];
+      var records = timeseries[fname] || [];
+      series.push({
+        name: fname,
+        type: 'line',
+        data: records.map(function(r) { return r.ic !== null ? r.ic : null; }),
+        smooth: 0.2,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: { width: 1.5, color: palette[i % palette.length] },
+        itemStyle: { color: palette[i % palette.length] },
+      });
+    }
+
+    EchartsUtils.setOption(chart, {
+      tooltip: { trigger: 'axis' },
+      legend: { data: factors.slice(0, 8), textStyle: { color: '#8B949E', fontSize: 10 }, top: 0, type: 'scroll' },
+      grid: { left: 50, right: 20, top: 40, bottom: 30 },
+      xAxis: { type: 'category', data: dates, axisLabel: { color: '#8B949E', fontSize: 10 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: { type: 'value', name: 'IC', axisLabel: { color: '#8B949E', fontSize: 10 }, splitLine: { lineStyle: { color: '#21262D' } } },
+      series: series,
+    });
+
+    InteractionUtils.enableZoom(chart, { start: 0, end: 100 });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 11. Correlation Heatmap ----
+
+  function renderCorrelationHeatmap(correlation) {
+    var domId = 'fa-chart-corr';
+    var el = document.getElementById(domId);
+    if (!el || !correlation || !correlation.labels) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var labels = correlation.labels || [];
+    var matrix = correlation.matrix || [];
+    var n = labels.length;
+    if (n === 0) return;
+
+    var data = [];
+    for (var i = 0; i < n; i++) {
+      for (var j = 0; j < n; j++) {
+        var v = matrix[i] && matrix[i][j] != null ? matrix[i][j] : 0;
+        data.push([j, i, +v.toFixed(3)]);
+      }
+    }
+
+    EchartsUtils.setOption(chart, {
+      tooltip: {
+        formatter: function (params) {
+          return labels[params.value[1]] + ' × ' + labels[params.value[0]] + '<br/>相关系数: <b>' + params.value[2] + '</b>';
+        },
+      },
+      grid: { left: 100, right: 40, top: 10, bottom: 80 },
+      xAxis: { type: 'category', data: labels, axisLabel: { color: '#8B949E', fontSize: 9, rotate: 45 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: { type: 'category', data: labels, axisLabel: { color: '#8B949E', fontSize: 9 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      visualMap: { min: -1, max: 1, calculable: false, orient: 'vertical', right: 0, top: 'center', inRange: { color: ['#F85149', '#21262D', '#3FB950'] }, textStyle: { color: '#8B949E', fontSize: 10 } },
+      series: [{
+        type: 'heatmap',
+        data: data,
+        label: { show: n <= 15, fontSize: 9, color: '#E6EDF3', formatter: function (p) { return p.value[2]; } },
+        emphasis: { itemStyle: { shadowBlur: 6, shadowColor: 'rgba(0,0,0,0.4)' } },
+      }],
+    });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 12. Decay Curve ----
+
+  function renderDecayCurve(decayCurves) {
+    var domId = 'fa-chart-decay';
+    var el = document.getElementById(domId);
+    if (!el || !decayCurves) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var factors = Object.keys(decayCurves);
+    if (factors.length === 0) return;
+
+    var horizons = (decayCurves[factors[0]] || {}).horizons || [1, 2, 3, 6, 12];
+    var palette = ['#3FB950', '#F85149', '#64B5F6', '#D29922', '#BC8CFF', '#39D2C0', '#FF7043'];
+    var series = [];
+
+    for (var i = 0; i < Math.min(factors.length, 6); i++) {
+      var fname = factors[i];
+      var dc = decayCurves[fname];
+      series.push({
+        name: fname,
+        type: 'line',
+        data: dc.mean_ic || [],
+        smooth: 0.2,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: { width: 2, color: palette[i % palette.length] },
+        itemStyle: { color: palette[i % palette.length] },
+      });
+    }
+
+    EchartsUtils.setOption(chart, {
+      tooltip: { trigger: 'axis' },
+      legend: { data: factors.slice(0, 6), textStyle: { color: '#8B949E', fontSize: 10 }, top: 0 },
+      grid: { left: 50, right: 20, top: 40, bottom: 30 },
+      xAxis: { type: 'category', data: horizons.map(function(h) { return h + '月'; }), name: '持仓周期', nameTextStyle: { color: '#8B949E' }, axisLabel: { color: '#8B949E' }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: { type: 'value', name: '平均 IC', axisLabel: { color: '#8B949E' }, splitLine: { lineStyle: { color: '#21262D' } } },
+      series: series,
+    });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 13. Composite Score Bar ----
+
+  function renderCompositeScore(composite) {
+    var domId = 'fa-chart-composite';
+    var el = document.getElementById(domId);
+    if (!el || !composite || composite.length === 0) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var labels = composite.map(function(c) { return c.factor; });
+    var scores = composite.map(function(c) { return +c.score.toFixed(4); });
+
+    EchartsUtils.setOption(chart, {
+      tooltip: {
+        trigger: 'axis',
+        formatter: function (params) {
+          var idx = params[0].dataIndex;
+          var c = composite[idx];
+          return c.factor + '<br/>评分: <b>' + c.score.toFixed(4) + '</b><br/>IC: ' + c.ic_mean.toFixed(4) + ' | IR: ' + c.ir.toFixed(3);
+        },
+      },
+      grid: { left: 100, right: 20, top: 10, bottom: 30 },
+      xAxis: { type: 'value', name: '综合评分', axisLabel: { color: '#8B949E' }, splitLine: { lineStyle: { color: '#21262D' } } },
+      yAxis: { type: 'category', data: labels, axisLabel: { color: '#8B949E', fontSize: 10 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      series: [{
+        type: 'bar',
+        data: scores,
+        itemStyle: {
+          color: function (params) {
+            var v = params.value;
+            return v >= 0.3 ? '#3FB950' : v >= 0.1 ? '#D29922' : '#F85149';
+          },
+        },
+        label: { show: true, position: 'right', color: '#E6EDF3', fontSize: 10, formatter: function (p) { return p.value.toFixed(3); } },
+      }],
+    });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 14. Benchmark Comparison ----
+
+  function renderBenchmarkComparison(data) {
+    var domId = 'bt-chart-benchmark';
+    var el = document.getElementById(domId);
+    if (!el) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var snapshots = data.snapshots || [];
+    var benchmarkReturns = data.benchmark_returns || [];
+    var excessReturns = data.excess_returns || [];
+    var capital = data.initial_capital || 5000;
+
+    // Build cumulative returns
+    var dates = [];
+    var portCum = [0];
+    var benchCum = [0];
+    var excessCum = [0];
+
+    for (var i = 0; i < snapshots.length; i++) {
+      dates.push(formatDate(snapshots[i].date));
+    }
+
+    var monthlyReturns = (data.metrics || {}).monthly_returns || [];
+    for (var j = 0; j < Math.max(monthlyReturns.length, benchmarkReturns.length); j++) {
+      portCum.push((portCum[portCum.length - 1] || 0) + (monthlyReturns[j] || 0));
+      benchCum.push((benchCum[benchCum.length - 1] || 0) + (benchmarkReturns[j] || 0));
+      excessCum.push((excessCum[excessCum.length - 1] || 0) + (excessReturns[j] || 0));
+    }
+
+    // Trim dates to match
+    var chartDates = dates.slice(0, Math.min(dates.length, portCum.length));
+
+    EchartsUtils.setOption(chart, {
+      tooltip: { trigger: 'axis', formatter: function (params) {
+        var s = params[0].axisValue + '<br/>';
+        params.forEach(function (p) { s += p.marker + ' ' + p.seriesName + ': <b>' + (p.value * 100).toFixed(2) + '%</b><br/>'; });
+        return s;
+      }},
+      legend: { data: ['组合', '基准', '超额'], textStyle: { color: '#8B949E' }, top: 0 },
+      grid: { left: 50, right: 20, top: 40, bottom: 30 },
+      xAxis: { type: 'category', data: chartDates, axisLabel: { color: '#8B949E', fontSize: 10 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: { type: 'value', name: '累计收益', axisLabel: { color: '#8B949E', formatter: function (v) { return (v * 100).toFixed(0) + '%'; } }, splitLine: { lineStyle: { color: '#21262D' } } },
+      series: [
+        { name: '组合', type: 'line', data: portCum, smooth: 0.2, symbol: 'none', lineStyle: { width: 2, color: '#3FB950' } },
+        { name: '基准', type: 'line', data: benchCum, smooth: 0.2, symbol: 'none', lineStyle: { width: 2, color: '#64B5F6' } },
+        { name: '超额', type: 'line', data: excessCum, smooth: 0.2, symbol: 'none', lineStyle: { width: 1.5, color: '#D29922', type: 'dashed' } },
+      ],
+    });
+    InteractionUtils.enableZoom(chart, { start: 0, end: 100 });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 15. Rolling Sharpe ----
+
+  function renderRollingSharpe(data) {
+    var domId = 'bt-chart-rolling-sharpe';
+    var el = document.getElementById(domId);
+    if (!el) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var rollingSharpe = data.rolling_sharpe || [];
+    if (rollingSharpe.length === 0) return;
+
+    // Build date labels
+    var snapshots = data.snapshots || [];
+    var startIdx = snapshots.length - rollingSharpe.length;
+    var dates = [];
+    for (var i = startIdx; i < snapshots.length; i++) {
+      dates.push(formatDate(snapshots[i] ? snapshots[i].date : ''));
+    }
+
+    EchartsUtils.setOption(chart, {
+      tooltip: { trigger: 'axis' },
+      grid: { left: 50, right: 20, top: 20, bottom: 30 },
+      xAxis: { type: 'category', data: dates, axisLabel: { color: '#8B949E', fontSize: 10 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: { type: 'value', name: 'Sharpe', axisLabel: { color: '#8B949E' }, splitLine: { lineStyle: { color: '#21262D' } } },
+      series: [{
+        type: 'line',
+        data: rollingSharpe,
+        smooth: 0.2,
+        symbol: 'none',
+        lineStyle: { width: 2, color: '#64B5F6' },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(100,181,246,0.2)' }, { offset: 1, color: 'rgba(100,181,246,0.02)' }] } },
+        markLine: { data: [{ yAxis: 0, lineStyle: { type: 'dashed', color: '#8B949E' } }] },
+      }],
+    });
+    InteractionUtils.enableZoom(chart, { start: 0, end: 100 });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // ---- 16. Rolling Alpha/Beta ----
+
+  function renderRollingAlphaBeta(data) {
+    var domId = 'bt-chart-rolling-alpha';
+    var el = document.getElementById(domId);
+    if (!el) return;
+
+    var chart = EchartsUtils.init(domId);
+    if (!chart) return;
+
+    var rollingAlpha = data.rolling_alpha || [];
+    var rollingBeta = data.rolling_beta || [];
+    if (rollingAlpha.length === 0 && rollingBeta.length === 0) return;
+
+    var snapshots = data.snapshots || [];
+    var maxLen = Math.max(rollingAlpha.length, rollingBeta.length);
+    var startIdx = snapshots.length - maxLen;
+    var dates = [];
+    for (var i = startIdx; i < snapshots.length; i++) {
+      dates.push(formatDate(snapshots[i] ? snapshots[i].date : ''));
+    }
+
+    EchartsUtils.setOption(chart, {
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['Alpha (年化)', 'Beta'], textStyle: { color: '#8B949E' }, top: 0 },
+      grid: { left: 50, right: 50, top: 40, bottom: 30 },
+      xAxis: { type: 'category', data: dates, axisLabel: { color: '#8B949E', fontSize: 10 }, axisLine: { lineStyle: { color: '#30363D' } } },
+      yAxis: [
+        { type: 'value', name: 'Alpha', axisLabel: { color: '#8B949E', formatter: function (v) { return (v * 100).toFixed(0) + '%'; } }, splitLine: { lineStyle: { color: '#21262D' } } },
+        { type: 'value', name: 'Beta', position: 'right', axisLabel: { color: '#8B949E' }, splitLine: { show: false } },
+      ],
+      series: [
+        { name: 'Alpha (年化)', type: 'line', data: rollingAlpha, smooth: 0.2, symbol: 'none', lineStyle: { width: 2, color: '#3FB950' } },
+        { name: 'Beta', type: 'line', data: rollingBeta, smooth: 0.2, symbol: 'none', yAxisIndex: 1, lineStyle: { width: 2, color: '#BC8CFF' } },
+      ],
+    });
+    InteractionUtils.enableZoom(chart, { start: 0, end: 100 });
+    InteractionUtils.addZoomControls(domId, chart);
+  }
+
+  // Update CHART_IDS
+  CHART_IDS.faIC = 'fa-chart-ic';
+  CHART_IDS.faCorr = 'fa-chart-corr';
+  CHART_IDS.faDecay = 'fa-chart-decay';
+  CHART_IDS.faComposite = 'fa-chart-composite';
+  CHART_IDS.btBenchmark = 'bt-chart-benchmark';
+  CHART_IDS.btRollingSharpe = 'bt-chart-rolling-sharpe';
+  CHART_IDS.btRollingAlpha = 'bt-chart-rolling-alpha';
+
   global.QuantCharts = {
     CHART_IDS: CHART_IDS,
     renderEquityCurve: renderEquityCurve,
@@ -597,5 +913,12 @@
     resizeAll: resizeAll,
     renderPaperPnlCurve: renderPaperPnlCurve,
     renderPaperAllocationPie: renderPaperAllocationPie,
+    renderICTimeseries: renderICTimeseries,
+    renderCorrelationHeatmap: renderCorrelationHeatmap,
+    renderDecayCurve: renderDecayCurve,
+    renderCompositeScore: renderCompositeScore,
+    renderBenchmarkComparison: renderBenchmarkComparison,
+    renderRollingSharpe: renderRollingSharpe,
+    renderRollingAlphaBeta: renderRollingAlphaBeta,
   };
 })(window);
