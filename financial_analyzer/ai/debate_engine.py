@@ -276,7 +276,10 @@ class DebateEngine:
                     callback("_meta", f"analyst_{analyst_id}_start", False)
 
                 full_prompt = f"You are {role['name']}.\n\n{prompt}"
-                self._stream_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                if self._tool_executor:
+                    self._tool_call(full_prompt, role["system_prompt"], callback, analyst_id)
+                else:
+                    self._stream_call(full_prompt, role["system_prompt"], callback, analyst_id)
 
                 if callback:
                     callback("_meta", f"analyst_{analyst_id}_done", False)
