@@ -108,7 +108,9 @@ class AnalysisOrchestrator:
 
         parser = OutputParser()
 
-        def on_chunk(chunk: str, done: bool):
+        def on_chunk(chunk: str, done: bool, reasoning: str = ""):
+            if reasoning and callback:
+                callback("reasoning", reasoning, None)
             if chunk:
                 for event in parser.feed(chunk):
                     if callback:
@@ -179,8 +181,8 @@ class AnalysisOrchestrator:
             msg_queue = queue.Queue()
             QUEUE_DONE = object()
 
-            def debate_callback(role: str, chunk: str, done: bool):
-                msg_queue.put((role, chunk, done))
+            def debate_callback(role: str, chunk: str, done: bool, reasoning: str = ""):
+                msg_queue.put((role, chunk, done, reasoning))
 
             def on_complete(state):
                 msg_queue.put(QUEUE_DONE)
@@ -199,11 +201,13 @@ class AnalysisOrchestrator:
                         callback("done", "", None)
                     break
 
-                role, content, done = msg
+                role, content, done, reasoning = msg
                 if role == "_meta":
                     if callback:
                         callback("meta", content, None)
                 else:
+                    if reasoning and callback:
+                        callback("reasoning", reasoning, None)
                     if callback:
                         callback("chunk", content, {"role": role, "done": done})
 
@@ -262,9 +266,11 @@ class AnalysisOrchestrator:
         accumulated = ""
         current_section_idx = -1
 
-        def on_chunk(chunk: str, done: bool):
+        def on_chunk(chunk: str, done: bool, reasoning: str = ""):
             nonlocal accumulated, current_section_idx
 
+            if reasoning and callback:
+                callback("reasoning", reasoning, None)
             if chunk:
                 accumulated += chunk
 

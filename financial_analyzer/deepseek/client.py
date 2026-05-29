@@ -27,6 +27,8 @@ class DeepSeekConfig:
     max_tokens: int = 8192
     temperature: float = 0.3
     timeout: int = 120
+    thinking_enabled: bool = False
+    reasoning_effort: str = "medium"
 
 
 @dataclass
@@ -155,6 +157,11 @@ class DeepSeekClient:
             "temperature": self.config.temperature,
             "stream": False,
         }
+
+        if self.config.thinking_enabled:
+            payload.pop("temperature", None)
+            payload["thinking"] = {"type": "enabled"}
+            payload["reasoning_effort"] = self.config.reasoning_effort
 
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -292,6 +299,11 @@ class DeepSeekClient:
             "stream": True,
         }
 
+        if self.config.thinking_enabled:
+            payload.pop("temperature", None)
+            payload["thinking"] = {"type": "enabled"}
+            payload["reasoning_effort"] = self.config.reasoning_effort
+
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
             model=self.config.model,
@@ -305,11 +317,12 @@ class DeepSeekClient:
                 return report
 
             full_content = ""
+            full_reasoning = ""
             for line in resp.iter_lines():
                 if cancel_event and cancel_event.is_set():
                     resp.close()
                     if callback:
-                        callback("", True)
+                        callback("", True, reasoning="")
                     break
                 if not line:
                     continue
@@ -318,16 +331,19 @@ class DeepSeekClient:
                     line = line[6:]
                 if line.strip() == "[DONE]":
                     if callback:
-                        callback("", True)
+                        callback("", True, reasoning="")
                     break
                 try:
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
-                    if content:
+                    reasoning = delta.get("reasoning_content", "")
+                    if reasoning:
+                        full_reasoning += reasoning
+                    if content or reasoning:
                         full_content += content
                         if callback:
-                            callback(content, False)
+                            callback(content, False, reasoning=reasoning)
                 except json.JSONDecodeError:
                     continue
 
@@ -384,6 +400,11 @@ class DeepSeekStreamClient(DeepSeekClient):
             "stream": True,
         }
 
+        if self.config.thinking_enabled:
+            payload.pop("temperature", None)
+            payload["thinking"] = {"type": "enabled"}
+            payload["reasoning_effort"] = self.config.reasoning_effort
+
         report = AnalysisReport(
             timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
             model=self.config.model,
@@ -399,6 +420,7 @@ class DeepSeekStreamClient(DeepSeekClient):
                 return report
 
             full_content = ""
+            full_reasoning = ""
             for line in resp.iter_lines():
                 if not line:
                     continue
@@ -407,16 +429,19 @@ class DeepSeekStreamClient(DeepSeekClient):
                     line = line[6:]
                 if line.strip() == "[DONE]":
                     if callback:
-                        callback("", True)
+                        callback("", True, reasoning="")
                     break
                 try:
                     chunk = json.loads(line)
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
-                    if content:
+                    reasoning = delta.get("reasoning_content", "")
+                    if reasoning:
+                        full_reasoning += reasoning
+                    if content or reasoning:
                         full_content += content
                         if callback:
-                            callback(content, False)
+                            callback(content, False, reasoning=reasoning)
                 except json.JSONDecodeError:
                     continue
 

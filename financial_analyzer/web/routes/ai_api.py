@@ -154,8 +154,8 @@ async def ai_debate(websocket: WebSocket):
         msg_queue: queue.Queue = queue.Queue()
         loop = asyncio.get_event_loop()
 
-        def debate_callback(role: str, chunk: str, done: bool):
-            msg_queue.put((role, chunk, done))
+        def debate_callback(role: str, chunk: str, done: bool, reasoning: str = ""):
+            msg_queue.put((role, chunk, done, reasoning))
 
         def on_debate_complete(state):
             msg_queue.put(QUEUE_DONE)
@@ -173,7 +173,7 @@ async def ai_debate(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "done", "content": ""}))
                 break
 
-            role, content, done = msg
+            role, content, done, reasoning = msg
 
             if role == "_meta":
                 await websocket.send_text(json.dumps({
@@ -182,12 +182,15 @@ async def ai_debate(websocket: WebSocket):
                     "info": done,
                 }))
             else:
-                await websocket.send_text(json.dumps({
+                payload = {
                     "type": "chunk",
                     "role": role,
                     "content": content,
                     "done": done,
-                }))
+                }
+                if reasoning:
+                    payload["reasoning"] = reasoning
+                await websocket.send_text(json.dumps(payload))
                 # 仅当队列为空时才让出事件循环，避免每chunk 5ms的累积延迟
                 if msg_queue.empty():
                     await asyncio.sleep(0)
@@ -211,8 +214,8 @@ async def ai_debate(websocket: WebSocket):
 
                 fu_queue: queue.Queue = queue.Queue()
 
-                def fu_callback(role: str, chunk: str, done: bool):
-                    fu_queue.put((role, chunk, done))
+                def fu_callback(role: str, chunk: str, done: bool, reasoning: str = ""):
+                    fu_queue.put((role, chunk, done, reasoning))
 
                 def fu_on_complete(state):
                     fu_queue.put(FU_DONE)
@@ -228,19 +231,22 @@ async def ai_debate(websocket: WebSocket):
                     if item is FU_DONE:
                         await websocket.send_text(json.dumps({"type": "done", "content": ""}))
                         break
-                    role, content, done = item
+                    role, content, done, reasoning = item
                     if role == "_meta":
                         await websocket.send_text(json.dumps({
                             "type": "meta",
                             "content": content,
                         }))
                     else:
-                        await websocket.send_text(json.dumps({
+                        payload = {
                             "type": "chunk",
                             "role": role,
                             "content": content,
                             "done": done,
-                        }))
+                        }
+                        if reasoning:
+                            payload["reasoning"] = reasoning
+                        await websocket.send_text(json.dumps(payload))
                         if fu_queue.empty():
                             await asyncio.sleep(0)
 

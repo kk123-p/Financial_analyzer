@@ -222,9 +222,9 @@ class DebateEngine:
             self.state.full_debate_text = full_debate
             round3_prompt = build_debate_round3(full_debate)
 
-            def consensus_cb(chunk, done):
+            def consensus_cb(chunk, done, reasoning=""):
                 if callback:
-                    callback("consensus", chunk, done)
+                    callback("consensus", chunk, done, reasoning=reasoning)
 
             result = self.client.generate_deep_analysis_stream(
                 round3_prompt, system_prompt=get_debate_system_prompt(), callback=consensus_cb
@@ -294,9 +294,9 @@ class DebateEngine:
             full_debate = self._build_full_debate_text()
             prompt = f"Full debate record:\n{full_debate}\n\n{prompt}"
 
-            def consensus_cb(chunk, done):
+            def consensus_cb(chunk, done, reasoning=""):
                 if callback:
-                    callback("consensus", chunk, done)
+                    callback("consensus", chunk, done, reasoning=reasoning)
 
             result = self.client.generate_deep_analysis_stream(
                 prompt, system_prompt=get_debate_system_prompt(), callback=consensus_cb
@@ -321,9 +321,9 @@ class DebateEngine:
 
     def _stream_call(self, prompt, system_prompt, callback, analyst_id):
         """Helper to make a streaming API call."""
-        def stream_cb(chunk, done):
+        def stream_cb(chunk, done, reasoning=""):
             if callback:
-                callback(analyst_id, chunk, done)
+                callback(analyst_id, chunk, done, reasoning=reasoning)
 
         return self.client.generate_deep_analysis_stream(
             prompt, system_prompt=system_prompt, callback=stream_cb
