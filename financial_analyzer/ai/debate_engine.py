@@ -341,11 +341,17 @@ class DebateEngine:
     def _tool_call(self, prompt, system_prompt, callback, analyst_id):
         """Helper to make a tool-enabled API call."""
         messages = [{"role": "user", "content": prompt}]
+
+        def _on_tool(tool_name):
+            if callback:
+                callback("_meta", f"tool_call:{tool_name}", False)
+
         result = self.client.generate_with_tools(
             messages=messages,
             tools=TOOL_DEFINITIONS,
             tool_executor=self._tool_executor,
             system_prompt=system_prompt,
+            tool_callback=_on_tool,
         )
         # Stream the final result to callback
         if result.success and callback:

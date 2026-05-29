@@ -367,7 +367,8 @@ class DeepSeekClient:
         return report
 
     def generate_with_tools(self, messages: list, tools: list, tool_executor,
-                            system_prompt: str = None, max_tool_rounds: int = 3) -> AnalysisReport:
+                            system_prompt: str = None, max_tool_rounds: int = 3,
+                            tool_callback=None) -> AnalysisReport:
         """支持工具调用的生成方法（非流式）"""
         url = f"{self.config.base_url}/v1/chat/completions"
         headers = {
@@ -391,6 +392,7 @@ class DeepSeekClient:
                 "model": self.config.model,
                 "messages": all_messages,
                 "max_tokens": self.config.max_tokens,
+                "temperature": self.config.temperature,
                 "tools": tools,
                 "tool_choice": "auto",
                 "stream": False,
@@ -417,6 +419,8 @@ class DeepSeekClient:
                         func_name = func.get("name", "")
                         func_args = json.loads(func.get("arguments", "{}"))
 
+                        if tool_callback:
+                            tool_callback(func_name)
                         result = tool_executor.execute(func_name, func_args)
                         tool_calls_log.append({"tool": func_name, "args": func_args, "result": result[:200]})
 
