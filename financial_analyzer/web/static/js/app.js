@@ -560,6 +560,7 @@ let debateData = {
     followups: [],
 };
 let currentRoundKey = '';
+let currentAnalystId = '';
 
 function startDebateNew() {
     const stockCode = document.querySelector('input[name="stock_code"]')?.value || '';
@@ -586,6 +587,7 @@ function startDebateNew() {
     // 重置辩论数据
     debateData = { round1: {}, round2: {}, round3: {}, consensus: '', followups: [] };
     currentRoundKey = '';
+    currentAnalystId = '';
 
     const statusEl = document.getElementById('debate-status');
     statusEl.textContent = '连接中...';
@@ -619,6 +621,7 @@ function startDebateNew() {
                 }
                 else if (msg.content.startsWith('analyst_') && msg.content.endsWith('_start')) {
                     const roleKey = msg.content.replace('analyst_', '').replace('_start', '');
+                    currentAnalystId = roleKey;
                     if (roleKey === 'value' || roleKey === 'growth' || roleKey === 'risk') {
                         const body = document.getElementById(BODY_IDS[roleKey]);
                         const tag = document.createElement('span');
@@ -634,6 +637,26 @@ function startDebateNew() {
                     startBtn.disabled = false;
                     startBtn.textContent = '重新辩论';
                     debateRunning = false;
+                }
+                else if (msg.content.startsWith('tool_call:')) {
+                    const toolName = msg.content.substring(10);
+                    const toolLabels = {
+                        'get_financial_metric': '查询财务指标',
+                        'get_historical_trend': '获取历史趋势',
+                        'get_anomaly_signals': '检查异常信号',
+                    };
+                    const label = toolLabels[toolName] || toolName;
+                    statusEl.textContent = label + '...';
+                    var curRole = currentAnalystId;
+                    if (curRole && BODY_IDS[curRole]) {
+                        var body = document.getElementById(BODY_IDS[curRole]);
+                        var hint = document.createElement('span');
+                        hint.className = 'tool-progress-hint';
+                        hint.textContent = '🔍 ' + label + '...';
+                        hint.style.cssText = 'color:#888;font-size:0.85em;display:block;margin:2px 0;';
+                        body.appendChild(hint);
+                        body.scrollTop = body.scrollHeight;
+                    }
                 }
                 else if (msg.content.startsWith('error:')) {
                     statusEl.textContent = '出错: ' + msg.content.substring(6);
