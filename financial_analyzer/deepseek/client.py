@@ -23,11 +23,9 @@ class DeepSeekConfig:
     """DeepSeek 配置"""
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-chat"
-    max_tokens: int = 1024
+    model: str = "deepseek-v4-flash"
+    max_tokens: int = 8192
     temperature: float = 0.3
-    frequency_penalty: float = 0.5
-    presence_penalty: float = 0.3
     timeout: int = 120
 
 
@@ -222,17 +220,21 @@ class DeepSeekClient:
 
         from .prompts import (
             DEEP_ANALYSIS_SYSTEM_PROMPT, get_analysis_prompt,
-            build_multi_perspective_prompt,
+            build_multi_perspective_prompt, ANALYST_ROLES,
         )
 
-        system_prompt = DEEP_ANALYSIS_SYSTEM_PROMPT
+        perspective_map = {
+            "value": ANALYST_ROLES["value"]["system_prompt"],
+            "growth": ANALYST_ROLES["growth"]["system_prompt"],
+            "risk": ANALYST_ROLES["risk"]["system_prompt"],
+        }
+        system_prompt = perspective_map.get(perspective, DEEP_ANALYSIS_SYSTEM_PROMPT)
         user_message = structured_prompt
 
         if perspective == "multi":
             user_message = build_multi_perspective_prompt(structured_prompt)
         elif analysis_focus:
-            focus_prompt = get_analysis_prompt(analysis_focus)
-            user_message = f"{structured_prompt}\n\n{focus_prompt}"
+            user_message = get_analysis_prompt(structured_prompt, analysis_focus)
 
         report = self._call_api(user_message, system_prompt=system_prompt)
         return report
@@ -257,18 +259,22 @@ class DeepSeekClient:
 
         from .prompts import (
             DEEP_ANALYSIS_SYSTEM_PROMPT, get_analysis_prompt,
-            build_multi_perspective_prompt,
+            build_multi_perspective_prompt, ANALYST_ROLES,
         )
 
         if system_prompt is None:
-            system_prompt = DEEP_ANALYSIS_SYSTEM_PROMPT
+            perspective_map = {
+                "value": ANALYST_ROLES["value"]["system_prompt"],
+                "growth": ANALYST_ROLES["growth"]["system_prompt"],
+                "risk": ANALYST_ROLES["risk"]["system_prompt"],
+            }
+            system_prompt = perspective_map.get(perspective, DEEP_ANALYSIS_SYSTEM_PROMPT)
         user_message = structured_prompt
 
         if perspective == "multi":
             user_message = build_multi_perspective_prompt(structured_prompt)
         elif analysis_focus:
-            focus_prompt = get_analysis_prompt(analysis_focus)
-            user_message = f"{structured_prompt}\n\n{focus_prompt}"
+            user_message = get_analysis_prompt(structured_prompt, analysis_focus)
 
         url = f"{self.config.base_url}/v1/chat/completions"
         headers = {
@@ -283,8 +289,6 @@ class DeepSeekClient:
             ],
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
-            "frequency_penalty": self.config.frequency_penalty,
-            "presence_penalty": self.config.presence_penalty,
             "stream": True,
         }
 
@@ -377,8 +381,6 @@ class DeepSeekStreamClient(DeepSeekClient):
             ],
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
-            "frequency_penalty": self.config.frequency_penalty,
-            "presence_penalty": self.config.presence_penalty,
             "stream": True,
         }
 
