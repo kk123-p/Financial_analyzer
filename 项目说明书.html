@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financial Analyzer Pro — 项目说明书</title>
+<style>
+  :root {
+    --bg-primary: #0a0e14;
+    --bg-secondary: #12171f;
+    --bg-card: #161c26;
+    --bg-hover: #1c2330;
+    --border: #252d3a;
+    --text-primary: #cdd6e0;
+    --text-secondary: #8b95a5;
+    --text-muted: #5c6678;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --purple: #8b5cf6;
+    --cyan: #06b6d4;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.7;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  nav {
+    width: 240px;
+    min-width: 240px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    padding: 32px 20px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  nav .logo {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #fff;
+    letter-spacing: -0.3px;
+  }
+  nav .logo span { color: var(--accent); }
+  nav .version {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+  nav a {
+    display: block;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+  }
+  nav a:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+  nav a.active {
+    color: var(--accent);
+    background: var(--accent-glow);
+  }
+  nav .divider {
+    border-top: 1px solid var(--border);
+    margin: 16px 0;
+  }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    max-width: 960px;
+    padding: 48px 56px;
+  }
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; color: #fff; letter-spacing: -0.5px; }
+  h2 {
+    font-size: 22px; font-weight: 700; margin: 48px 0 16px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border); color: #e5eaf0;
+  }
+  h3 { font-size: 17px; font-weight: 600; margin: 28px 0 10px; color: #d5dce5; }
+  p  { color: var(--text-secondary); margin-bottom: 12px; font-size: 15px; }
+  .subtitle { font-size: 16px; color: var(--text-muted); margin-bottom: 32px; }
+
+  /* ── Badges ── */
+  .badges { display:flex; gap:8px; flex-wrap:wrap; margin: 16px 0 8px; }
+  .badge {
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+    background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border);
+  }
+  .badge.accent { background: var(--accent-glow); color: var(--accent); border-color: var(--accent); }
+  .badge.green  { background: rgba(16,185,129,0.1); color: var(--green); border-color: var(--green); }
+  .badge.amber  { background: rgba(245,158,11,0.1); color: var(--amber); border-color: var(--amber); }
+  .badge.purple { background: rgba(139,92,246,0.1); color: var(--purple); border-color: var(--purple); }
+  .badge.cyan   { background: rgba(6,182,212,0.1); color: var(--cyan); border-color: var(--cyan); }
+
+  /* ── Cards ── */
+  .card-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin: 16px 0 24px; }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    transition: border-color 0.15s;
+  }
+  .card:hover { border-color: #364153; }
+  .card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #e0e5eb; }
+  .card p  { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .card .accent-strip { width: 100%; height: 3px; border-radius: 0 0 var(--radius-lg) var(--radius-lg); margin: 16px -22px -20px; }
+  .card .strip-blue   { background: var(--accent); }
+  .card .strip-green  { background: var(--green); }
+  .card .strip-amber  { background: var(--amber); }
+  .card .strip-purple { background: var(--purple); }
+  .card .strip-cyan   { background: var(--cyan); }
+
+  /* ── Stat row ── */
+  .stat-row { display:flex; gap:20px; margin: 24px 0; flex-wrap:wrap; }
+  .stat {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 18px 24px; min-width: 140px; text-align: center;
+  }
+  .stat .num { font-size: 28px; font-weight: 700; color: #fff; }
+  .stat .label { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── Flow / Pipeline ── */
+  .pipeline { display:flex; gap:0; margin: 20px 0; flex-wrap:wrap; }
+  .pipeline .step {
+    flex:1; min-width: 120px; text-align: center; padding: 16px 10px;
+    background: var(--bg-card); border: 1px solid var(--border); position: relative;
+  }
+  .pipeline .step:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .pipeline .step:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+  .pipeline .step .step-num {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-weight: 700; font-size: 13px; display: inline-flex;
+    align-items: center; justify-content: center; margin-bottom: 6px;
+  }
+  .pipeline .step .step-label { font-size: 13px; font-weight: 600; color: #ddd; }
+  .pipeline .step .step-desc  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Table ── */
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0 24px;
+    font-size: 14px;
+  }
+  thead { background: var(--bg-card); }
+  th {
+    text-align: left; padding: 10px 14px; font-weight: 600;
+    color: var(--text-secondary); border-bottom: 1px solid var(--border); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  td {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+  tr:hover td { background: var(--bg-hover); }
+  td:first-child { font-weight: 600; color: #e0e5eb; }
+
+  /* ── Code ── */
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; background: var(--bg-hover); padding: 2px 6px;
+    border-radius: 4px; color: var(--cyan);
+  }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border);
+    color: var(--text-muted); font-size: 13px;
+  }
+
+  @media (max-width: 768px) {
+    body { flex-direction:column; }
+    nav {
+      width:100%; min-width:unset; height:auto; position:static;
+      flex-direction:row; flex-wrap:wrap; padding:16px; gap:6px;
+    }
+    nav .logo { width:100%; }
+    nav a { padding:6px 10px; font-size:13px; }
+    main { padding:24px 20px; }
+    .stat-row { gap:10px; }
+    .stat { min-width:100px; padding:14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════ Sidebar ════ -->
+<nav>
+  <div class="logo">Financial <span>Analyzer</span> Pro</div>
+  <div class="version">v10.0 · 项目说明书</div>
+  <a href="#overview">概览</a>
+  <a href="#architecture">系统架构</a>
+  <a href="#pipeline">分析流水线</a>
+  <a href="#modules">功能模块</a>
+  <a href="#ai">AI 投研</a>
+  <a href="#quant">量化引擎</a>
+  <a href="#audit">审计系统</a>
+  <a href="#web">Web 界面</a>
+  <a href="#data">数据层</a>
+  <a href="#tech">技术栈</a>
+</nav>
+
+<!-- ════ Main Content ════ -->
+<main>
+
+<h1>Financial Analyzer Pro</h1>
+<p class="subtitle">面向中国A股市场的综合性财务分析平台 — 从数据获取到 AI 深度研报的一站式终端</p>
+
+<div class="badges">
+  <span class="badge accent">Python 3.13</span>
+  <span class="badge green">FastAPI</span>
+  <span class="badge amber">Tushare</span>
+  <span class="badge purple">DeepSeek AI</span>
+  <span class="badge cyan">量化多因子</span>
+  <span class="badge">HTMX</span>
+  <span class="badge">Jinja2</span>
+  <span class="badge">scikit-learn</span>
+</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="num">195</div><div class="label">Python 源文件</div></div>
+  <div class="stat"><div class="num">~71,000</div><div class="label">代码行数</div></div>
+  <div class="stat"><div class="num">34</div><div class="label">分析类型</div></div>
+  <div class="stat"><div class="num">11</div><div class="label">路由模块</div></div>
+  <div class="stat"><div class="num">60</div><div class="label">测试文件</div></div>
+</div>
+
+
+<!-- ════ 1. 概览 ════ -->
+<h2 id="overview">一、项目概览</h2>
+
+<p>Financial Analyzer Pro 是一个集<strong>财务数据获取、多维度分析、量化策略回测、AI 深度投研</strong>于一体的综合平台。系统采用递进式 6 阶段分析流水线，覆盖从行情概览到投资评级的完整决策链路。架构上分为三层：<strong>数据层</strong>（多源适配 + 缓存）、<strong>分析层</strong>（16 个分析器 + 7 类量化因子）、<strong>展示层</strong>（FastAPI Web UI + htmx 动态渲染 + ECharts 可视化）。</p>
+
+<p>项目源于《Python大数据财务分析》（2023版）的教科书算法体系，将其中 6 个核心方法工程化为可复用的流水线模块，同时扩展了专业的量化多因子引擎和基于 DeepSeek LLM 的 AI 投研辩论系统。</p>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>多源数据适配</h4>
+    <p>Tushare / akshare / YFinance / 新浪财经四源自动切换，覆盖约 40 种数据维度</p>
+    <div class="accent-strip strip-blue"></div>
+  </div>
+  <div class="card">
+    <h4>递进式分析</h4>
+    <p>6 阶段流水线，34 项分析，从行情概览到 DCF 估值 + 投资评级</p>
+    <div class="accent-strip strip-green"></div>
+  </div>
+  <div class="card">
+    <h4>AI 三方辩论引擎</h4>
+    <p>价值 × 成长 × 风控三位分析师 3 轮辩论，基于 DeepSeek API 流式生成研报</p>
+    <div class="accent-strip strip-purple"></div>
+  </div>
+  <div class="card">
+    <h4>量化多因子引擎</h4>
+    <p>7 类 29 个因子，支持回测、绩效归因、风险控制和模拟交易</p>
+    <div class="accent-strip strip-amber"></div>
+  </div>
+  <div class="card">
+    <h4>32 维度审计检测</h4>
+    <p>插件式信号系统，覆盖资产/利润/现金流/交叉验证/治理/模型 6 大维度的异常检测</p>
+    <div class="accent-strip strip-cyan"></div>
+  </div>
+  <div class="card">
+    <h4>ML 舞弊识别</h4>
+    <p>决策树 / 随机森林 / GBDT / XGBoost + 投票集成，基于真实 A 股舞弊数据集训练</p>
+    <div class="accent-strip strip-blue"></div>
+  </div>
+</div>
+
+
+<!-- ════ 2. 系统架构 ════ -->
+<h2 id="architecture">二、系统架构</h2>
+
+<p>系统采用经典的三层架构，各层通过明确的接口解耦，支持桌面 GUI 和 Web UI 双前端并行运行。</p>
+
+<table>
+  <thead><tr><th>层级</th><th>组件</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>展示层</strong></td><td>FastAPI + Jinja2 + htmx + ECharts</td><td>Web 界面渲染、REST API、WebSocket 流式通信、图表可视化</td></tr>
+    <tr><td><strong>服务层</strong></td><td>AnalysisDispatcher / AnalysisService</td><td>34 种分析类型的统一调度，GUI 与 Web 共用</td></tr>
+    <tr><td><strong>分析层</strong></td><td>16 个 Analyzer + Calculator + AI Orchestrator</td><td>财务分析计算、量化因子、AI 投研辩论</td></tr>
+    <tr><td><strong>数据层</strong></td><td>DataSourceAdapter + DataCacheManager</td><td>多源适配、数据归一化、双层缓存（内存 + SQLite）</td></tr>
+  </tbody>
+</table>
+
+<h3>请求流转路径</h3>
+<div class="pipeline">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-label">用户请求</div>
+    <div class="step-desc">Web UI / API</div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-label">路由分发</div>
+    <div class="step-desc">FastAPI Router</div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-label">服务调度</div>
+    <div class="step-desc">AnalysisDispatcher</div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-label">数据获取</div>
+    <div class="step-desc">Adapter → Cache</div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-label">分析计算</div>
+    <div class="step-desc">Analyzer / Calculator</div>
+  </div>
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-label">结果格式化</div>
+    <div class="step-desc">文本 → HTML / JSON</div>
+  </div>
+</div>
+
+
+<!-- ════ 3. 分析流水线 ════ -->
+<h2 id="pipeline">三、分析流水线</h2>
+
+<p>系统定义了 <strong>6 阶段 34 项</strong>递进式分析流水线，从数据概览到最终投资评级逐层深入：</p>
+
+<table>
+  <thead><tr><th>阶段</th><th>分析项目</th><th>覆盖内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1. 数据概览</strong></td><td>行情概览、价格趋势、量价结合</td><td>K线、均线、成交量、动量</td></tr>
+    <tr><td><strong>2. 财务体检</strong></td><td>资产负债表、利润表、现金流量表、财务比率、趋势评分</td><td>三表完整分析 + 比率 + 同比趋势</td></tr>
+    <tr><td><strong>3. 股东与资金</strong></td><td>股东结构、资金流向、分红分析</td><td>十大股东、北向资金、融资融券</td></tr>
+    <tr><td><strong>4. 深度诊断</strong></td><td>杜邦分析、自由现金流、护城河评估、综合深度</td><td>ROE拆解、FCFF、Z/F/M-score</td></tr>
+    <tr><td><strong>5. 风险审查</strong></td><td>审计检测、ML欺诈检测、风险评估</td><td>32 信号 + ML 集成模型 + 行业阈值</td></tr>
+    <tr><td><strong>6. 估值评级</strong></td><td>综合投资评级、PE/PB-ROE、EV/EBITDA、DCF</td><td>加权评分 + 三情景 DCF + 投资论点</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ════ 4. 核心功能模块 ════ -->
+<h2 id="modules">四、核心功能模块</h2>
+
+<h3>4.1 分析器层 — 16 个专业分析器</h3>
+<p>所有分析器继承自 <code>BaseAnalyzer</code>，拥有统一的数据获取接口和缓存机制。</p>
+
+<div class="card-grid">
+  <div class="card"><h4>MarketAnalyzer</h4><p>行情概览、价格趋势、成交量分析、市场广度</p><div class="accent-strip strip-blue"></div></div>
+  <div class="card"><h4>TechnicalAnalyzer</h4><p>RSI / MACD / 布林带 / 多周期均线</p><div class="accent-strip strip-blue"></div></div>
+  <div class="card"><h4>FinancialStatementAnalyzer</h4><p>三表深度分析（同比 + 结构 + 趋势）</p><div class="accent-strip strip-green"></div></div>
+  <div class="card"><h4>ProfitabilityAnalyzer</h4><p>ROE / 毛利率 / 净利率 / 周转率 / CAGR</p><div class="accent-strip strip-green"></div></div>
+  <div class="card"><h4>DeepAnalyzer</h4><p>杜邦分解 / F-score / M-score / Z-score / 护城河</p><div class="accent-strip strip-amber"></div></div>
+  <div class="card"><h4>ComprehensiveAnalyzer</h4><p>7维金字塔评分 + DCF 估值 + 投资论点</p><div class="accent-strip strip-amber"></div></div>
+  <div class="card"><h4>AuditAnalyzer</h4><p>32 信号 6 维度审计引擎</p><div class="accent-strip strip-purple"></div></div>
+  <div class="card"><h4>RiskAnalyzer</h4><p>行业特定阈值的风险评估模型</p><div class="accent-strip strip-purple"></div></div>
+  <div class="card"><h4>CapitalFlowAnalyzer</h4><p>主力资金 / 融资融券 / 北向资金</p><div class="accent-strip strip-cyan"></div></div>
+  <div class="card"><h4>ShareholderAnalyzer</h4><p>股东户数 / 前十大股东 / 集中度评分</p><div class="accent-strip strip-cyan"></div></div>
+  <div class="card"><h4>FinancialRatioAnalyzer</h4><p>5 大类比率体系化计算</p><div class="accent-strip strip-green"></div></div>
+  <div class="card"><h4>Phase2Analyzer</h4><p>报表质量 / PB-ROE / PE 历史分位</p><div class="accent-strip strip-amber"></div></div>
+</div>
+
+<h3>4.2 计算引擎</h3>
+<table>
+  <thead><tr><th>引擎</th><th>核心功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>FinancialCalculator</code></td><td>技术指标（RSI / MACD / 布林带 / MA）、同比/环比/CAGR、安全除法</td></tr>
+    <tr><td><code>UnifiedScorer</code></td><td>三维评分：趋势(30%) + 同业(30%) + 绝对阈值(40%)，基于 CFA/CPA 教材标准</td></tr>
+    <tr><td><code>DCFValuator</code></td><td>两阶段 DCF 模型，CAPM → WACC，三情景敏感性分析矩阵</td></tr>
+    <tr><td><code>ScenarioAnalyzer</code></td><td>乐观/基准/悲观三情景框架，WACC × g 敏感性矩阵</td></tr>
+    <tr><td><code>BenchmarkEngine</code></td><td>行业对标，获取同业公司 → 四分位数排名 → 综合百分位评分</td></tr>
+    <tr><td><code>AuditEngine</code></td><td>插件式信号注册系统，装饰器驱动 (<code>@SignalRegistry.register</code>)</td></tr>
+  </tbody>
+</table>
+
+<h3>4.3 教科书算法引擎</h3>
+<p>来自《Python大数据财务分析》(2023) 的 6 个工程化方法：</p>
+<div class="card-grid">
+  <div class="card"><h4>Ch5 — 比率计算</h4><p>13 项核心比率 + 4 项现金流指标</p><div class="accent-strip strip-blue"></div></div>
+  <div class="card"><h4>Ch6 — 趋势评分</h4><p>逐年改善计数 → 标准化 100 分制</p><div class="accent-strip strip-green"></div></div>
+  <div class="card"><h4>Ch7 — 同业比较</h4><p>四分位数映射评分体系</p><div class="accent-strip strip-amber"></div></div>
+  <div class="card"><h4>Ch8 — 现金流画像</h4><p>5 型分类法（妖精/老母鸡/蛮牛/奶牛/危险型）</p><div class="accent-strip strip-purple"></div></div>
+  <div class="card"><h4>Ch9 — 杜邦 + ROIC</h4><p>3/5 因子分解，行业话语权分析</p><div class="accent-strip strip-cyan"></div></div>
+  <div class="card"><h4>Ch12-13 — ML 舞弊检测</h4><p>DT + RF + GBDT + XGBoost 投票集成</p><div class="accent-strip strip-blue"></div></div>
+</div>
+
+
+<!-- ════ 5. AI 投研系统 ════ -->
+<h2 id="ai">五、AI 投研系统</h2>
+
+<p>两层 AI 体系，基于 DeepSeek API（兼容 OpenAI 格式），支持思考模式和流式输出。</p>
+
+<h3>5.1 辩论引擎 (DebateEngine)</h3>
+<p>三维角色 3 轮辩论，产出冲突-共识-行动建议结构化报告：</p>
+<table>
+  <thead><tr><th>角色</th><th>风格</th><th>关注维度</th><th>权重</th></tr></thead>
+  <tbody>
+    <tr><td><strong>价值分析师</strong></td><td>格雷厄姆式</td><td>安全边际、PB、PE、股息率、清算价值</td><td>33%</td></tr>
+    <tr><td><strong>成长分析师</strong></td><td>费雪式</td><td>营收增速、研发投入、护城河、TAM</td><td>33%</td></tr>
+    <tr><td><strong>风控分析师</strong></td><td>巴菲特式</td><td>杠杆率、现金流质量、管理层诚信、尾部风险</td><td>33%</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 信号检测器 (SignalDetector)</h3>
+<p>20+ 可触发信号：盈利质量预警、增长透支预警、纸面富贵、存贷双高、长贷短投、经营恶化、商誉暴雷风险、大股东掏空风险等。集成 ML 欺诈检测管线进行交叉验证。</p>
+
+<h3>5.3 提示词系统</h3>
+<p>6 个预置分析模板 + 哈佛分析框架 + 三表联动验证 + 生命周期框架 + 5 类预警清单。支持用户自定义模板持久化存储。</p>
+
+
+<!-- ════ 6. 量化引擎 ════ -->
+<h2 id="quant">六、量化多因子引擎</h2>
+
+<p>完整的量化交易系统，覆盖因子计算 → 组合构建 → 回测 → 归因 → 风控 → 模拟交易全流程。</p>
+
+<h3>6.1 因子体系 — 7 类 29 个因子</h3>
+<table>
+  <thead><tr><th>类别</th><th>因子</th><th>方向</th></tr></thead>
+  <tbody>
+    <tr><td><strong>价值</strong></td><td>PE、PB、PS、股息率、FCF收益率、EV/EBITDA</td><td>多/空</td></tr>
+    <tr><td><strong>质量</strong></td><td>ROE、ROIC、毛利率、净利率、Piotroski F-score、应计比率</td><td>多</td></tr>
+    <tr><td><strong>成长</strong></td><td>营收增速、净利增速、现金流增速、ROE 趋势</td><td>多</td></tr>
+    <tr><td><strong>动量</strong></td><td>3月动量、6月动量、12月动量</td><td>多</td></tr>
+    <tr><td><strong>情绪</strong></td><td>北向资金流向、融资余额变化</td><td>多</td></tr>
+    <tr><td><strong>低波</strong></td><td>60日波动率、120日最大回撤、下行波动率</td><td>空</td></tr>
+    <tr><td><strong>风险</strong></td><td>负债率、流动比率、对数市值、平均换手率</td><td>空</td></tr>
+  </tbody>
+</table>
+
+<h3>6.2 回测引擎</h3>
+<p>月度调仓循环，支持交易成本（佣金 0.1% + 印花税 + 滑点）、T+1 限制、涨跌停检查。使用 <code>ThreadPoolExecutor</code> 并行获取数据。</p>
+
+<h3>6.3 风险控制</h3>
+<p>最大回撤阶梯减仓 + 个股/组合止损止盈 + 组合波动率监控。</p>
+
+
+<!-- ════ 7. 审计系统 ════ -->
+<h2 id="audit">七、审计异常检测系统</h2>
+
+<p>插件式架构，装饰器注册，6 个维度 32 个信号：</p>
+
+<table>
+  <thead><tr><th>维度</th><th>信号数</th><th>检测内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>资产端</strong></td><td>8</td><td>应收激增、存货积压、商誉过高、在建工程延迟结转、其他应收异常等</td></tr>
+    <tr><td><strong>利润端</strong></td><td>4</td><td>收入质量、毛利率异常、非经常性损益依赖、减值损失异常</td></tr>
+    <tr><td><strong>现金流</strong></td><td>4</td><td>经营现金流与利润背离、筹资依赖、投资异常、结构-生命周期错配</td></tr>
+    <tr><td><strong>交叉验证</strong></td><td>5</td><td>营收↔税费、营收↔人工、资本支出↔折旧、投资收益↔长期资产等</td></tr>
+    <tr><td><strong>治理</strong></td><td>5</td><td>审计意见、高管变动、关联交易、股权质押、分红异常</td></tr>
+    <tr><td><strong>模型</strong></td><td>6</td><td>Z-score、F-score、M-score、现金转换周期、营运资本、杠杆率</td></tr>
+  </tbody>
+</table>
+
+<p>每个信号按等级（高/中/低/信息）和类别组织，输出结构化的 <code>AuditStructuredResult</code> 包含诊断描述和风险摘要。</p>
+
+
+<!-- ════ 8. Web 界面 ════ -->
+<h2 id="web">八、Web 界面</h2>
+
+<h3>8.1 路由体系 — 11 个路由模块</h3>
+<table>
+  <thead><tr><th>路由</th><th>端点</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><code>pages.py</code></td><td><code>GET /</code></td><td>主页面渲染（侧边栏 + KPI 卡片 + 数据源选择）</td></tr>
+    <tr><td><code>data_api.py</code></td><td><code>POST /fetch</code></td><td>数据获取 + htmx 局部更新</td></tr>
+    <tr><td><code>analysis.py</code></td><td><code>GET /analyze/{type}</code></td><td>按类型触发分析</td></tr>
+    <tr><td><code>ai_api.py</code></td><td><code>POST /ai/chat</code> + <code>WS /ai/debate</code></td><td>AI 单次分析 + WebSocket 流式辩论</td></tr>
+    <tr><td><code>api_v1.py</code></td><td><code>POST /api/v1/fetch</code> 等</td><td>JSON REST API</td></tr>
+    <tr><td><code>quant_api.py</code></td><td><code>/api/v1/quant/*</code></td><td>信号生成、因子配置、策略模板</td></tr>
+    <tr><td><code>backtest_api.py</code></td><td><code>/api/v1/backtest/*</code></td><td>异步回测任务</td></tr>
+    <tr><td><code>paper_trading_api.py</code></td><td><code>/api/v1/paper/*</code></td><td>模拟交易管理</td></tr>
+    <tr><td><code>charts_api.py</code></td><td><code>/chart/*</code></td><td>ECharts 图表数据（K线/雷达/热力图）</td></tr>
+    <tr><td><code>settings_api.py</code></td><td><code>/settings</code></td><td>Token + 数据模块配置</td></tr>
+    <tr><td><code>export_api.py</code></td><td><code>/export</code></td><td>CSV / XLSX / JSON 导出</td></tr>
+  </tbody>
+</table>
+
+<h3>8.2 前端设计</h3>
+<p>采用"精密玻璃"深色主题，CSS 变量驱动的设计系统，htmx 驱动的无刷新局部更新，ECharts 实现 K 线/雷达图/热力图可视化。</p>
+
+
+<!-- ════ 9. 数据层 ════ -->
+<h2 id="data">九、数据层</h2>
+
+<h3>9.1 多源适配策略</h3>
+<table>
+  <thead><tr><th>数据源</th><th>优先级</th><th>覆盖范围</th><th>需要凭证</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Tushare</strong></td><td>1（主力）</td><td>A 股全面数据（行情/财务/资金/股东）</td><td>Token</td></tr>
+    <tr><td><strong>akshare</strong></td><td>2（备选）</td><td>A 股 + 宏观经济数据</td><td>无</td></tr>
+    <tr><td><strong>YFinance</strong></td><td>3（备选）</td><td>美股数据</td><td>无</td></tr>
+    <tr><td><strong>新浪财经</strong></td><td>4（兜底）</td><td>A 股日线行情</td><td>无</td></tr>
+  </tbody>
+</table>
+
+<h3>9.2 缓存策略</h3>
+<p>双层缓存：内存字典（热数据，毫秒级读取）+ SQLite 持久化（温数据，跨会话复用）。线程安全的 <code>threading.Lock</code> 保护，支持 TTL 配置和自动过期清理。</p>
+
+<h3>9.3 数据归一化</h3>
+<p><code>DataNormalizer</code> 将四个数据源的异构列名统一为标准化格式（<code>StandardColumns</code>），下游分析器无需关心数据来源。</p>
+
+
+<!-- ════ 10. 技术栈 ════ -->
+<h2 id="tech">十、技术栈</h2>
+
+<table>
+  <thead><tr><th>类别</th><th>技术</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><strong>语言</strong></td><td>Python 3.13</td><td>全栈</td></tr>
+    <tr><td><strong>Web 框架</strong></td><td>FastAPI + Uvicorn</td><td>REST API + WebSocket 服务</td></tr>
+    <tr><td><strong>前端</strong></td><td>Jinja2 + htmx + ECharts</td><td>服务端渲染 + 动态局部更新 + 图表</td></tr>
+    <tr><td><strong>数据处理</strong></td><td>pandas + numpy + scipy</td><td>数据分析 + 统计计算</td></tr>
+    <tr><td><strong>可视化</strong></td><td>matplotlib + ECharts</td><td>静态图表 + 交互图表</td></tr>
+    <tr><td><strong>AI / LLM</strong></td><td>DeepSeek API (OpenAI 兼容)</td><td>AI 分析 + 辩论引擎</td></tr>
+    <tr><td><strong>机器学习</strong></td><td>scikit-learn + XGBoost + imbalanced-learn</td><td>舞弊检测 + 集成模型</td></tr>
+    <tr><td><strong>数据获取</strong></td><td>Tushare / akshare / yfinance</td><td>多源金融数据</td></tr>
+    <tr><td><strong>缓存</strong></td><td>SQLite + 内存字典</td><td>双层缓存系统</td></tr>
+    <tr><td><strong>导出</strong></td><td>reportlab / python-docx / openpyxl</td><td>PDF / Word / Excel 报告</td></tr>
+    <tr><td><strong>测试</strong></td><td>pytest (60 个测试文件)</td><td>单元测试 + 集成测试</td></tr>
+    <tr><td><strong>打包</strong></td><td>PyInstaller</td><td>单文件 exe 分发</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ════ Footer ════ -->
+<footer>
+  Financial Analyzer Pro v10.0 · 195 Python 源文件 · ~71,000 行代码 · 2026<br>
+  生成时间：2026-06-10
+</footer>
+
+</main>
+</body>
+</html>

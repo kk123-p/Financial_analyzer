@@ -9,7 +9,7 @@ import time
 import threading
 import webbrowser
 
-# 显式 import — PyInstaller 依赖追踪
+# ⚠️ 必须在 uvicorn.run() 之前显式 import，否则 PyInstaller 无法追踪依赖
 import financial_analyzer
 import financial_analyzer.config
 import financial_analyzer.logging_config
@@ -26,9 +26,6 @@ import financial_analyzer.web.routes.ai_api
 import financial_analyzer.web.routes.export_api
 import financial_analyzer.web.routes.settings_api
 import financial_analyzer.web.routes.api_v1
-import financial_analyzer.web.routes.quant_api
-import financial_analyzer.web.routes.backtest_api
-import financial_analyzer.web.routes.paper_trading_api
 import financial_analyzer.data_sources.adapter
 import financial_analyzer.data_sources.normalizer
 import financial_analyzer.cache.manager
@@ -42,9 +39,9 @@ HEALTH_URL = "http://127.0.0.1:8000/api/health"
 
 def start_server():
     import uvicorn
-    print("[服务] 正在启动后端...")
+    from financial_analyzer.web.main import app
     uvicorn.run(
-        "financial_analyzer.web.main:app",
+        app,
         host="127.0.0.1",
         port=8000,
         ws="wsproto",
@@ -56,37 +53,38 @@ def start_server():
 
 def main():
     print("=" * 50)
-    print("  Financial Analyzer Pro  v10.0")
+    print("  Financial Analyzer Pro v10.0")
     print("=" * 50)
 
+    # 启动后端服务器
     t = threading.Thread(target=start_server, daemon=True)
     t.start()
 
-    print("\n[就绪] 等待服务启动...", end="", flush=True)
+    # 等待服务器就绪
+    print("\n正在启动服务...", end="", flush=True)
     import urllib.request
 
-    for _ in range(60):
+    for _ in range(40):
         try:
             urllib.request.urlopen(HEALTH_URL, timeout=1)
             break
         except Exception:
             time.sleep(0.5)
             print(".", end="", flush=True)
-    print(" OK!")
+    print(" 完成！")
 
-    print(f"\n[打开] 浏览器: {APP_URL}")
+    # 打开浏览器 — 传统 Jinja2/htmx Web UI
+    print(f"\nWeb 界面: {APP_URL}")
     webbrowser.open(APP_URL)
 
-    print("\n" + "-" * 50)
-    print("  提示: 首次使用请点击右上角设置按钮配置 Tushare Token")
-    print("  关闭此窗口即可退出程序")
-    print("-" * 50)
+    print("\n提示：首次使用请点击右上角设置按钮配置 Tushare Token")
+    print("按 Ctrl+C 或关闭此窗口退出程序\n")
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[退出] 正在关闭...")
+        print("\n正在关闭...")
         sys.exit(0)
 
 

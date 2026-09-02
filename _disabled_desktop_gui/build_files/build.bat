@@ -5,23 +5,22 @@ echo   Financial Analyzer Pro — 打包构建
 echo ============================================
 echo.
 
-set VENV_PYTHON=.venv\Scripts\python.exe
-
-if not exist "%VENV_PYTHON%" (
-    echo [错误] 未找到虚拟环境 .venv\Scripts\python.exe
-    pause
-    exit /b 1
+REM 激活虚拟环境
+if exist ".venv\Scripts\activate.bat" (
+    call .venv\Scripts\activate.bat
+) else (
+    echo [警告] 未找到虚拟环境 .venv，使用系统 Python
 )
 
-echo [1/4] 安装构建依赖...
-%VENV_PYTHON% -m pip install pyinstaller 2>nul
+REM 确保 PyInstaller 已安装
+pip install pyinstaller 2>nul
 
-echo [2/4] 清理旧构建...
+echo [1/3] 清理旧构建...
 if exist "dist" rmdir /s /q "dist"
 if exist "build" rmdir /s /q "build"
 
-echo [3/4] 运行 PyInstaller...
-%VENV_PYTHON% -m PyInstaller build.spec --clean --noconfirm
+echo [2/3] 运行 PyInstaller...
+pyinstaller build.spec --clean --noconfirm
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -31,7 +30,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo [4/4] 打包为 ZIP...
+echo [3/3] 打包为 ZIP...
 powershell -Command "Compress-Archive -Path 'dist\FinancialAnalyzerPro\*' -DestinationPath 'FinancialAnalyzerPro.zip' -Force"
 
 echo.
@@ -41,7 +40,7 @@ echo   输出: dist\FinancialAnalyzerPro\
 echo   ZIP:  FinancialAnalyzerPro.zip
 echo ============================================
 echo.
-echo 将 FinancialAnalyzerPro.zip 复制到 U 盘即可。
-echo 在其他电脑上解压后双击 FinancialAnalyzerPro.exe 运行。
+echo 将 FinancialAnalyzerPro.zip 发送给朋友即可。
+echo 解压后双击 FinancialAnalyzerPro.exe 运行。
 echo.
 pause
