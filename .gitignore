@@ -9,6 +9,9 @@ dist/
 build/
 *.egg-info/
 *.egg
+*.zip
+*.exe
+*.7z
 
 # Virtual environments
 venv/
