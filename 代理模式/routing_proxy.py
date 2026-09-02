@@ -7,12 +7,13 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import json
+import os
 
 DEEPSEEK_URL = "https://api.deepseek.com/anthropic/v1/messages"
-DEEPSEEK_KEY = "sk-d99fc231908a40c9bac5dc04601b4857"
+DEEPSEEK_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 MIMO_URL = "https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages"
-MIMO_KEY = "tp-cjkvbys5ocjm25eanbxata8l3mcb3b3f0r3tc24o4dueoi2x"
-PROXY_KEY = "sk-gateway-master-key-2026"
+MIMO_KEY = os.environ.get("MIMO_API_KEY", "")
+PROXY_KEY = os.environ.get("PROXY_MASTER_KEY", "")
 
 # (claude_model, backend_url, api_key, backend_model, label)
 ROUTES = {
